@@ -34,11 +34,12 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { statSync } from "fs";
 import { homedir } from "os";
-import { dirname, join, resolve } from "path";
+import { dirname, join, parse, resolve } from "path";
 import { fileURLToPath } from "url";
 import {
   allowlisted,
   credentialRefs,
+  credentialToken,
   criticalDeletionTarget,
   destructiveGit,
   gitPushes,
@@ -256,6 +257,15 @@ interface Need {
   cacheable?: boolean;
 }
 
+/**
+ * Too broad for a conversation-wide grant: a filesystem or drive root, the
+ * home folder, or a folder holding it. Approving `echo >> ~/.zshrc` for the
+ * conversation would otherwise open all of home (review M5, 2026-10-12).
+ */
+function tooBroadToGrant(folder: string): boolean {
+  return parse(folder).root === folder || isPathInside(folder, homedir());
+}
+
 /** The folder a target belongs to: itself when it is a folder, else its parent. */
 function folderOf(target: string): string {
   try {
@@ -455,6 +465,13 @@ export function createSecurityExtension(
       };
       const reviewOne = (rule: string, key: string | null, title: string) =>
         review(rule, [{ reason: null, key }], title);
+      /** A write outside the roots: "Allow for this conversation" makes its folder writable. */
+      const outsideWrite = (target: string): Need => {
+        const folder = folderOf(target);
+        return tooBroadToGrant(folder)
+          ? { reason: `Write outside your folders: ${summarize(folder)}`, key: null }
+          : { reason: `Write outside your folders: ${summarize(folder)}`, key: `write:${canonicalPathKey(folder)}`, folder };
+      };
 
       const input = event.input as Record<string, unknown>;
       const path = typeof input.path === "string" ? input.path : undefined;
@@ -514,7 +531,7 @@ export function createSecurityExtension(
             "Blocked — this command hides characters that disguise what it actually does."
           );
         }
-        const hard = programsRun(evidence).find((program) => BLOCKED_COMMANDS.has(program));
+        const hard = programsRun(evidence).find((program) => BLOCKED_COMMANDS.has(program) || program.startsWith("mkfs."));
         if (hard) {
           return blocked(
             "command_blocklist",
@@ -523,7 +540,10 @@ export function createSecurityExtension(
         }
         // SSRF: hard-block cloud-metadata / internal hosts on the bash
         // network path too, not only on custom-tool URL inputs.
-        const blockedHost = networkHosts(evidence).find((host) => isBlockedHost(host));
+        const network = networkHosts(evidence);
+        const blockedHost =
+          network.hosts.find((host) => isBlockedHost(host)) ??
+          network.bare.find((word) => BLOCKED_HOSTS.has(word.replace(/\.$/, "")));
         if (blockedHost) {
           return blocked(
             "ssrf_protection",
@@ -545,10 +565,9 @@ export function createSecurityExtension(
         for (const target of writes) {
           const check = verdict(target, "write", { writable });
           if (check.outcome === "sensitive") {
-            needs.push({ reason: `Credential location: ${check.sensitiveRoot}`, key: `credential:${check.sensitiveRoot}` });
+            needs.push({ reason: `Credential location: ${check.sensitiveRoot}`, key: `credential:${credentialToken(check.sensitiveRoot)}` });
           } else if (check.outcome === "outside") {
-            const folder = folderOf(target);
-            needs.push({ reason: `Write outside your folders: ${summarize(folder)}`, key: `write:${canonicalPathKey(folder)}`, folder });
+            needs.push(outsideWrite(target));
           } else if (isDatabaseFile(target)) {
             // Guardrail ③: a database file is looked at even inside the folders.
             needs.push({ reason: `Database file: ${summarize(target)}`, key: `db:${canonicalPathKey(target)}` });
@@ -559,10 +578,13 @@ export function createSecurityExtension(
         for (const target of readTargets(evidence, toolPath)) {
           const check = verdict(target, "read", { readable });
           if (check.outcome === "sensitive") {
-            needs.push({ reason: `Credential location: ${check.sensitiveRoot}`, key: `credential:${check.sensitiveRoot}` });
+            needs.push({ reason: `Credential location: ${check.sensitiveRoot}`, key: `credential:${credentialToken(check.sensitiveRoot)}` });
           } else if (check.outcome === "outside") {
             const folder = folderOf(target);
-            needs.push({ reason: `Read outside your folders: ${summarize(folder)}`, key: `read:${canonicalPathKey(folder)}` });
+            needs.push({
+              reason: `Read outside your folders: ${summarize(folder)}`,
+              key: tooBroadToGrant(folder) ? null : `read:${canonicalPathKey(folder)}`,
+            });
           }
         }
         // A credential store named anywhere else in the command (`ssh-keygen -f ~/.ssh/x`).
@@ -639,39 +661,11 @@ export function createSecurityExtension(
           return undefined;
         }
         if (check.outcome === "outside") {
-          const root = dirname(resolved);
-          const title = `Allow writes in this folder for this session: ${summarize(root)}`;
-          if (!ctx.hasUI || !addWritableRoot) {
-            return blocked("path_boundary", `${title} — approval is unavailable`);
-          }
-          let ending: string | undefined;
-          const choice = await ctx.ui.select(
-            title,
-            [APPROVAL_ALLOW_SESSION, APPROVAL_DENY],
-            {
-              signal: ctx.signal,
-              timeout: APPROVAL_TIMEOUT_MS,
-              onResolution: (resolution: string) => {
-                ending = resolution;
-              },
-            } as ExtensionUIDialogOptions,
-          );
-          if (choice !== APPROVAL_ALLOW_SESSION) {
-            if (!ctx.signal?.aborted && (ending === "timeout" || ending === "cancelled")) {
-              return blocked("path_boundary_timeout", `${title} — ${approvalTimeoutText(++approvalTimeouts.count)}`);
-            }
-            approvalTimeouts.count = 0;
-            return blocked("path_boundary", `${title} — not approved by the user`);
-          }
-          approvalTimeouts.count = 0;
-          addWritableRoot(root);
-          audit({
-            toolName: event.toolName,
-            toolCallId: event.toolCallId,
-            action: "approved-session",
-            rule: "path_boundary",
-            detail: title,
-          });
+          // Allow once passes this one file; for the conversation, its folder.
+          const outcome = await review("path_boundary", [outsideWrite(resolved)], `${verb} file: ${summarize(resolved)}`);
+          if (outcome) return outcome;
+          const still = verdict(resolved, "write", { writable: getWritableRoots() }).outcome === "outside";
+          if (still && event.toolName === "write") allowWriteOnce?.(canonicalPathKey(resolved));
           return undefined;
         }
         // Guardrail ③: a database file is looked at even inside the roots.
@@ -736,7 +730,7 @@ export function createSecurityExtension(
 /** Cloud-metadata / internal-service host match, shared by the bash network
  *  path and custom-tool URL inputs. */
 function isBlockedHost(hostname: string): boolean {
-  const host = hostname.toLowerCase().replace(/\.$/, "");
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
   return (
     BLOCKED_HOSTS.has(host) ||
     BLOCKED_HOST_PREFIXES.some((prefix) => host.startsWith(prefix))

@@ -17,7 +17,7 @@ import { homedir } from "os";
 import { basename, dirname, extname, isAbsolute, join, parse, resolve } from "path";
 import { execFileSync } from "child_process";
 import { canonicalPathKey, isPathInside } from "./path-verdict.js";
-import { resolveAll, type Invocation, type ShellEvidence } from "./shell-evidence.js";
+import { resolveAll, UNKNOWN_FOLDER, type Invocation, type ShellEvidence } from "./shell-evidence.js";
 
 type Resolve = (cwd: string, raw: string) => string;
 type Words = Array<string | null>;
@@ -30,20 +30,31 @@ function paths(words: Words, invocation: Invocation, resolvePath: Resolve): stri
   return words.flatMap((word) => (word === null ? [] : resolveAll(word, invocation.cwds, resolvePath)));
 }
 
-/** The value after an option (`-o out`, `--output=out`, `-oout`). */
+/** The value after an option (`-o out`, `--output=out`, `-oout`, `-sLo out`). */
 function optionValues(args: Words, short: string[], long: string[]): Words {
   const values: Words = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === null) continue;
-    if (short.includes(arg) || long.includes(arg)) values.push(args[i + 1] ?? null);
+    if (short.includes(arg) || long.includes(arg)) {
+      values.push(args[i + 1] ?? null);
+      continue;
+    }
     const joined = long.find((name) => arg.startsWith(`${name}=`));
     if (joined) values.push(arg.slice(joined.length + 1));
+    if (/^-[a-zA-Z]{2,}$/.test(arg) && short.includes(`-${arg.at(-1)}`)) {
+      // A cluster ending in the option: its value is the next word.
+      values.push(args[i + 1] ?? null);
+      continue;
+    }
     const glued = short.find((name) => name.length === 2 && arg.startsWith(name) && arg.length > 2 && !arg.startsWith("--"));
     if (glued) values.push(arg.slice(2));
   }
   return values;
 }
+
+/** `/dev/null`, `/dev/stderr`, `/dev/urandom`: devices, not files a task writes or reads. */
+const isDevice = (path: string) => /^\/dev\//.test(path);
 
 // ---------------------------------------------------------------------------
 // Guardrail ① — critical-path deletion brake
@@ -140,6 +151,17 @@ export function criticalDeletionTarget(
       const firstExpression = args.findIndex((word) => word === null || word.startsWith("-") || word === "(" || word === "!");
       named = firstExpression === -1 ? args : args.slice(0, firstExpression);
       if (named.length === 0) named = ["."];
+    } else if (program === "rsync") {
+      // --delete empties what the destination has beyond the source;
+      // --remove-source-files empties the sources.
+      const sources = operands(args).slice(0, -1).filter((word) => !isRemote(word));
+      const deletes = args.some((word) => word !== null && word.startsWith("--delete"));
+      const removes = args.includes("--remove-source-files");
+      const destination = operands(args).at(-1);
+      named = [
+        ...(deletes && destination && !isRemote(destination) ? [`${destination.replace(/[\\/]+$/, "")}/*`] : []),
+        ...(removes ? sources.map((word) => (word === null ? null : `${word.replace(/[\\/]+$/, "")}/*`)) : []),
+      ];
     }
     for (const operand of named) {
       if (operand === null) continue;
@@ -201,6 +223,7 @@ export function writeTargets(evidence: ShellEvidence, resolvePath: Resolve): str
   for (const redirect of evidence.redirects) {
     if (redirect.write) for (const path of resolveAll(redirect.target, redirect.cwds, resolvePath)) out.add(path);
   }
+  // (Devices are dropped at the end.)
   for (const invocation of evidence.invocations) {
     const { program, args } = invocation;
     const named = operands(args);
@@ -217,7 +240,7 @@ export function writeTargets(evidence: ShellEvidence, resolvePath: Resolve): str
     else if (program === "git" && gitCommand(args).sub === "clone") found = operands(gitCommand(args).args).slice(1, 2);
     for (const path of paths(found, invocation, resolvePath)) out.add(path);
   }
-  return [...out];
+  return [...out].filter((path) => !isDevice(path));
 }
 
 /** Programs that read the files they name. */
@@ -236,9 +259,38 @@ export function readTargets(evidence: ShellEvidence, resolvePath: Resolve): stri
   }
   for (const invocation of evidence.invocations) {
     if (!READERS.has(invocation.program)) continue;
-    for (const path of paths(invocation.args.filter(looksLikePath), invocation, resolvePath)) out.add(path);
+    for (const path of paths(readOperands(invocation).filter(looksLikePath), invocation, resolvePath)) out.add(path);
   }
-  return [...out];
+  return [...out].filter((path) => !isDevice(path));
+}
+
+/** The words a read-only program reads as files: not grep's pattern, not find's expression. */
+function readOperands(invocation: Invocation): Words {
+  const { program, args } = invocation;
+  if (program === "find") {
+    const firstExpression = args.findIndex((word) => word === null || word.startsWith("-") || word === "(" || word === "!");
+    return firstExpression === -1 ? args : args.slice(0, firstExpression);
+  }
+  if (!["grep", "egrep", "fgrep", "rg"].includes(program)) return args;
+  // The pattern is the first operand unless -e/-f/--regexp/--file name it.
+  const patternOptions = ["-e", "-f", "--regexp", "--file"];
+  const named = args.some((word) => word !== null && (patternOptions.includes(word) || /^--(regexp|file)=/.test(word)));
+  const words: Words = [];
+  let patternSeen = named;
+  for (let i = 0; i < args.length; i++) {
+    const word = args[i];
+    if (word !== null && patternOptions.includes(word)) {
+      i++;
+      continue;
+    }
+    if (isFlag(word)) continue;
+    if (!patternSeen) {
+      patternSeen = true;
+      continue;
+    }
+    words.push(word);
+  }
+  return words;
 }
 
 // ---------------------------------------------------------------------------
@@ -349,7 +401,11 @@ function upstreamRemote(repository: string): string | null {
       : gitDir;
     const config = readFileSync(join(common, "config"), "utf-8");
     const section = branch ? config.split(/^\[/m).find((part) => part.startsWith(`branch "${branch}"]`)) : undefined;
-    return section?.match(/^\s*(?:pushRemote|remote)\s*=\s*(\S+)/m)?.[1] ?? null;
+    return (
+      section?.match(/^\s*pushRemote\s*=\s*(\S+)/m)?.[1] ??
+      section?.match(/^\s*remote\s*=\s*(\S+)/m)?.[1] ??
+      null
+    );
   } catch {
     return null;
   }
@@ -361,10 +417,9 @@ export function gitPushes(evidence: ShellEvidence, resolvePath: Resolve): Target
   for (const invocation of evidence.invocations) {
     if (invocation.program !== "git") continue;
     const { dir, sub, args } = gitCommand(invocation.args);
-    if (sub !== "push") continue;
-    const folder = dir === null
-      ? invocation.cwds[0]
-      : resolveAll(dir, invocation.cwds, resolvePath)[0];
+    if (sub !== "push" || args.includes("--dry-run") || args.includes("-n")) continue;
+    const known = invocation.cwds.filter((cwd) => cwd !== UNKNOWN_FOLDER);
+    const folder = dir === null ? known[0] : resolveAll(dir, known, resolvePath)[0];
     const repository = folder ? repositoryOf(folder) ?? folder : "?";
     const valued = new Set(["-o", "--push-option", "--repo", "--receive-pack", "--exec"]);
     let remote: string | null | undefined;
@@ -395,7 +450,7 @@ const isRemote = (word: string | null) => remoteHost(word) !== null;
 function urlHost(args: Words): string | null {
   for (const arg of args) {
     const host = arg?.match(/^[a-z][a-z0-9+.-]*:\/\/([^/\s'"?#]+)/i)?.[1];
-    if (host) return host.replace(/^[^@]*@/, "").replace(/:\d+$/, "").toLowerCase();
+    if (host) return host.replace(/^[^@]*@/, "").replace(/:\d+$/, "").replace(/^\[|\]$/g, "").toLowerCase();
   }
   return null;
 }
@@ -411,6 +466,8 @@ export function uploads(evidence: ShellEvidence): TargetedAction[] {
       const sendsFile =
         optionValues(args, ["-T"], ["--upload-file"]).length > 0 ||
         optionValues(args, ["-F"], ["--form"]).some((value) => value === null || /=[@<]/.test(value)) ||
+        // A body read from a file (`-d @paper.pdf`; not `@-`, stdin).
+        optionValues(args, ["-d"], ["--data", "--data-binary", "--json"]).some((value) => value !== null && /^@(?!-$)/.test(value)) ||
         optionValues(args, [], ["--post-file", "--body-file"]).length > 0;
       if (sendsFile) {
         const host = urlHost(args) ?? "an unknown host";
@@ -418,13 +475,16 @@ export function uploads(evidence: ShellEvidence): TargetedAction[] {
       }
     } else if (program === "scp" || program === "rsync") {
       const named = operands(args);
-      const destination = remoteHost(named.at(-1) ?? null);
+      const last = named.at(-1) ?? null;
+      const destination = urlHost([last]) ?? remoteHost(last);
       if (destination && named.slice(0, -1).some((word) => !isRemote(word))) {
         add(`upload:${destination}`, `Upload to: ${destination}`, invocation);
       }
     } else if (program === "gh" && at("release") && (at("create", 1) || at("upload", 1))) {
       const repository = optionValues(args, ["-R"], ["--repo"])[0] ?? invocation.cwds[0] ?? "?";
       add(`publish:github-release:${repository}`, "Publish to: GitHub release", invocation);
+    } else if (args.includes("--dry-run")) {
+      continue;
     } else if (["npm", "pnpm", "yarn", "bun"].includes(program) && (at("publish") || (at("npm") && at("publish", 1)))) {
       add("publish:npm", "Publish to: npm", invocation);
     } else if (
@@ -446,7 +506,7 @@ export function uploads(evidence: ShellEvidence): TargetedAction[] {
 export function installs(evidence: ShellEvidence, isWritable: (path: string) => boolean, resolvePath: Resolve): TargetedAction[] {
   const out: TargetedAction[] = [];
   // A virtual environment switched on earlier in the command keeps pip local.
-  const activated = evidence.invocations.some(
+  const activation = evidence.invocations.findIndex(
     (invocation) =>
       /^activate(\.ps1|\.bat|\.fish|\.csh)?$/.test(invocation.program) ||
       ((invocation.program === "source" || invocation.program === ".") &&
@@ -458,9 +518,10 @@ export function installs(evidence: ShellEvidence, isWritable: (path: string) => 
     invocation.programWord !== null &&
     /[\\/]/.test(invocation.programWord) &&
     paths([invocation.programWord], invocation, resolvePath).every(isWritable);
-  for (const invocation of evidence.invocations) {
+  for (const [index, invocation] of evidence.invocations.entries()) {
     const { program, args } = invocation;
     const words = args.filter((word): word is string => word !== null);
+    if (words.includes("--dry-run")) continue;
     const verb = words.find((word) => !word.startsWith("-"));
     const global = words.some((word) => word === "-g" || word === "--global" || word === "--location=global");
     let manager: string | null = null;
@@ -475,7 +536,10 @@ export function installs(evidence: ShellEvidence, isWritable: (path: string) => 
     else if (["brew", "winget", "choco", "scoop", "pipx", "cargo", "gem", "go"].includes(program) && verb === "install") manager = program;
     else if (["conda", "mamba", "micromamba"].includes(program) && verb === "install") manager = "conda";
     if (!manager) continue;
-    if (manager === "pip" && (activated || local(invocation))) continue;
+    // Into a folder of the task (`pip install -t ./vendor`): local too.
+    const target = optionValues(args, ["-t"], ["--target"])[0];
+    const intoFolder = typeof target === "string" && paths([target], invocation, resolvePath).every(isWritable);
+    if (manager === "pip" && ((activation >= 0 && activation < index) || local(invocation) || intoFolder)) continue;
     out.push({ key: `install:${manager}`, reason: `Install with: ${manager}`, text: invocation.text });
   }
   return out;
@@ -488,6 +552,11 @@ export function installs(evidence: ShellEvidence, isWritable: (path: string) => 
 /** Credential stores a command names: reviewed (file tools refuse them outright). */
 const CREDENTIAL_TOKENS = [".ssh", ".gnupg", ".aws", ".netrc", "/etc/shadow", "/etc/sudoers"];
 
+/** The credential token a sensitive path falls under (one grant key for both checks). */
+export function credentialToken(sensitiveRoot: string): string {
+  return CREDENTIAL_TOKENS.find((token) => sensitiveRoot.replace(/\\/g, "/").endsWith(token)) ?? sensitiveRoot;
+}
+
 export function credentialRefs(evidence: ShellEvidence): string[] {
   const words = [
     ...evidence.invocations.flatMap((invocation) => invocation.args),
@@ -499,21 +568,34 @@ export function credentialRefs(evidence: ShellEvidence): string[] {
 /** Programs that reach the network: their destinations are checked against SSRF hosts. */
 const NETWORK_COMMANDS = new Set(["ssh", "scp", "sftp", "rsync", "nc", "netcat", "telnet", "nmap", "curl", "wget"]);
 
-/** Destination hosts of network programs: URL hosts, `user@host`, `host:path`. */
-export function networkHosts(evidence: ShellEvidence): string[] {
+/**
+ * Destination hosts of network programs: URL hosts, `user@host`,
+ * `host:path`, and the bare host words of `nc`, `telnet`, `nmap` and `ssh`.
+ * `bare` adds what merely could be a host (`curl 169.254.169.254/x`), for
+ * matching exact addresses only.
+ */
+export function networkHosts(evidence: ShellEvidence): { hosts: string[]; bare: string[] } {
   const hosts = new Set<string>();
+  const bare = new Set<string>();
   for (const invocation of evidence.invocations) {
     if (!NETWORK_COMMANDS.has(invocation.program)) continue;
     for (const arg of invocation.args) {
-      if (arg === null) continue;
+      if (arg === null || isFlag(arg)) continue;
       const host =
         urlHost([arg]) ??
-        arg.match(/^[\w.-]+@([\w.-]+)/)?.[1]?.toLowerCase() ??
+        arg.match(/^[\w.-]+@\[?([\w.:-]+?)\]?(?::|$)/)?.[1]?.toLowerCase() ??
         remoteHost(arg);
       if (host) hosts.add(host);
+      else bare.add(arg.replace(/^\[|\](?=[:/]|$)/g, "").split(/[/?#]/)[0].replace(/:\d+$/, "").toLowerCase());
+    }
+    // The host word: nmap's every operand, the others' first (`nc host port`, `ssh me@host cmd`).
+    const named = operands(invocation.args);
+    const hostWords = invocation.program === "nmap" ? named : ["nc", "netcat", "telnet", "ssh"].includes(invocation.program) ? named.slice(0, 1) : [];
+    for (const word of hostWords) {
+      if (word !== null) hosts.add(word.replace(/^[^@]*@/, "").replace(/^\[|\]$/g, "").toLowerCase());
     }
   }
-  return [...hosts];
+  return { hosts: [...hosts], bare: [...bare] };
 }
 
 /** Every program a command runs, privilege wrappers included (the hard block's view). */
@@ -570,7 +652,8 @@ function builtinSafe(invocation: Invocation, input: FastPassInput): boolean {
     paths(list.filter(looksLikePath).map((word) => word.replace(/\*.*$/, "") || "."), invocation, input.resolvePath).every(input.isReadable);
   if (words.length === 1 && (words[0] === "--version" || words[0] === "-V")) return true;
   if (program === "git") {
-    const { sub, args: rest } = gitCommand(words);
+    const { dir, sub, args: rest } = gitCommand(words);
+    if (dir !== null && !paths([dir], invocation, input.resolvePath).every(input.isReadable)) return false;
     if (rest.some((arg) => arg !== null && (arg.startsWith("--output") || arg.startsWith("--ext-diff")))) return false;
     if (sub !== null && SAFE_GIT.has(sub)) return readable(rest as string[]);
     return sub === "branch" && rest.every((arg) => arg !== null && SAFE_GIT_BRANCH_FLAGS.has(arg));

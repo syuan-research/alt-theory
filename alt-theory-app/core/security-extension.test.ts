@@ -413,3 +413,45 @@ test("data folder: a project containing the data folder does not open it up", as
   assert.equal((await call("write", { path: join(workspace, "notes.md") })), undefined);
   assert.equal((await call("write", { path: join(root, "notes.md") })), undefined);
 });
+
+test("review fixes: what the old boundary caught by asking is still refused or asked", async () => {
+  const h = harness();
+  h.answer("Deny");
+  // Cloud-metadata destinations without a scheme, by bare host, in brackets.
+  for (const command of ["curl 169.254.169.254/latest/meta-data", "nc 169.254.169.254 80", "curl http://[::ffff:169.254.169.254]/"]) {
+    assert.match((await h.call("bash", { command }))?.reason ?? "", /cloud-metadata/, command);
+  }
+  assert.match((await h.call("bash", { command: "mkfs.ext4 /dev/sda1" }))?.reason ?? "", /can damage the system/);
+  assert.equal(h.asked.length, 0);
+  // A push after a heredoc on the same line.
+  await h.call("bash", { command: "cat > notes.md <<'EOF' && git push origin main\nhi\nEOF" });
+  assert.match(h.asked[0].title, /^Needs approval: Push to: origin/);
+  // A credential named by path and by token is one grant.
+  await h.call("bash", { command: "cat ~/.ssh/id_ed25519.pub" });
+  assert.equal(h.asked[1].title.split("\n").filter((line) => line.startsWith("Needs approval")).length, 1);
+});
+
+test("review fixes: no conversation-wide grant for the home folder or a root (M5)", async () => {
+  const h = harness();
+  h.answer("Deny");
+  await h.call("bash", { command: "echo 'export X=1' >> ~/.zshrc" });
+  assert.deepEqual(h.asked[0].options, [APPROVAL_ALLOW_ONCE, "Deny"]);
+  await h.call("bash", { command: "ls ~" });
+  assert.deepEqual(h.asked[1].options, [APPROVAL_ALLOW_ONCE, "Deny"]);
+  await h.call("bash", { command: "ls ~/Downloads/papers" });
+  assert.ok(h.asked[2].options.includes(APPROVAL_ALLOW_SESSION), "a folder inside home can be granted");
+});
+
+test("Ask: a file-tool write outside the folders asks like a shell write; Allow once passes that file", async () => {
+  const h = harness();
+  const elsewhere = mkdtempSync(join(tmpdir(), "alt-secext-filetool-"));
+  assert.equal(await h.call("write", { path: join(elsewhere, "a.md") }), undefined);
+  assert.match(h.asked[0].title, /^Needs approval: Write outside your folders: .*\nWrite file: /);
+  assert.deepEqual(h.asked[0].options, [APPROVAL_ALLOW_ONCE, APPROVAL_ALLOW_SESSION, "Deny"]);
+  assert.equal(h.oncePaths.length, 1, "Allow once passes exactly that file");
+  h.answer(APPROVAL_ALLOW_SESSION);
+  await h.call("write", { path: join(elsewhere, "b.md") });
+  assert.ok(h.writable.some((root) => root.path === elsewhere));
+  await h.call("edit", { path: join(elsewhere, "a.md") });
+  assert.equal(h.asked.length, 2, "the folder is the conversation's now");
+});

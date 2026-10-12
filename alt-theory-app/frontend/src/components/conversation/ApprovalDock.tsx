@@ -27,7 +27,6 @@ function approvalOption(option: string): string {
 const TITLE_KINDS: Array<[prefix: string, label: () => string]> = [
   ["Run command: ", () => t("Run command")],
   ["Read outside your workspace: ", () => t("Read outside your project and global folders")],
-  ["Allow writes in this folder for this session: ", () => t("Allow writes in this folder in this conversation, also after restart")],
   ["Edit file: ", () => t("Edit file")],
   ["Write file: ", () => t("Write file")],
   ["Message another conversation: ", () => t("Message another conversation")],

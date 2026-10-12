@@ -272,8 +272,9 @@ Every tool call ends in one of three outcomes (the shared approval boundary,
   as `cat`); a database file (`.sqlite`, `.db`, `.duckdb`, `.accdb`, …)
   changed by `write`/`edit` or a visible shell write, even inside the roots;
   a credential store a command names; an ordinary `git push`; a visible
-  upload or publish (`curl -T`/`-F file=@`, `scp`/`rsync` to a remote,
-  `gh release create|upload`, `npm publish`, `twine upload`, …); and an
+  upload or publish (`curl -T`/`-F file=@`, a body read from a file such as
+  `-d @paper.pdf`, `scp`/`rsync` to a remote, `gh release create|upload`,
+  `npm publish`, `twine upload`, …; `--dry-run` excluded); and an
   install into the computer (`pip install` outside a virtual environment,
   global `npm`/`pnpm`/`yarn`, `brew`, `winget`, `choco`, `scoop`, `conda`,
   `pipx`, `uv tool`, `cargo`, `gem`, `go install`). Ask puts the review to
@@ -289,16 +290,20 @@ Shell commands are read from a syntax tree
 the vendored pure-TypeScript bash parser from Kimi Code in
 `core/bash-parser/`): each program it runs (through wrappers such as `env`,
 `nice`, `timeout`, `sudo`, and inside `bash -c`, `eval` and command
-substitutions), the folders it may run in (`cd` moves the commands after it
-within its scope; after a conditional `cd` both folders count), and its
-redirections; quoted text and quoted heredocs are data. Code handed to
+substitutions, and `find -exec`), the folders it may run in (`cd` moves
+the commands after it within its scope; after a conditional `cd` both
+folders count), and its redirections; quoted text and quoted heredocs are
+data, while the rest of a heredoc's line (`cat <<EOF > a && …`) is read.
+Code handed on to another reader keeps its readable parts: an unreadable
+`$X` inside it becomes a placeholder rather than hiding the whole code. Code handed to
 PowerShell (`powershell -Command`, `-EncodedCommand`) goes through
 [`powershell-evidence.ts`](../../alt-theory-app/core/powershell-evidence.ts):
 a parser seam (`PowerShellParser`) whose reading is mapped onto the same
 commands (Remove-Item → rm, Set-Content → a write, Invoke-WebRequest
 -InFile → an upload, Set-Location → cd); the light reader there is used when
-no native parser is configured or it fails. `cmd /c` gets a light reading.
-A parse that runs out of budget is reviewed. The policy over these facts is
+no native parser is configured or it fails. `cmd /c` (and Git Bash's `cmd //c`) gets a light reading, redirects
+included. A parse that runs out of budget is reviewed, and the brakes then
+read the command as plain words. The policy over these facts is
 [`approval-boundary.ts`](../../alt-theory-app/core/approval-boundary.ts).
 
 "Allow for this conversation" covers the targets the dialog names, one
@@ -306,9 +311,11 @@ A parse that runs out of budget is reviewed. The policy over these facts is
 (read from the command, else the branch's upstream in `.git/config`), an
 upload grant that host, an install grant that package manager, a
 read grant that folder and the folders inside it, a database grant that
-file; a shell write outside the roots offers the folder itself, which
-becomes an approved writable root as with the file tools. Work-discarding
-git and `.git` writes offer only Allow once. The user's command-prefix
+file; a write outside the roots, by a command or a file tool, offers its
+folder, which becomes an approved writable root (Allow once passes only
+that file). Work-discarding git and `.git` writes offer only Allow once, and
+so does a read or write whose folder is the home folder, a folder holding
+it, or a filesystem or drive root — one click must not open all of home. The user's command-prefix
 allowlist (`commandAllowlist`, Settings > General) passes pushes, uploads
 and installs it matches, never the brakes or the git, database and
 outside-folder checks. The grants (target keys and approved write folders)
@@ -336,7 +343,8 @@ or moving (`rm`, `rmdir`, `unlink`, `trash`, `mv`, unfiltered `find
 filesystem or a drive root, the home folder or its major folders (Desktop,
 Documents, Downloads, Library, Pictures, Movies, Music, the iCloud and
 cloud-storage roots), the project's folders — or any folder containing one
-of those, `*` included (a temp root counts as such a folder); and changing a
+of those (`rsync --delete` into such a folder, and `--remove-source-files`
+from one, count as emptying it), `*` included (a temp root counts as such a folder); and changing a
 system folder (`/System`, `/usr`,
 `/bin`, `/sbin`, `/etc`, `/Library`, `/Applications`, and the Windows and
 Program Files folders) by `write`/`edit` or by a command's visible write

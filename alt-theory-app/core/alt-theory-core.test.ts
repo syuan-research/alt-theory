@@ -307,7 +307,7 @@ test("security extension mediates tool calls at the policy boundary", async () =
   // Edit is bounded to the current writable roots (Work includes the cwd).
   assert.match(
     (await call("edit", { path: join(root, "outside.txt") }))?.reason ?? "",
-    /approval is unavailable/
+    /requires user approval, and no approval dialog is available/
   );
   assert.equal(await call("edit", { path: join(dirs.writeDir, "ok.md") }), undefined);
 

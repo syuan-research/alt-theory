@@ -4,7 +4,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { lightPowerShellParse, type PowerShellParse } from "./powershell-evidence.js";
 import { toolPath } from "./security-extension.js";
-import { shellEvidence } from "./shell-evidence.js";
+import { shellEvidence, UNKNOWN_FOLDER } from "./shell-evidence.js";
 
 const cwd = join(homedir(), "alt-evidence-project");
 const read = (command: string, parsePowerShell?: (code: string) => Promise<PowerShellParse | null>) =>
@@ -24,7 +24,7 @@ test("newlines, chains, pipes and substitutions each run their commands", async 
   const substituted = await read("echo \"$(git push)\" `ls` <(cat a)");
   assert.deepEqual(substituted.invocations.map((invocation) => invocation.program).sort(), ["cat", "echo", "git", "ls"]);
   assert.equal(substituted.substitution, true);
-  assert.deepEqual(await programs("cat <<EOF > out.txt\n$(git push)\nEOF"), ["git", "cat"]);
+  assert.deepEqual(await programs("cat <<EOF > out.txt\n$(git push)\nEOF"), ["cat", "git"]);
   assert.equal((await read("sleep 5 &")).background, true);
 });
 
@@ -40,7 +40,9 @@ test("cd moves what follows it, within its scope", async () => {
   assert.deepEqual((await cwds("if [ -d sub ]; then cd sub; fi; rm x")).rm, [cwd, join(cwd, "sub")]);
   assert.deepEqual((await cwds("false || cd sub; rm x")).rm, [cwd, join(cwd, "sub")]);
   // An unreadable target leaves the folder unknown.
-  assert.deepEqual((await cwds("cd \"$TARGET\" && rm x")).rm, ["\u0000unknown"]);
+  assert.deepEqual((await cwds("cd \"$TARGET\" && rm x")).rm, [UNKNOWN_FOLDER]);
+  // Options before the folder (review L3).
+  assert.deepEqual((await cwds("cd -- sub && rm x")).rm, [join(cwd, "sub")]);
   assert.deepEqual((await cwds("cd && rm x")).rm, [homedir()]);
 });
 
@@ -77,14 +79,14 @@ test("PowerShell inside a command: the light reader", async () => {
     ["Write-Output", [{ kind: "value", text: "git push; Remove-Item C:\\Windows" }]],
   ]);
   assert.deepEqual(parse("$p = '.\\results'; Remove-Item $p -Recurse"), [
-    [null, [{ kind: "value", text: ".\\results" }]],
-    ["Remove-Item", [{ kind: "value", text: null }, { kind: "parameter", name: "recurse", text: "-Recurse" }]],
+    [null, []],
+    ["Remove-Item", [{ kind: "value", text: null, expandable: "$p" }, { kind: "parameter", name: "recurse", text: "-Recurse" }]],
   ]);
   assert.deepEqual(parse("ri a,b"), [
     ["ri", [{ kind: "value", text: "a" }, { kind: "value", text: "b", continues: true }]],
   ]);
   assert.deepEqual(lightPowerShellParse("'x' > out.txt").commands, [
-    { name: null, elements: [], redirects: [{ target: "out.txt", append: false }] },
+    { name: null, elements: [], redirects: [{ target: "out.txt", append: false }], pipeline: 0 },
   ]);
   assert.deepEqual(parse("Get-ChildItem | ForEach-Object { Remove-Item $_ }").map(([name]) => name), [
     "Get-ChildItem",
@@ -92,11 +94,11 @@ test("PowerShell inside a command: the light reader", async () => {
     "Remove-Item",
   ]);
   assert.deepEqual(parse("Write-Output $(git push origin main)").map(([name]) => name), ["Write-Output", "git"]);
-  assert.equal(lightPowerShellParse("Set-Content \"$HOME\\notes.txt\" x").commands[0].elements[0].kind, "value");
-  assert.deepEqual(
-    (lightPowerShellParse("Set-Content \"$HOME\\notes.txt\" x").commands[0].elements[0] as { text: string }).text,
-    "~\\notes.txt",
-  );
+  assert.deepEqual(lightPowerShellParse("Set-Content \"$HOME\\notes.txt\" x").commands[0].elements[0], {
+    kind: "value",
+    text: null,
+    expandable: "$HOME\\notes.txt",
+  });
   assert.equal(lightPowerShellParse("Write-Output 'unterminated").ok, false);
 });
 
@@ -133,4 +135,62 @@ test("cmd /c: a light reading of its commands", async () => {
 test("a parse that runs out of budget is reported, not guessed", async () => {
   const facts = await read("echo x;".repeat(60_000));
   assert.equal(facts.status, "aborted");
+});
+
+test("a heredoc's line goes on after it: commands, pipes and chains there are read (review H1)", async () => {
+  assert.deepEqual(await programs("cat <<EOF > a.txt && rm -rf ~/Documents\nx\nEOF"), ["cat", "rm"]);
+  assert.deepEqual(await programs("cat <<EOF | sudo tee /etc/hosts\nx\nEOF"), ["cat", "tee"]);
+  assert.deepEqual((await read("cat <<EOF | sudo tee /etc/hosts\nx\nEOF")).invocations[1].privileged, ["sudo"]);
+  const moved = await read("cat <<EOF; cd ~; rm -rf Documents\nhi\nEOF");
+  assert.deepEqual(moved.invocations.find((invocation) => invocation.program === "rm")?.cwds, [homedir()]);
+  assert.deepEqual(await programs("python3 - <<'PY' && git push origin main\nprint(1)\nPY"), ["python3", "git"]);
+  assert.deepEqual((await read("cat <<EOF > notes.md\nhi\nEOF")).redirects.map((redirect) => redirect.target), ["notes.md"]);
+});
+
+test("code for PowerShell, bash -c and eval is still read past an unreadable $X (review H2)", async () => {
+  const facts = await read('powershell -Command "Remove-Item -Recurse -Force ~/Documents; $null"');
+  assert.deepEqual(facts.invocations.at(-1)?.args, ["-r", "~/Documents"]);
+  const piped = await read('powershell -Command "Get-ChildItem *.tmp | ForEach-Object { $_ }; Remove-Item -Recurse ~/Documents"');
+  assert.ok(piped.invocations.some((invocation) => invocation.program === "rm" && invocation.args.includes("~/Documents")));
+  assert.deepEqual((await read('bash -c "rm -rf $DIR && git push"')).invocations.map((invocation) => invocation.program), ["bash", "rm", "git"]);
+  // Windows PowerShell's first positional argument is code; pwsh's is a script file.
+  assert.equal((await read('powershell "Remove-Item x"')).invocations.at(-1)?.program, "rm");
+  assert.equal((await read("pwsh script.ps1")).invocations.length, 1);
+});
+
+test("PowerShell light reader: spaced arrays, assignments, literal arrays, pipelines, iex (review M1)", async () => {
+  const args = async (code: string) =>
+    (await read(`pwsh -c "${code}"`)).invocations.filter((invocation) => invocation.shell === "powershell").map((invocation) => [invocation.program, invocation.args]);
+  assert.deepEqual(await args("Remove-Item -Recurse -Force 'tmp', '~/Documents'"), [["rm", ["-r", "tmp", "~/Documents"]]]);
+  assert.deepEqual(await args("$null = Remove-Item -Recurse ~/Documents"), [["rm", ["-r", "~/Documents"]]]);
+  assert.deepEqual(await args("Remove-Item -Path @('a', 'b')"), [["rm", ["-r", "a", "b"]]]);
+  // `Get-ChildItem X | Remove-Item`: X's content.
+  assert.deepEqual(await args("Get-ChildItem ~/Documents | Remove-Item -Recurse"), [
+    ["ls", ["~/Documents"]],
+    ["rm", ["-r", "~/Documents/*"]],
+  ]);
+  assert.deepEqual((await args("iex 'Remove-Item ~/Documents'")).at(-1), ["rm", ["-r", "~/Documents"]]);
+  // An abbreviated parameter (`-Pa`, `-Dest`) binds like the full one.
+  assert.deepEqual(await args("Move-Item -Pa a.txt -Dest b.txt"), [["mv", ["a.txt", "b.txt"]]]);
+});
+
+test("ANSI-C strings, cmd redirects and quoting, find -exec (review L2, M7, L8)", async () => {
+  assert.deepEqual((await read("$'\\x73udo' ls")).invocations[0].privileged, ["sudo"]);
+  assert.equal((await read("$'\\162m' -rf x")).invocations[0].program, "rm");
+  const cmd = await read('cmd //c "type a > /etc/motd"');
+  assert.deepEqual(cmd.redirects.map((redirect) => redirect.target), ["/etc/motd"]);
+  const quoted = await read('cmd /c del "my file.txt"');
+  assert.deepEqual(quoted.invocations.at(-1)?.args, ["-r", "my file.txt"]);
+  assert.deepEqual(await programs("find . -name '*.log' -exec sudo rm {} +"), ["find", "rm"]);
+});
+
+test("the temp folder's variables are known (review M8)", async () => {
+  const original = process.env.TMPDIR;
+  process.env.TMPDIR = "/var/tmp-alt-test";
+  try {
+    assert.deepEqual((await read('rm -rf "$TMPDIR"/*')).invocations[0].args, ["-rf", "/var/tmp-alt-test/*"]);
+  } finally {
+    if (original === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = original;
+  }
 });

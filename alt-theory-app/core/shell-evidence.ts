@@ -5,15 +5,16 @@
  * facts lives in approval-boundary.ts.
  *
  * Static and heuristic: nothing runs, no script file is opened, no variable
- * is expanded beyond HOME, USER and PWD. What cannot be read is reported as
- * unknown (null), and unknown is never by itself a reason to ask.
+ * is expanded beyond HOME, USER, PWD and the temp folder. What cannot be read
+ * is reported as unknown (null), and unknown is never by itself a reason to
+ * ask.
  *
  * Bash comes from the vendored Kimi parser (bash-parser/). Code a command
  * hands to PowerShell (`powershell -Command …`) goes to a PowerShell parser
  * (powershell-evidence.ts); `cmd /c …` gets a light reading of its own.
  */
 
-import { homedir, userInfo } from "os";
+import { homedir, tmpdir, userInfo } from "os";
 import { parse, type SyntaxNode } from "./bash-parser/index.js";
 import {
   lightPowerShellParse,
@@ -23,7 +24,7 @@ import {
 
 /** One program a command runs. */
 export interface Invocation {
-  /** Program name: lower-cased, folder and `.exe` dropped; "" when it is not static. */
+  /** Program name: lower-cased, folder and `.exe`/`.cmd`/`.bat` dropped; "" when it is not static. */
   program: string;
   /** The program as written (a venv's `.venv/bin/pip` stays a path). */
   programWord: string | null;
@@ -51,7 +52,7 @@ export interface ShellEvidence {
   /** Command or process substitution anywhere, or a background job. */
   substitution: boolean;
   background: boolean;
-  /** "aborted": the parse ran out of budget and nothing could be read. */
+  /** "aborted": the parse ran out of budget; only a coarse word reading is left. */
   status: "ok" | "partial" | "aborted";
 }
 
@@ -64,8 +65,8 @@ export interface EvidenceOptions {
 
 /** Nested `bash -c '…'` levels read before giving up. */
 const MAX_NESTING = 3;
-/** Generous over the parser's defaults: an approval check may take a moment. */
-const PARSE_BUDGET = { timeoutMs: 200, maxNodes: 200_000 };
+/** Generous over the parser's defaults, so only a pathological command runs out. */
+const PARSE_BUDGET = { timeoutMs: 1_000, maxNodes: 200_000 };
 
 /** Transparent wrappers and the options of theirs that take a value. */
 const WRAPPERS: Record<string, Set<string>> = {
@@ -91,10 +92,13 @@ const PRIVILEGE_WRAPPERS: Record<string, Set<string>> = {
 /** `bash -c CODE` and its siblings: the code runs as a nested command. */
 const SHELLS = new Set(["bash", "sh", "zsh", "dash", "ksh"]);
 const POWERSHELLS = new Set(["powershell", "pwsh"]);
+/** Options of `powershell`/`pwsh` that take a value. */
+const POWERSHELL_VALUE_OPTIONS =
+  /^[-/](executionpolicy|ep|ex|windowstyle|w|win|outputformat|of|o|inputformat|if|in|version|v|psconsolefile|configurationname|config|workingdirectory|wd|settingsfile|custompipename)$/i;
 
 type Cwds = Set<string>;
 /** A `cd` whose target cannot be read leaves the folder unknown. */
-const UNKNOWN = "\u0000unknown";
+export const UNKNOWN_FOLDER = String.fromCharCode(0) + "unknown";
 
 interface Walk {
   options: EvidenceOptions;
@@ -111,7 +115,10 @@ export async function shellEvidence(
 ): Promise<ShellEvidence> {
   const out: ShellEvidence = { invocations: [], redirects: [], substitution: false, background: false, status: "ok" };
   const walk: Walk = { options, out, powerShell: [], depth: 0 };
-  if (!readProgram(command, new Set([cwd]), walk)) out.status = "aborted";
+  if (!readProgram(command, new Set([cwd]), walk)) {
+    out.status = "aborted";
+    out.invocations.push(...coarseInvocations(command, cwd));
+  }
   // PowerShell code is read once the bash structure is known: the native
   // parser runs out of process.
   for (const { code, cwds } of walk.powerShell) {
@@ -133,12 +140,27 @@ export async function shellEvidence(
   return out;
 }
 
-/** Parse one bash program and walk it; false when the parse ran out of budget. */
+/** Parse one bash program and walk it; null when the parse ran out of budget. */
 function readProgram(source: string, cwds: Cwds, walk: Walk): Cwds | null {
   const result = parse(source, PARSE_BUDGET);
   if (!result.ok) return null;
   if (result.hasError && walk.out.status === "ok") walk.out.status = "partial";
   return statements(result.rootNode, cwds, walk);
+}
+
+/**
+ * A command too big to parse in budget, read as plain words per line and
+ * operator, so the accident brakes still see `rm -rf ~` in it. ponytail:
+ * no quoting rules; only ever used on pathological input.
+ */
+function coarseInvocations(command: string, cwd: string): Invocation[] {
+  return command
+    .split(/&&|\|\||[;|&\n\r]/)
+    .map((segment) => segment.match(/'[^']*'|"[^"]*"|\S+/g)?.map((word) => word.replace(/^['"]|['"]$/g, "")) ?? [])
+    .flatMap((words) => {
+      const invocation = invocationOf(words, [cwd], words.join(" "), "bash");
+      return invocation ? [invocation] : [];
+    });
 }
 
 /** Statements in order: a `cd` moves the ones after it; `&` runs one apart. */
@@ -190,9 +212,13 @@ function statement(node: SyntaxNode, cwds: Cwds, walk: Walk): Cwds {
     case "redirected_statement": {
       // `> out.txt` alone has no body: it still truncates the file.
       const isRedirect = (part: SyntaxNode) => part.type.endsWith("_redirect");
-      for (const part of node.namedChildren) if (isRedirect(part)) redirection(part, cwds, walk);
+      for (const part of node.namedChildren) if (part.type === "file_redirect") redirection(part, cwds, walk);
       const body = node.namedChildren.find((part) => !isRedirect(part));
-      return body ? statement(body, cwds, walk) : cwds;
+      let here = body ? statement(body, cwds, walk) : cwds;
+      for (const part of node.namedChildren) {
+        if (part.type === "heredoc_redirect" || part.type === "herestring_redirect") here = afterHeredoc(part, here, walk);
+      }
+      return here;
     }
     case "negated_command":
       return node.namedChildren[0] ? statement(node.namedChildren[0], cwds, walk) : cwds;
@@ -220,26 +246,43 @@ function statement(node: SyntaxNode, cwds: Cwds, walk: Walk): Cwds {
   }
 }
 
-/** A redirection: its target, plus any command it runs (`> "$(mktemp)"`). */
-function redirection(node: SyntaxNode, cwds: Cwds, walk: Walk): void {
-  if (node.type === "heredoc_redirect" || node.type === "herestring_redirect") {
-    // `cat <<EOF > out.txt` nests the file redirect here. A quoted heredoc
-    // delimiter (<<'EOF') leaves the body plain text, so the parser gives it
-    // no substitution nodes.
-    for (const child of node.namedChildren) {
-      if (child.type === "file_redirect") redirection(child, cwds, walk);
-      else substitutions(child, cwds, walk);
+/**
+ * A heredoc's own node holds the rest of its line: `cat <<EOF > a && rm x`,
+ * `<<EOF | tee f`, `<<EOF; cd ~`. Its body is text, with substitutions only
+ * when the delimiter is unquoted (the parser gives a quoted body none).
+ */
+function afterHeredoc(node: SyntaxNode, cwds: Cwds, walk: Walk): Cwds {
+  let here = cwds;
+  let piped = false;
+  for (const child of node.children) {
+    if (!child.isNamed) {
+      piped = child.type === "|" || child.type === "|&";
+      continue;
     }
-    return;
+    if (child.type === "file_redirect") redirection(child, here, walk);
+    else if (child.type === "heredoc_body" || child.type === "heredoc_start" || child.type === "heredoc_end") {
+      substitutions(child, here, walk);
+    } else if (child.type === "pipeline" || piped) {
+      statement(child, new Set(here), walk);
+    } else if (child.type.endsWith("_redirect") || child.type === "string" || child.type === "raw_string" || child.type === "word") {
+      // A herestring's word.
+      substitutions(child, here, walk);
+    } else {
+      here = statement(child, here, walk);
+    }
   }
-  if (node.type !== "file_redirect") return;
+  return here;
+}
+
+/** A file redirection: its target, plus any command it runs (`> "$(mktemp)"`). */
+function redirection(node: SyntaxNode, cwds: Cwds, walk: Walk): void {
   substitutions(node, cwds, walk);
   const operator = node.children.find((child) => !child.isNamed)?.type ?? "";
   const destination = node.namedChildren.filter((child) => child.type !== "file_descriptor").at(-1);
   // `2>&1`, `>&2`, `<&-`: a descriptor, not a file.
   if (!destination || /^&?-?\d*$/.test(destination.text)) return;
   const target = staticText(destination, cwds);
-  if (target === null || target === "/dev/null" || /^nul$/i.test(target)) return;
+  if (target === null || /^\/dev\//.test(target) || /^nul$/i.test(target)) return;
   walk.out.redirects.push({ target, cwds: [...cwds], write: operator !== "<" });
 }
 
@@ -258,35 +301,57 @@ function substitutions(node: SyntaxNode, cwds: Cwds, walk: Walk): void {
 /** A simple command; returns the folders the next statement runs in. */
 function command(node: SyntaxNode, cwds: Cwds, walk: Walk): Cwds {
   substitutions(node, cwds, walk);
-  const words = node.namedChildren
+  const nodes = node.namedChildren
     .filter((child) => child.type !== "variable_assignment" && !child.type.endsWith("_redirect"))
-    .map((child) => (child.type === "command_name" ? child.namedChildren[0] ?? child : child))
-    .map((child) => staticText(child, cwds));
+    .map((child) => (child.type === "command_name" ? child.namedChildren[0] ?? child : child));
+  const words = nodes.map((child) => staticText(child, cwds));
   const invocation = invocationOf(words, cwds, node.text, "bash");
   if (!invocation) return cwds;
   walk.out.invocations.push(invocation);
   const { program, args } = invocation;
+  // The argument nodes, for code handed to another reader: there an
+  // unreadable `$X` becomes a placeholder, so the rest is still read.
+  const argNodes = nodes.slice(nodes.length - args.length);
+  const looseArgs = (placeholder: string) => argNodes.map((child) => wordText(child, cwds, placeholder));
 
   if (program === "cd" || program === "pushd" || program === "chdir") {
     return changeDirectory(args, cwds, walk.options.resolvePath);
   }
-  if (program === "popd") return new Set([UNKNOWN]);
+  if (program === "popd") return new Set([UNKNOWN_FOLDER]);
 
   if (SHELLS.has(program) && walk.depth < MAX_NESTING) {
     const at = args.findIndex((arg) => arg !== null && /^-[a-zA-Z]*c[a-zA-Z]*$/.test(arg));
-    const code = at >= 0 ? args[at + 1] : undefined;
-    if (typeof code === "string") nested(code, new Set(cwds), walk);
-  } else if (program === "eval" && walk.depth < MAX_NESTING && args.every((arg) => arg !== null)) {
+    if (at >= 0 && at + 1 < args.length) nested(looseArgs("$ALT_UNKNOWN")[at + 1], new Set(cwds), walk);
+  } else if (program === "eval" && walk.depth < MAX_NESTING && args.length) {
     // eval runs in this shell: its `cd` moves what follows.
-    return nested(args.join(" "), cwds, walk) ?? cwds;
+    return nested(looseArgs("$ALT_UNKNOWN").join(" "), cwds, walk) ?? cwds;
   } else if (POWERSHELLS.has(program)) {
-    const code = powerShellCode(args);
-    if (code !== null) walk.powerShell.push({ code, cwds: [...cwds] });
+    const handoff = powerShellCode(program, args, looseArgs("$altUnknown"));
+    if (handoff) {
+      const where = handoff.workingDirectory ? resolveAll(handoff.workingDirectory, [...cwds], walk.options.resolvePath) : [...cwds];
+      walk.powerShell.push({ code: handoff.code, cwds: where });
+    }
   } else if (program === "cmd") {
-    const at = args.findIndex((arg) => arg !== null && /^\/[ck]$/i.test(arg));
-    const rest = at >= 0 ? args.slice(at + 1) : [];
-    if (rest.length && rest.every((arg) => arg !== null)) {
-      walk.out.invocations.push(...cmdInvocations(rest.join(" "), [...cwds], walk.options.resolvePath));
+    const at = args.findIndex((arg) => arg !== null && /^\/\/?[ck]$/i.test(arg));
+    if (at >= 0) {
+      // `cmd /c "a & b"` hands cmd one line; separate words with spaces
+      // were quoted in bash, so quote them again for cmd.
+      const rest = looseArgs("%ALT_UNKNOWN%").slice(at + 1);
+      const line =
+        rest.length === 1
+          ? rest[0]
+          : rest.map((word) => (/\s/.test(word) && !/^".*"$/.test(word) ? `"${word}"` : word)).join(" ");
+      const read = cmdInvocations(line, [...cwds], walk.options.resolvePath);
+      walk.out.invocations.push(...read.invocations);
+      walk.out.redirects.push(...read.redirects);
+    }
+  } else if (program === "find") {
+    // `find … -exec CMD {} ;` runs CMD.
+    for (let i = 0; i < args.length; i++) {
+      if (!/^-(exec|execdir|ok|okdir)$/.test(args[i] ?? "")) continue;
+      const end = args.findIndex((arg, j) => j > i && (arg === ";" || arg === "+" || arg === "\\;"));
+      const inner = invocationOf(args.slice(i + 1, end < 0 ? undefined : end), cwds, node.text, "bash");
+      if (inner) walk.out.invocations.push(inner);
     }
   }
   return cwds;
@@ -307,9 +372,14 @@ function changeDirectory(
   cwds: Cwds,
   resolvePath: (cwd: string, raw: string) => string,
 ): Cwds {
-  const target = args.find((arg) => arg === null || !/^-[LPe@]+$/.test(arg));
+  // `cd -L dir`, `cd -- dir`: options first.
+  let i = 0;
+  while (i < args.length && (args[i] === "--" || /^-[LPe@]+$/.test(args[i] ?? ""))) {
+    if (args[i++] === "--") break;
+  }
+  const target = args[i];
   if (target === undefined) return new Set([homedir()]);
-  if (target === null || target === "-") return new Set([UNKNOWN]);
+  if (target === null || target === "-") return new Set([UNKNOWN_FOLDER]);
   return new Set(resolveAll(target, [...cwds], resolvePath));
 }
 
@@ -317,7 +387,7 @@ function changeDirectory(
  * The program behind wrappers (`env A=1 nice -n 5 sudo rm …` runs `rm`) and
  * its arguments; null for an empty command.
  */
-export function invocationOf(
+function invocationOf(
   words: Array<string | null>,
   cwds: Iterable<string>,
   text: string,
@@ -374,7 +444,7 @@ export function invocationOf(
 }
 
 export function programName(word: string): string {
-  return (word.split(/[\\/]/).pop() ?? "").toLowerCase().replace(/\.exe$/, "");
+  return (word.split(/[\\/]/).pop() ?? "").toLowerCase().replace(/\.(exe|cmd|bat)$/, "");
 }
 
 /**
@@ -387,8 +457,10 @@ export function resolveAll(
   cwds: string[],
   resolvePath: (cwd: string, raw: string) => string,
 ): string[] {
-  const word = raw.replace(/^\$\{?HOME\}?(?=$|[\\/])/, "~").replace(/^%USERPROFILE%(?=$|[\\/])/i, "~");
-  const known = cwds.filter((cwd) => cwd !== UNKNOWN);
+  let word = raw.replace(/^%USERPROFILE%(?=$|[\\/])/i, "~");
+  // Git Bash mounts /tmp on the user's temp folder.
+  if (process.platform === "win32" && /^\/tmp(\/|$)/.test(word)) word = tmpdir() + word.slice(4);
+  const known = cwds.filter((cwd) => cwd !== UNKNOWN_FOLDER);
   const anchored = /^(~|\/|[A-Za-z]:[\\/]|\\\\|file:\/\/)/.test(word) || word === "~";
   if (anchored) return [resolvePath(known[0] ?? homedir(), word)];
   return [...new Set(known.map((cwd) => resolvePath(cwd, word)))];
@@ -399,17 +471,39 @@ function union(a: Cwds, b: Cwds): Cwds {
 }
 
 // ---------------------------------------------------------------------------
-// Static values of words
+// Values of words
 // ---------------------------------------------------------------------------
 
-const VARIABLES: Record<string, () => string> = {
+const VARIABLES: Record<string, () => string | undefined> = {
   HOME: () => homedir(),
   USER: () => userInfo().username,
   USERPROFILE: () => homedir(),
+  TMPDIR: () => process.env.TMPDIR,
+  TEMP: () => process.env.TEMP,
+  TMP: () => process.env.TMP,
 };
 
 /** A word's value when it can be read without running anything; else null. */
 function staticText(node: SyntaxNode, cwds: Cwds): string | null {
+  return wordText(node, cwds, null);
+}
+
+/**
+ * A word's text. With a placeholder, a part that cannot be read (`$X`,
+ * `$(…)`) becomes the placeholder instead of making the whole word unknown.
+ */
+function wordText(node: SyntaxNode, cwds: Cwds, placeholder: string): string;
+function wordText(node: SyntaxNode, cwds: Cwds, placeholder: string | null): string | null;
+function wordText(node: SyntaxNode, cwds: Cwds, placeholder: string | null): string | null {
+  const parts = (children: readonly SyntaxNode[], each: (child: SyntaxNode) => string | null) => {
+    let value = "";
+    for (const child of children) {
+      const part = each(child);
+      if (part === null) return null;
+      value += part;
+    }
+    return value;
+  };
   switch (node.type) {
     case "word":
       // Git Bash users write Windows paths with backslashes: keep them there.
@@ -419,72 +513,82 @@ function staticText(node: SyntaxNode, cwds: Cwds): string | null {
     case "raw_string":
       return node.text.slice(1, -1);
     case "ansi_c_string":
-      return node.text
-        .slice(2, -1)
-        .replace(/\\(n|t|\\|'|")/g, (_, c: string) => ({ n: "\n", t: "\t" })[c as "n" | "t"] ?? c);
+      return decodeAnsiC(node.text.slice(2, -1));
     case "string":
-    case "translated_string": {
-      let value = "";
-      for (const child of node.namedChildren) {
-        const part =
-          child.type === "string_content"
-            ? child.text.replace(/\\([$`"\\\n])/g, "$1")
-            : staticText(child, cwds);
-        if (part === null) return null;
-        value += part;
-      }
-      return value;
-    }
-    case "concatenation": {
-      let value = "";
-      for (const child of node.namedChildren) {
-        const part = staticText(child, cwds);
-        if (part === null) return null;
-        value += part;
-      }
-      return value;
-    }
+    case "translated_string":
+      return parts(node.namedChildren, (child) =>
+        child.type === "string_content" ? child.text.replace(/\\([$`"\\\n])/g, "$1") : wordText(child, cwds, placeholder),
+      );
+    case "concatenation":
+      return parts(node.namedChildren, (child) => wordText(child, cwds, placeholder));
     case "simple_expansion":
     case "expansion": {
       const name = node.namedChildren.length === 1 && node.namedChildren[0].type === "variable_name"
         ? node.namedChildren[0].text
         : null;
+      let value: string | null | undefined = null;
       if (name === "PWD") {
         const known = [...cwds];
-        return known.length === 1 && known[0] !== UNKNOWN ? known[0] : null;
+        value = known.length === 1 && known[0] !== UNKNOWN_FOLDER ? known[0] : null;
+      } else if (name && VARIABLES[name]) {
+        value = VARIABLES[name]();
       }
-      return name && VARIABLES[name] ? VARIABLES[name]() : null;
+      return value ?? placeholder;
     }
     default:
-      return null;
+      return placeholder;
   }
+}
+
+/** `$'…'` escapes: \n, \t, \\, \', \", \e, \xHH, \uHHHH, \NNN. */
+function decodeAnsiC(body: string): string {
+  return body.replace(/\\(x[0-9a-fA-F]{1,2}|u[0-9a-fA-F]{1,4}|U[0-9a-fA-F]{1,8}|[0-7]{1,3}|.)/g, (_, escape: string) => {
+    if (/^[xuU]/.test(escape)) return String.fromCodePoint(Number.parseInt(escape.slice(1), 16));
+    if (/^[0-7]/.test(escape)) return String.fromCharCode(Number.parseInt(escape, 8));
+    return ({ n: "\n", t: "\t", r: "\r", e: "\x1b", a: "\x07", b: "\b", f: "\f", v: "\v" } as Record<string, string>)[escape] ?? escape;
+  });
 }
 
 // ---------------------------------------------------------------------------
 // PowerShell and cmd hand-offs
 // ---------------------------------------------------------------------------
 
-/** The code of `powershell -Command …` (the rest of the line) or `-EncodedCommand`. */
-function powerShellCode(args: Array<string | null>): string | null {
+/**
+ * The code a `powershell`/`pwsh` call runs: `-Command` (the rest of the
+ * line), `-EncodedCommand`, or for Windows PowerShell the first positional
+ * argument and what follows (pwsh's positional argument is a script file).
+ */
+function powerShellCode(
+  program: string,
+  args: Array<string | null>,
+  loose: string[],
+): { code: string; workingDirectory?: string } | null {
+  let workingDirectory: string | undefined;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === null) return null;
-    const option = arg.toLowerCase();
+    const option = (arg ?? loose[i]).toLowerCase();
     if (/^[-/](c|co|com|comm|comma|comman|command)$/.test(option)) {
-      const rest = args.slice(i + 1);
-      return rest.length && rest.every((part) => part !== null) && rest[0] !== "-" ? rest.join(" ") : null;
+      const rest = loose.slice(i + 1);
+      return rest.length && rest[0] !== "-" ? { code: rest.join(" "), workingDirectory } : null;
     }
     if (/^[-/](e|ec|en|enc|enco|encod|encode|encoded|encodedc\w*)$/.test(option)) {
       const encoded = args[i + 1];
       if (typeof encoded !== "string") return null;
       try {
-        return Buffer.from(encoded, "base64").toString("utf16le");
+        return { code: Buffer.from(encoded, "base64").toString("utf16le"), workingDirectory };
       } catch {
         return null;
       }
     }
     // -File runs a script: its content is not read here.
     if (/^[-/](f|fi|fil|file)$/.test(option)) return null;
+    if (POWERSHELL_VALUE_OPTIONS.test(option)) {
+      if (/^[-/](workingdirectory|wd)$/.test(option) && typeof args[i + 1] === "string") workingDirectory = args[i + 1]!;
+      i++;
+      continue;
+    }
+    if (option.startsWith("-") || option.startsWith("/")) continue;
+    return program === "powershell" ? { code: loose.slice(i).join(" "), workingDirectory } : null;
   }
   return null;
 }
@@ -509,30 +613,42 @@ const CMD_EQUIVALENT: Record<string, string> = {
 
 /**
  * A light reading of `cmd /c …`: commands split on `&`, `&&`, `||`, `|`
- * outside double quotes, words on spaces. ponytail: no full cmd grammar
- * (`^` escapes, `%var%` beyond USERPROFILE); add one if agents lean on cmd.
+ * outside double quotes, words on spaces, `>`/`>>` targets as redirects.
+ * ponytail: no full cmd grammar (`^` escapes, `%var%` beyond the profile and
+ * temp folders); add one if agents lean on cmd.
  */
 function cmdInvocations(
   line: string,
   cwds: string[],
   resolvePath: (cwd: string, raw: string) => string,
-): Invocation[] {
-  const out: Invocation[] = [];
+): { invocations: Invocation[]; redirects: Redirect[] } {
+  const invocations: Invocation[] = [];
+  const redirects: Redirect[] = [];
   let here = cwds;
   for (const segment of splitOutsideQuotes(line, /^(&&|\|\||&|\|)/)) {
-    const words = (segment.match(/"[^"]*"|[^\s"]+/g) ?? []).map((word) => word.replace(/"/g, ""));
+    const tokens = segment.match(/[0-9]?>>?\s*("[^"]*"|[^\s"]+)?|"[^"]*"|[^\s"]+/g) ?? [];
+    const words: Array<string | null> = [];
+    for (const token of tokens) {
+      const redirect = token.match(/^[0-9]?>>?\s*(.*)$/);
+      if (redirect) {
+        const target = cmdWord(redirect[1] ?? "");
+        if (target && !/^&\d$/.test(target) && !/^nul$/i.test(target)) redirects.push({ target, cwds: here, write: true });
+        continue;
+      }
+      words.push(cmdWord(token));
+    }
     const [name, ...rest] = words;
     if (!name) continue;
     const program = programName(name);
     // cmd switches (`/s /q`) are not paths.
-    const args = rest.filter((word) => !/^\/[a-z?]+(:\S*)?$/i.test(word));
+    const args = rest.filter((word) => word === null || !/^\/[a-z?]+(:\S*)?$/i.test(word));
     const equivalent = CMD_EQUIVALENT[program];
     if (equivalent === "cd") {
-      const target = args[0];
-      here = target ? resolveAll(target, here, resolvePath) : here;
+      const target = args.find((word) => word !== "/d");
+      here = target === undefined ? here : target === null ? [] : resolveAll(target, here, resolvePath);
       continue;
     }
-    out.push({
+    invocations.push({
       program: equivalent ?? program,
       programWord: name,
       args: equivalent === "rm" ? ["-r", ...args] : args,
@@ -542,15 +658,23 @@ function cmdInvocations(
       shell: "cmd",
     });
     // robocopy /MIR and /PURGE delete what the source lacks from the destination.
-    if (program === "robocopy" && rest.some((word) => /^\/(mir|purge)$/i.test(word)) && args[1]) {
-      out.push({ program: "rm", programWord: name, args: ["-r", `${args[1]}`], privileged: [], cwds: here, text: segment, shell: "cmd" });
+    if (program === "robocopy" && rest.some((word) => word !== null && /^\/(mir|purge)$/i.test(word)) && args[1] !== undefined) {
+      invocations.push({ program: "rm", programWord: name, args: ["-r", args[1]], privileged: [], cwds: here, text: segment, shell: "cmd" });
     }
   }
-  return out;
+  return { invocations, redirects };
+}
+
+/** A cmd word: quotes dropped; null for a variable other than the profile and temp folders. */
+function cmdWord(token: string): string | null {
+  const word = token.replace(/"/g, "");
+  const variables = word.match(/%[^%\s]+%/g) ?? [];
+  if (variables.some((variable) => !/^%(USERPROFILE|TEMP|TMP)%$/i.test(variable))) return null;
+  return word.replace(/%(TEMP|TMP)%/gi, () => process.env.TEMP ?? tmpdir());
 }
 
 /** Split on separators outside double quotes. */
-export function splitOutsideQuotes(line: string, separator: RegExp): string[] {
+function splitOutsideQuotes(line: string, separator: RegExp): string[] {
   const parts: string[] = [];
   let current = "";
   let quoted = false;

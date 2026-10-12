@@ -2880,8 +2880,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             break;
           }
           case "set_full_access": {
-            if (typeof msg.payload?.enabled !== "boolean" && msg.payload?.enabled !== "strict") {
-              fail(new Error('enabled must be a boolean or "strict"'));
+            if (typeof msg.payload?.enabled !== "boolean") {
+              fail(new Error("enabled must be a boolean"));
               break;
             }
             // Full Access is a local-only control (v1.4.8); under read-only

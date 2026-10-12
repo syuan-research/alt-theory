@@ -10,27 +10,41 @@
  * the same shape to `powerShellInvocations`, which maps cmdlets onto the POSIX
  * commands the approval policy already knows (Remove-Item → rm, …), so one
  * policy covers both shells.
+ *
+ * What a native parser should produce (the light reader does the same):
+ * - `commands` in source order, outer before inner: a command, then the
+ *   commands inside its `$(…)` and script blocks; `pipeline` numbers the
+ *   statement each belongs to, equal for the parts of one pipeline.
+ * - `name`: CommandAst.GetCommandName(), else null; an expression statement
+ *   (`'x' > f`) is a command with a null name and its redirects.
+ * - elements: CommandParameterAst → `parameter` (`name` without dashes,
+ *   lower-cased, the full name when the binder knows it; `argument` for
+ *   `-Path:x`); a constant string or number → `value` with `text`; an
+ *   expandable string → `value` with `text: null` and `expandable` set to its
+ *   content (the mapper reads `$HOME`/`$env:USERPROFILE`/`$env:HOME` at its
+ *   start as home and gives up on anything else); an array (`a, b`, `@('a')`)
+ *   → one value per item, items after the first marked `continues`;
+ *   anything else → `value` with `text: null`.
+ * - redirects: FileRedirectionAst with a constant location; merging
+ *   redirections (`2>&1`) are left out.
  */
 
 import { programName, resolveAll, type Invocation, type Redirect } from "./shell-evidence.js";
 
 /** One element after a command's name. */
 export type PowerShellElement =
-  /** `-Path`, `-Recurse`, `-Path:x`: `name` lower-cased without dashes, `text` as written. */
   | { kind: "parameter"; name: string; text: string; argument?: string | null }
-  /**
-   * A value: its static text, or null for a variable or an expression. An
-   * array (`a,b`) is one value per item, the later items marked `continues`.
-   */
-  | { kind: "value"; text: string | null; continues?: true };
+  | { kind: "value"; text: string | null; expandable?: string; continues?: true };
 
-/** One command, in source order; nested script blocks and `$(…)` included. */
+/** One command, in source order. */
 export interface PowerShellCommand {
-  /** The name as written (`Remove-Item`, `ri`, `git`); null when not static (`& $tool`) or for an expression (`'x' > f`). */
+  /** The name as written (`Remove-Item`, `ri`, `git`); null when not static (`& $tool`) or for an expression. */
   name: string | null;
   elements: PowerShellElement[];
   /** File redirections (`>`, `>>`, `2>`, `*>`) on the command or expression. */
   redirects: Array<{ target: string | null; append: boolean }>;
+  /** Which statement (pipeline) it belongs to; parts of one pipeline share it. */
+  pipeline?: number;
 }
 
 export interface PowerShellParse {
@@ -41,6 +55,15 @@ export interface PowerShellParse {
 
 /** Parses code for PowerShell; null (or a throw) falls back to the light reader. */
 export type PowerShellParser = (code: string, signal?: AbortSignal) => Promise<PowerShellParse | null>;
+
+/** `$HOME\x`, `$env:USERPROFILE/x` as a home path; null for any other expansion. */
+export function powerShellLiteral(expandable: string): string | null {
+  const home = expandable.match(/^\$(?:HOME|env:USERPROFILE|env:HOME|\{env:USERPROFILE\})(?=$|[\\/])/i);
+  const rest = home ? expandable.slice(home[0].length) : expandable;
+  if (/\$/.test(rest.replace(/`\$/g, ""))) return null;
+  const literal = rest.replace(/`(.)/g, "$1");
+  return home ? (literal === "" ? "~" : `~/${literal.slice(1)}`) : literal;
+}
 
 // ---------------------------------------------------------------------------
 // From commands to the policy's facts
@@ -56,7 +79,7 @@ const ALIASES: Record<string, string> = {
   cd: "set-location", sl: "set-location", chdir: "set-location", pushd: "push-location", popd: "pop-location",
   cat: "get-content", gc: "get-content", type: "get-content",
   ls: "get-childitem", dir: "get-childitem", gci: "get-childitem",
-  iwr: "invoke-webrequest", irm: "invoke-restmethod",
+  iwr: "invoke-webrequest", irm: "invoke-restmethod", iex: "invoke-expression",
   tee: "tee-object", sls: "select-string",
 };
 
@@ -65,10 +88,21 @@ const VALUE_PARAMETERS = new Set([
   "path", "literalpath", "lp", "pspath", "destination", "filepath", "value", "itemtype", "type", "name", "newname",
   "encoding", "filter", "include", "exclude", "uri", "infile", "outfile", "method", "body", "headers", "contenttype",
   "form", "pattern", "inputobject", "argumentlist", "workingdirectory", "delimiter", "depth", "stream", "credential",
-  "erroraction", "warningaction", "outvariable", "errorvariable", "timeoutsec", "useragent", "proxy",
+  "erroraction", "warningaction", "outvariable", "errorvariable", "timeoutsec", "useragent", "proxy", "command",
 ]);
+/** The file parameters an abbreviation (`-Pa`, `-Lit`, `-Dest`) most likely means. */
+const FILE_PARAMETERS = ["path", "literalpath", "destination", "filepath", "newname", "uri", "infile", "outfile", "value"];
+
+function parameterName(written: string): string {
+  if (VALUE_PARAMETERS.has(written)) return written;
+  const matches = FILE_PARAMETERS.filter((name) => written.length >= 2 && name.startsWith(written));
+  return matches.length === 1 ? matches[0] : written;
+}
 
 type Items = Array<string | null>;
+
+const valueText = (element: { text: string | null; expandable?: string }) =>
+  element.text ?? (element.expandable !== undefined ? powerShellLiteral(element.expandable) : null);
 
 /** Each named parameter's items, and the positional arguments' items in order. */
 function bind(elements: PowerShellElement[]): { named: Map<string, Items>; positional: Items[] } {
@@ -78,18 +112,19 @@ function bind(elements: PowerShellElement[]): { named: Map<string, Items>; posit
   for (let i = 0; i < elements.length; i++) {
     const element = elements[i];
     if (element.kind === "value") {
-      if (element.continues && open) open.push(element.text);
-      else positional.push((open = [element.text]));
+      if (element.continues && open) open.push(valueText(element));
+      else positional.push((open = [valueText(element)]));
       continue;
     }
-    const items = named.get(element.name) ?? [];
-    named.set(element.name, items);
+    const name = parameterName(element.name);
+    const items = named.get(name) ?? [];
+    named.set(name, items);
     open = null;
     if (element.argument !== undefined) {
       items.push(element.argument);
       open = items;
-    } else if (VALUE_PARAMETERS.has(element.name) && elements[i + 1]?.kind === "value") {
-      items.push((elements[++i] as { text: string | null }).text);
+    } else if (VALUE_PARAMETERS.has(name) && elements[i + 1]?.kind === "value") {
+      items.push(valueText(elements[++i] as { text: string | null; expandable?: string }));
       open = items;
     }
   }
@@ -104,16 +139,22 @@ export function powerShellInvocations(
   reading: PowerShellParse,
   cwds: string[],
   resolvePath: (cwd: string, raw: string) => string,
+  depth = 0,
 ): Array<{ invocation: Invocation } | { redirect: Redirect }> {
   const out: Array<{ invocation: Invocation } | { redirect: Redirect }> = [];
   let here = cwds;
+  // The folder the previous part of the same pipeline listed (`gci X | ri`).
+  let listed: { pipeline: number | undefined; path: string | null } | null = null;
   for (const command of reading.commands) {
     for (const redirect of command.redirects) {
       if (redirect.target !== null && !/^(\$null|nul)$/i.test(redirect.target)) {
         out.push({ redirect: { target: redirect.target, cwds: here, write: true } });
       }
     }
-    if (command.name === null) continue;
+    if (command.name === null) {
+      listed = null;
+      continue;
+    }
     const written = programName(command.name);
     const cmdlet = ALIASES[written] ?? written;
     const { named, positional } = bind(command.elements);
@@ -122,10 +163,11 @@ export function powerShellInvocations(
     const second = () => items("destination")[0] ?? positional[1]?.[0] ?? null;
     const text = [
       command.name,
-      ...command.elements.map((element) => (element.kind === "value" ? (element.text ?? "$…") : element.text)),
+      ...command.elements.map((element) => (element.kind === "value" ? (valueText(element) ?? "$…") : element.text)),
     ].join(" ");
     const as = (program: string, args: Items) =>
       out.push({ invocation: { program, programWord: command.name, args, privileged: [], cwds: here, text, shell: "powershell" } });
+    const piped = listed !== null && command.pipeline !== undefined && listed.pipeline === command.pipeline;
 
     switch (cmdlet) {
       case "set-location":
@@ -138,9 +180,13 @@ export function powerShellInvocations(
       case "pop-location":
         here = [];
         break;
-      case "remove-item":
-        as("rm", ["-r", ...paths()]);
+      case "remove-item": {
+        const targets = paths();
+        // `Get-ChildItem X | Remove-Item`: X's content.
+        if (targets.length === 0 && piped) targets.push(listed!.path === null ? null : `${listed!.path.replace(/[\\/]$/, "")}/*`);
+        as("rm", ["-r", ...targets]);
         break;
+      }
       case "move-item":
         as("mv", [...paths(), second()]);
         break;
@@ -192,12 +238,19 @@ export function powerShellInvocations(
         ]);
         break;
       }
+      case "invoke-expression": {
+        // `iex 'code'` runs the code.
+        const code = items("command")[0] ?? positional[0]?.[0];
+        as("invoke-expression", [code ?? null]);
+        if (typeof code === "string" && depth < 3) out.push(...powerShellInvocations(lightPowerShellParse(code), here, resolvePath, depth + 1));
+        break;
+      }
       default:
         // An external program (git, python, pip) or a cmdlet with no file
         // effect: its words as written.
         as(cmdlet, command.elements.map((element) =>
           element.kind === "value"
-            ? element.text
+            ? valueText(element)
             : element.argument === undefined
               ? element.text
               : element.argument === null
@@ -205,6 +258,7 @@ export function powerShellInvocations(
                 : `-${element.name}:${element.argument}`,
         ));
     }
+    listed = cmdlet === "get-childitem" ? { pipeline: command.pipeline, path: paths()[0] ?? null } : null;
   }
   return out;
 }
@@ -214,16 +268,25 @@ export function powerShellInvocations(
 // ---------------------------------------------------------------------------
 
 type Token =
-  | { type: "word"; text: string | null; quoted?: boolean; parameter?: { name: string; argument?: string }; continues?: true }
-  | { type: "separator" }
+  | {
+      type: "word";
+      text: string | null;
+      expandable?: string;
+      quoted?: boolean;
+      parameter?: { name: string; argument?: string };
+      continues?: true;
+    }
+  | { type: "separator"; pipe: boolean }
   | { type: "redirect"; append: boolean; file: boolean }
   | { type: "call" }
   | { type: "nested"; commands: PowerShellCommand[] };
 
-const HOME_VARIABLE = /^\$(?:HOME|env:USERPROFILE|env:HOME)(?=$|[\\/])/i;
-
-/** `$HOME\x` as a home path the resolver understands. */
-const homePath = (rest: string) => (rest === "" ? "~" : `~/${rest.slice(1)}`);
+/** A literal array (`@('a', "b", c)`): its items, or null when it holds anything else. */
+function literalItems(inner: string): string[] | null {
+  const items = inner.split(/,/).map((item) => item.trim());
+  if (items.some((item) => !/^('[^']*'|"[^"$`]*"|[^\s'"$(){}@]+)$/.test(item))) return null;
+  return items.map((item) => item.replace(/^['"]|['"]$/g, ""));
+}
 
 /**
  * A tokenizer-level reading of PowerShell: statements split on `;`, newline,
@@ -240,13 +303,12 @@ export function lightPowerShellParse(code: string): PowerShellParse {
   const at = (offset = 0) => code[i + offset] ?? "";
   const endOfWord = (char: string) => char === "" || /[\s;|&(){},>]/.test(char);
 
-  /** `(…)` from i (at the paren), read as its own code. */
-  const nested = (): Token => {
-    const start = i;
+  /** The index just past the `)` matching the `(` at i, or -1. */
+  const matchingParen = (from: number) => {
     let depth = 0;
     let quote = "";
-    for (; i < code.length; i++) {
-      const char = at();
+    for (let j = from; j < code.length; j++) {
+      const char = code[j];
       if (quote) {
         if (char === quote) quote = "";
       } else if (char === "'" || char === '"') {
@@ -254,106 +316,65 @@ export function lightPowerShellParse(code: string): PowerShellParse {
       } else if (char === "(") {
         depth++;
       } else if (char === ")" && --depth === 0) {
-        i++;
-        const inner = lightPowerShellParse(code.slice(start + 1, i - 1));
-        if (!inner.ok) ok = false;
-        return { type: "nested", commands: inner.commands };
+        return j + 1;
       }
     }
-    ok = false;
-    return { type: "nested", commands: [] };
+    return -1;
   };
 
-  /** A quoted string from i (at the quote); null text when it expands anything. */
-  const quoted = (): string | null => {
+  /** `(…)` from i (at the paren), read as its own code. */
+  const nested = (): Token => {
+    const end = matchingParen(i);
+    if (end < 0) {
+      ok = false;
+      i = code.length;
+      return { type: "nested", commands: [] };
+    }
+    const inner = lightPowerShellParse(code.slice(i + 1, end - 1));
+    if (!inner.ok) ok = false;
+    i = end;
+    return { type: "nested", commands: inner.commands };
+  };
+
+  /** A quoted string from i (at the quote); `expandable` holds a double-quoted one's text when it expands. */
+  const quoted = (): { text: string | null; expandable?: string } => {
     const quote = at();
     let value = "";
+    let raw = "";
     let dynamic = false;
     i++;
     while (i < code.length) {
       const char = at();
       if (char === quote && at(1) === quote) {
         value += quote;
+        raw += quote;
         i += 2;
       } else if (char === quote) {
         i++;
-        return dynamic ? null : value;
+        return dynamic ? { text: null, expandable: raw } : { text: value };
       } else if (quote === '"' && char === "`" && i + 1 < code.length) {
         value += ({ n: "\n", t: "\t", r: "\r", "0": "" } as Record<string, string>)[at(1)] ?? at(1);
+        raw += char + at(1);
         i += 2;
       } else if (quote === '"' && char === "$" && at(1) === "(") {
         // "…$(git push)…" runs its content.
         i++;
         tokens.push(nested());
         dynamic = true;
-      } else if (quote === '"' && char === "$" && /[\w{:]/.test(at(1))) {
-        const home = value === "" ? code.slice(i).match(HOME_VARIABLE) : null;
-        if (home) {
-          value = "~";
-          i += home[0].length;
-        } else {
-          dynamic = true;
-          i++;
-        }
+        raw += "$(…)";
       } else {
+        if (quote === '"' && char === "$" && /[\w{:]/.test(at(1))) dynamic = true;
         value += char;
+        raw += char;
         i++;
       }
     }
     ok = false;
-    return null;
+    return { text: null };
   };
 
-  while (i < code.length) {
-    const char = at();
-    if (char === "`" && (at(1) === "\n" || at(1) === "\r")) {
-      i += at(1) === "\r" && at(2) === "\n" ? 3 : 2;
-    } else if (char === " " || char === "\t" || char === ")") {
-      i++;
-    } else if (char === "#") {
-      while (i < code.length && at() !== "\n") i++;
-    } else if (char === "<" && at(1) === "#") {
-      const end = code.indexOf("#>", i + 2);
-      i = end < 0 ? code.length : end + 2;
-    } else if (/[\n\r;|{}]/.test(char) || (char === "&" && at(1) === "&")) {
-      tokens.push({ type: "separator" });
-      i += (char === "&" || (char === "|" && at(1) === "|")) ? 2 : 1;
-    } else if (char === "&" || (char === "." && /\s/.test(at(1)))) {
-      tokens.push({ type: "call" });
-      i++;
-    } else if (char === "(" || ((char === "$" || char === "@") && at(1) === "(")) {
-      if (char !== "(") i++;
-      tokens.push(nested());
-      tokens.push({ type: "word", text: null });
-    } else if (char === ",") {
-      // The next value is another item of the same array.
-      i++;
-      arrayItem = true;
-      continue;
-    } else if (/^[1-6*]?>/.test(code.slice(i, i + 2))) {
-      const redirect = code.slice(i).match(/^([1-6*])?(>>?)(&[1-6])?/)!;
-      tokens.push({ type: "redirect", append: redirect[2] === ">>", file: !redirect[3] });
-      i += redirect[0].length;
-    } else if (char === "'" || char === '"') {
-      tokens.push({ type: "word", text: quoted(), quoted: true });
-    } else if (char === "@" && (at(1) === "'" || at(1) === '"')) {
-      // Here-string: @'…'@ is literal, @"…"@ may expand.
-      const close = `\n${at(1)}@`;
-      const end = code.indexOf(close, i + 2);
-      const body = code.slice(i + 2, end < 0 ? code.length : end).replace(/^\r?\n/, "");
-      tokens.push({ type: "word", text: at(1) === "'" || !body.includes("$") ? body : null, quoted: true });
-      if (end < 0) ok = false;
-      i = end < 0 ? code.length : end + close.length;
-    } else {
-      tokens.push(bareWord());
-    }
-    const last = tokens.at(-1);
-    if (arrayItem && last?.type === "word") last.continues = true;
-    arrayItem = false;
-  }
-
   /** A bare word from i: a parameter, a variable, or literal text. */
-  function bareWord(): Token {
+  const bareWord = (): Token => {
     let word = "";
     let dynamic = false;
     while (!endOfWord(at())) {
@@ -362,8 +383,8 @@ export function lightPowerShellParse(code: string): PowerShellParse {
         i += 2;
       } else if ((at() === "'" || at() === '"') && word !== "") {
         const part = quoted();
-        if (part === null) dynamic = true;
-        else word += part;
+        if (part.text === null) dynamic = true;
+        else word += part.text;
       } else {
         word += at();
         i++;
@@ -381,11 +402,73 @@ export function lightPowerShellParse(code: string): PowerShellParse {
         parameter: { name: parameter[1].toLowerCase(), ...(parameter[2] !== undefined ? { argument: parameter[2] } : {}) },
       };
     }
-    if (word.startsWith("$")) {
-      const home = word.match(HOME_VARIABLE);
-      return { type: "word", text: home && !dynamic ? homePath(word.slice(home[0].length)) : null };
-    }
+    if (word.startsWith("$")) return { type: "word", text: null, ...(dynamic ? {} : { expandable: word }) };
     return { type: "word", text: dynamic ? null : word };
+  };
+
+  while (i < code.length) {
+    const before = tokens.length;
+    const char = at();
+    if (char === "`" && (at(1) === "\n" || at(1) === "\r")) {
+      i += at(1) === "\r" && at(2) === "\n" ? 3 : 2;
+    } else if (char === " " || char === "\t" || char === ")") {
+      i++;
+    } else if (char === "#") {
+      while (i < code.length && at() !== "\n") i++;
+    } else if (char === "<" && at(1) === "#") {
+      const end = code.indexOf("#>", i + 2);
+      i = end < 0 ? code.length : end + 2;
+    } else if (/[\n\r;|{}]/.test(char) || (char === "&" && at(1) === "&")) {
+      const pipe = char === "|" && at(1) !== "|";
+      tokens.push({ type: "separator", pipe });
+      i += (char === "&" || (char === "|" && at(1) === "|")) ? 2 : 1;
+    } else if (char === "&" || (char === "." && /\s/.test(at(1)))) {
+      tokens.push({ type: "call" });
+      i++;
+    } else if (char === "@" && at(1) === "(") {
+      // A literal array keeps its items; anything else reads as code.
+      const end = matchingParen(i + 1);
+      const items = end < 0 ? null : literalItems(code.slice(i + 2, end - 1));
+      if (items) {
+        items.forEach((text, index) => tokens.push({ type: "word", text, ...(index > 0 ? { continues: true as const } : {}) }));
+        i = end;
+      } else {
+        i++;
+        tokens.push(nested());
+        tokens.push({ type: "word", text: null });
+      }
+    } else if (char === "(" || (char === "$" && at(1) === "(")) {
+      if (char !== "(") i++;
+      tokens.push(nested());
+      tokens.push({ type: "word", text: null });
+    } else if (char === ",") {
+      // The next value is another item of the same array.
+      i++;
+      arrayItem = true;
+      continue;
+    } else if (/^[1-6*]?>/.test(code.slice(i, i + 2))) {
+      const redirect = code.slice(i).match(/^([1-6*])?(>>?)(&[1-6])?/)!;
+      tokens.push({ type: "redirect", append: redirect[2] === ">>", file: !redirect[3] });
+      i += redirect[0].length;
+    } else if (char === "'" || char === '"') {
+      tokens.push({ type: "word", ...quoted(), quoted: true });
+    } else if (char === "@" && (at(1) === "'" || at(1) === '"')) {
+      // Here-string: @'…'@ is literal, @"…"@ may expand.
+      const close = `\n${at(1)}@`;
+      const end = code.indexOf(close, i + 2);
+      const body = code.slice(i + 2, end < 0 ? code.length : end).replace(/^\r?\n/, "");
+      tokens.push({ type: "word", text: at(1) === "'" || !body.includes("$") ? body : null, quoted: true });
+      if (end < 0) ok = false;
+      i = end < 0 ? code.length : end + close.length;
+    } else {
+      tokens.push(bareWord());
+    }
+    // A comma marks the next word pushed (whitespace in between pushes none).
+    if (arrayItem && tokens.length > before) {
+      const word = tokens.slice(before).find((token) => token.type === "word");
+      if (word && word.type === "word") word.continues = true;
+      arrayItem = false;
+    }
   }
 
   // Tokens to commands: a statement's first word names its command.
@@ -393,6 +476,7 @@ export function lightPowerShellParse(code: string): PowerShellParse {
   let current: PowerShellCommand | null = null;
   let start = true;
   let called = false;
+  let pipeline = 0;
   for (let t = 0; t < tokens.length; t++) {
     const token = tokens[t];
     if (token.type === "nested") {
@@ -403,6 +487,7 @@ export function lightPowerShellParse(code: string): PowerShellParse {
       current = null;
       start = true;
       called = false;
+      if (!token.pipe) pipeline++;
       continue;
     }
     if (token.type === "call") {
@@ -411,27 +496,29 @@ export function lightPowerShellParse(code: string): PowerShellParse {
     }
     if (token.type === "redirect") {
       if (!current) {
-        current = { name: null, elements: [], redirects: [] };
+        current = { name: null, elements: [], redirects: [], pipeline };
         commands.push(current);
         start = false;
       }
       const next = tokens[t + 1];
       if (token.file && next?.type === "word") {
-        current.redirects.push({ target: next.text, append: token.append });
+        current.redirects.push({ target: next.text ?? (next.expandable !== undefined ? powerShellLiteral(next.expandable) : null), append: token.append });
         t++;
       }
       continue;
     }
     if (start) {
-      start = false;
-      // `$x = …` assigns and `'text' > f` is an expression: neither names a
-      // command (`& 'C:\tool.exe'` does).
+      // `$x = …` assigns: what follows the `=` is a new statement.
       const next = tokens[t + 1];
-      const assignment = next?.type === "word" && next.text === "=";
-      const name = assignment || token.parameter || (token.quoted && !called) ? null : token.text;
-      current = { name, elements: [], redirects: [] };
+      if (next?.type === "word" && next.text === "=") {
+        t++;
+        continue;
+      }
+      start = false;
+      // `'text' > f` is an expression, not a command (`& 'C:\tool.exe'` is one).
+      const name = token.parameter || (token.quoted && !called) ? null : token.text;
+      current = { name, elements: [], redirects: [], pipeline };
       commands.push(current);
-      if (assignment) t++;
       continue;
     }
     if (!current) continue;
@@ -443,7 +530,12 @@ export function lightPowerShellParse(code: string): PowerShellParse {
         ...(token.parameter.argument !== undefined ? { argument: token.parameter.argument } : {}),
       });
     } else {
-      current.elements.push({ kind: "value", text: token.text, ...(token.continues ? { continues: true as const } : {}) });
+      current.elements.push({
+        kind: "value",
+        text: token.text,
+        ...(token.expandable !== undefined ? { expandable: token.expandable } : {}),
+        ...(token.continues ? { continues: true as const } : {}),
+      });
     }
   }
   return { ok, commands };

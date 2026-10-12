@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   allowlisted,
   credentialRefs,
+  credentialToken,
   criticalDeletionTarget,
   destructiveGit,
   gitPushes,
@@ -335,7 +336,66 @@ test("installs into the computer are keyed by package manager; project installs 
 test("credentials and network destinations a command names", async () => {
   assert.deepEqual(credentialRefs(await evidence("cat ~/.ssh/id_rsa.pub")), [".ssh"]);
   assert.deepEqual(credentialRefs(await evidence("ls src")), []);
-  assert.deepEqual(networkHosts(await evidence("curl -s http://169.254.169.254/latest")), ["169.254.169.254"]);
-  assert.deepEqual(networkHosts(await evidence("ssh me@lab.example uptime")), ["lab.example"]);
-  assert.deepEqual(networkHosts(await evidence("echo http://169.254.169.254")), []);
+  const hosts = async (command: string) => networkHosts(await evidence(command));
+  assert.deepEqual((await hosts("curl -s http://169.254.169.254/latest")).hosts, ["169.254.169.254"]);
+  assert.ok((await hosts("ssh me@lab.example uptime")).hosts.includes("lab.example"));
+  assert.deepEqual(await hosts("echo http://169.254.169.254"), { hosts: [], bare: [] });
+  // No scheme, bare hosts and brackets (review M2).
+  assert.ok((await hosts("curl 169.254.169.254/latest/meta-data")).bare.includes("169.254.169.254"));
+  assert.ok((await hosts("nc 169.254.169.254 80")).hosts.includes("169.254.169.254"));
+  assert.ok((await hosts("curl http://[::ffff:169.254.169.254]/")).hosts.includes("::ffff:169.254.169.254"));
+});
+
+test("review fixes: heredoc lines, PowerShell with $, rsync --delete and the temp variable under the brake", async () => {
+  const critical = async (command: string, roots = [project]) => criticalDeletionTarget(await evidence(command), roots, toolPath);
+  for (const command of [
+    "cat <<EOF > a.txt && rm -rf ~/Documents\nx\nEOF",
+    "cat <<EOF; cd ~; rm -rf Documents\nhi\nEOF",
+    'powershell -Command "Remove-Item -Recurse -Force ~/Documents; $null"',
+    "powershell -Command \"Remove-Item -Recurse -Force 'tmp', '~/Documents'\"",
+    "rsync -a --delete empty/ ./",
+    "rsync -a --delete empty/ ~/Documents/",
+    "cd -- ~ && rm -rf Documents",
+  ]) {
+    assert.ok(await critical(command), command);
+  }
+  assert.equal(await critical("rsync -a --delete src/ build/"), null);
+  assert.equal(await critical("rsync -a src/ ~/Documents/backup/"), null);
+});
+
+test("review fixes: reads skip patterns, find expressions and devices; writes skip devices", async () => {
+  const reads = async (command: string) => readTargets(await evidence(command), toolPath);
+  assert.deepEqual(await reads('grep -rn "/api/v1" src/'), [join(project, "src")]);
+  // The pattern or expression is not a path ("." itself is not checked: it is the folder the command runs in).
+  assert.deepEqual(await reads("rg '/users/:id' ."), []);
+  assert.deepEqual(await reads("grep -rn -e '/etc/hosts' ."), []);
+  assert.deepEqual(await reads("find . -path '/x' -prune"), []);
+  assert.deepEqual(await reads("grep -rn pattern ~/notes"), [join(homedir(), "notes")]);
+  assert.deepEqual(await reads("head -c 32 /dev/urandom"), []);
+  assert.deepEqual(writeTargets(await evidence("echo err > /dev/stderr; tee /dev/null"), toolPath), []);
+});
+
+test("review fixes: uploads from file bodies, clustered options, rsync://, dry runs", async () => {
+  const keys = async (command: string) => uploads(await evidence(command)).map((upload) => upload.key);
+  assert.deepEqual(await keys("curl -X PUT --data-binary @paper.pdf https://bucket.example/up"), ["upload:bucket.example"]);
+  assert.deepEqual(await keys("curl -sT notes.pdf https://up.example/"), ["upload:up.example"]);
+  assert.deepEqual(await keys("curl -d @- https://api.example/search"), []);
+  assert.deepEqual(await keys("rsync -a out/ rsync://mirror.example/data/"), ["upload:mirror.example"]);
+  assert.deepEqual(await keys("npm publish --dry-run"), []);
+  assert.deepEqual(gitPushes(await evidence("git push --dry-run origin main"), toolPath), []);
+  assert.deepEqual(writeTargets(await evidence("curl -sLo /etc/x https://example.com/x"), toolPath), process.platform === "win32" ? writeTargets(await evidence("curl -sLo /etc/x https://example.com/x"), toolPath) : ["/etc/x"]);
+});
+
+test("review fixes: installs after an activation only, into the folders, or for real", async () => {
+  const keys = async (command: string) => installs(await evidence(command), inProject, toolPath).map((install) => install.key);
+  assert.deepEqual(await keys("pip install pandas && source .venv/bin/activate"), ["install:pip"]);
+  assert.deepEqual(await keys("pip install -t ./vendor pandas"), []);
+  assert.deepEqual(await keys("pip install --dry-run pandas"), []);
+});
+
+test("review fixes: an unknown folder keys a push by the remote only; credentials share one key", async () => {
+  assert.deepEqual(gitPushes(await evidence('cd "$X" && git push origin main'), toolPath).map((push) => push.key), ["push:?:origin"]);
+  assert.equal(credentialToken(join(homedir(), ".ssh")), ".ssh");
+  // Strict fast pass: git -C into a folder that is not readable asks.
+  assert.equal(await passes("git -C /etc log"), false);
 });
