@@ -81,7 +81,9 @@ function projected(entries: unknown[]): { latestUser: string | null; recent: str
     const text = textOf(message.content).trim();
     if (!text) continue;
     if (message.role === "user") {
-      latestUser = text;
+      // Mail from another conversation rides in a user-role fragment, but it
+      // is not the user's word (web-server/agent-mail.ts, peer="true").
+      if (!/^<agent-team-mail [^>]*peer="true"/.test(text)) latestUser = text;
       lines.push(`user: ${clip(text, MAX_ENTRY_CHARS)}`);
     } else if (message.role === "toolResult") {
       lines.push(`tool: ${clip(text, MAX_ENTRY_CHARS)}`);

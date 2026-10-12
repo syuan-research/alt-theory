@@ -18,6 +18,7 @@ import {
   APPROVAL_ALLOW_ONCE,
   APPROVAL_DENY,
   APPROVAL_TIMEOUT_MS,
+  type SecurityAuditEntry,
 } from "../core/security-extension.js";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { getSupportedThinkingLevels, type ImageContent, type Model } from "@earendil-works/pi-ai";
@@ -401,6 +402,12 @@ interface ManagedSession {
   setSmartApproval: (enabled: boolean) => void;
   /** Full Access in force (dormant under read-only). */
   isFullAccessEffective: () => boolean;
+  /** Smart approval in force (not under Full or read-only). */
+  isSmartApprovalEffective: () => boolean;
+  /** Read-only in force, including a switch waiting for the turn to end. */
+  mediatesReadOnly: () => boolean;
+  /** The conversation's security-audit.jsonl sink. */
+  recordAudit: (entry: SecurityAuditEntry) => void;
   getWorkspace: () => { primaryDir: string };
   /** "Allow for this conversation" grants (records/approvals.json). */
   getGrants: () => string[];
@@ -3829,23 +3836,25 @@ export class SessionService implements AgentTeamBridge {
     agent: string,
     message: string,
     signal?: AbortSignal,
+    toolCallId = "",
   ): Promise<string> {
     const needle = agent.trim();
-    const own = this.subagentChildren(fromId).find(
-      (child) =>
-        child.sessionId === needle ||
-        child.alias?.toLowerCase() === needle.toLowerCase(),
-    );
+    const children = this.subagentChildren(fromId);
+    // A Session ID wins over a name, so a subagent named like another
+    // conversation's ID never takes that conversation's mail.
+    const own =
+      children.find((child) => child.sessionId === needle) ??
+      children.find((child) => child.alias?.toLowerCase() === needle.toLowerCase());
     if (own) return this.messageSubagent(fromId, own.sessionId, message);
     if (needle === fromId) {
       throw new Error("That Session ID belongs to this conversation itself.");
     }
-    const listed =
-      this.sessions.has(needle) ||
-      listSessionSummaries(this.config.dataDir).sessions.some(
-        (summary) => summary.sessionId === needle && !summary.deletedAt,
-      );
-    if (!listed) {
+    const summary = listSessionSummaries(this.config.dataDir).sessions.find(
+      (item) => item.sessionId === needle,
+    );
+    // A brand-new conversation is live before it is listed; one in Trash is
+    // gone even while its runtime is still loaded.
+    if (summary?.deletedAt || (!summary && !this.sessions.has(needle))) {
       throw new Error(
         `Unknown agent "${agent}". Use one of your subagents (list_agents), or a conversation's Session ID that the user gave you.`,
       );
@@ -3859,10 +3868,13 @@ export class SessionService implements AgentTeamBridge {
     // conversation.
     const peer = !this.subagentChildren(needle).some((child) => child.sessionId === fromId);
     if (peer) {
-      const refused = await this.approvePeerMessage(from, target, label, message, signal);
+      const refused = await this.approvePeerMessage(from, target, label, message, signal, toolCallId);
       if (refused) return refused;
     }
-    const idle = target.runState.isIdle();
+    // The approval may have taken minutes: the target's runtime may have been
+    // released or replaced meanwhile, so look it up again.
+    if (!this.sessions.get(needle)) await this.openSession(needle, from.selectors);
+    const idle = this.requireSession(needle).runState.isIdle() && !this.queuedSubagentIds.has(needle);
     this.deliverEnvelope(needle, {
       at: new Date().toISOString(),
       from: fromId,
@@ -3889,16 +3901,26 @@ export class SessionService implements AgentTeamBridge {
     target: ManagedSession,
     label: string,
     message: string,
-    signal?: AbortSignal,
+    signal: AbortSignal | undefined,
+    toolCallId: string,
   ): Promise<string | null> {
     if (from.isFullAccessEffective()) return null;
     const fromId = from.manifest.sessionId;
     const targetId = target.manifest.sessionId;
+    // Read-only keeps no conversation-wide grants and honours none, the
+    // other side's included: every message is asked one at a time.
+    const readOnly = from.mediatesReadOnly();
+    const audit = (action: SecurityAuditEntry["action"], detail: string) =>
+      from.recordAudit({
+        timestamp: new Date().toISOString(),
+        toolName: "send_to_agent",
+        toolCallId,
+        action,
+        rule: "peer_message",
+        detail: `${targetId}: ${detail}`,
+      });
     const mine = from.getGrants();
     const theirs = target.getGrants();
-    if (mine.includes(`contact:${targetId}`) || theirs.includes(`contact:${fromId}`)) {
-      return null;
-    }
     // The latest allowance either side granted covers both directions; what
     // is left of it is counted from the mail itself.
     const since = [
@@ -3908,16 +3930,25 @@ export class SessionService implements AgentTeamBridge {
       .map((key) => key.slice(key.lastIndexOf("@") + 1))
       .sort()
       .at(-1);
-    if (since) {
-      const sent = readAgentMail(target.manifest.recordsDir).filter(
-        (envelope) => envelope.peer && envelope.from === fromId && envelope.at >= since,
-      ).length;
-      if (sent < PEER_MESSAGE_ALLOWANCE) return null;
+    const spent = since
+      ? readAgentMail(target.manifest.recordsDir).filter(
+          (envelope) => envelope.peer && envelope.from === fromId && envelope.at >= since,
+        ).length >= PEER_MESSAGE_ALLOWANCE
+      : false;
+    if (!readOnly) {
+      if (mine.includes(`contact:${targetId}`) || theirs.includes(`contact:${fromId}`)) {
+        audit("session-allowance", "always allowed");
+        return null;
+      }
+      if (since && !spent) {
+        audit("session-allowance", `within the allowance granted ${since}`);
+        return null;
+      }
     }
     const allowMessages = () =>
       from.addGrant(`mail:${targetId}@${new Date().toISOString()}`, `mail:${targetId}@`);
     let title = `Message another conversation: ${label} (${targetId})\n${clip(message, 600)}`;
-    if (from.getSmartApproval()) {
+    if (from.isSmartApprovalEffective()) {
       const verdict = await this.reviewAction(
         fromId,
         {
@@ -3928,8 +3959,14 @@ export class SessionService implements AgentTeamBridge {
           entries: from.session.sessionManager.getBranch(),
           readableFile: () => null,
         },
-        { toolCallId: "send_to_agent", priorDenials: 0, signal },
+        { toolCallId, priorDenials: 0, signal },
       );
+      if (verdict.outcome !== "unavailable") {
+        audit(
+          verdict.outcome === "allow" ? "reviewer-allowed" : "reviewer-denied",
+          `${verdict.model}: ${verdict.reason}`,
+        );
+      }
       if (verdict.outcome === "allow") {
         allowMessages();
         return null;
@@ -3939,30 +3976,37 @@ export class SessionService implements AgentTeamBridge {
       }
       title = `Smart approval unavailable: ${verdict.reason}\n${title}`;
     }
-    // Read-only keeps no conversation-wide grants (security extension).
-    const options =
-      from.getAltMode() === "read-only"
-        ? [APPROVAL_ALLOW_ONCE, APPROVAL_DENY]
-        : [PEER_ALLOW_MESSAGES, PEER_ALLOW_ALWAYS, APPROVAL_DENY];
+    const options = readOnly
+      ? [APPROVAL_ALLOW_ONCE, APPROVAL_DENY]
+      : [PEER_ALLOW_MESSAGES, PEER_ALLOW_ALWAYS, APPROVAL_DENY];
     const choice = await from.approvalBridge.uiContext.select(title, options, {
       signal,
       timeout: APPROVAL_TIMEOUT_MS,
     });
-    if (choice === APPROVAL_ALLOW_ONCE) return null;
+    if (choice === APPROVAL_ALLOW_ONCE) {
+      audit("approved-once", "one message");
+      return null;
+    }
     if (choice === PEER_ALLOW_MESSAGES) {
       allowMessages();
+      audit("approved-session", `${PEER_MESSAGE_ALLOWANCE} messages each way`);
       return null;
     }
     if (choice === PEER_ALLOW_ALWAYS) {
       from.addGrant(`contact:${targetId}`);
+      audit("approved-session", "always");
       return null;
     }
-    if (choice === APPROVAL_DENY) return "The user declined this message; it was not sent.";
+    if (choice === APPROVAL_DENY) {
+      audit("blocked", "declined by the user");
+      return "The user declined this message; it was not sent.";
+    }
     if (signal?.aborted) return "The message was not sent: the run was stopped.";
+    audit("blocked", "approval timed out");
     // ponytail: a dialog cancelled because the runtime was replaced also
     // lands here and reads as a timeout; a distinct timeout signal belongs
     // to the approval-timeout issue (2026-10-12).
-    if (since) {
+    if (spent) {
       // The allowance ran out and nobody answered: the other side should
       // not wait for a reply that cannot come (owner 2026-10-12).
       this.deliverEnvelope(targetId, {
@@ -3971,11 +4015,11 @@ export class SessionService implements AgentTeamBridge {
         to: targetId,
         kind: "lifecycle",
         event: "undelivered",
-        body: `${this.sessionAlias(fromId) ?? fromId} could not send you a message: its allowed messages to you are used up, and the user did not answer the approval in time.`,
+        body: `${this.sessionAlias(fromId) ?? fromId} (Session ID ${fromId}) could not send you a message: its allowed messages to you are used up, and the user did not answer the approval in time.`,
       });
     }
     return `The approval timed out, so the message was not sent; the user may be away.${
-      since ? ` ${label} was told that your allowed messages are used up.` : ""
+      spent ? ` ${label} was told that your allowed messages are used up.` : ""
     }`;
   }
 
@@ -4405,6 +4449,17 @@ export class SessionService implements AgentTeamBridge {
       { ...envelope, delivered: true },
       this.agentMailLabel(envelope, target),
     );
+    // A queued subagent already has a run waiting for a slot; starting
+    // another would bypass the queue, so the mail joins its context instead.
+    if (this.queuedSubagentIds.has(targetSessionId)) {
+      void target.session
+        .sendCustomMessage(
+          { customType: "agent-team", content: fragment, display: true, details: { from: envelope.from } },
+          { triggerTurn: false },
+        )
+        .catch(() => {});
+      return;
+    }
     if (!target.runState.isIdle()) {
       void target.session.steer(fragment).catch(() => {});
       return;
@@ -4837,6 +4892,9 @@ export class SessionService implements AgentTeamBridge {
     getSmartApproval: () => boolean;
     setSmartApproval: (enabled: boolean) => void;
     isFullAccessEffective: () => boolean;
+    isSmartApprovalEffective: () => boolean;
+    mediatesReadOnly: () => boolean;
+    recordAudit: (entry: SecurityAuditEntry) => void;
     getWorkspace: () => { primaryDir: string };
     getGrants: () => string[];
     addGrant: (key: string, replacing?: string) => void;

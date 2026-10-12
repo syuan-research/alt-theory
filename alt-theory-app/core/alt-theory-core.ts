@@ -31,6 +31,7 @@ import { mkdir, writeFile } from "fs/promises";
 import { dirname, join, resolve, sep } from "path";
 import {
   createSecurityExtension,
+  type SecurityAuditEntry,
   type SecurityExtensionOptions,
 } from "./security-extension.js";
 import {
@@ -532,6 +533,10 @@ async function createAltTheorySessionWithManager(
   // Full wins when both are stored; read-only keeps both dormant.
   const isSmartApprovalEffective = () =>
     runtimeState.smartApproval && !runtimeState.fullAccess && !mediatesReadOnly();
+  // Session-scoped audit sink, shared by the security extension and the
+  // approvals of messages to other conversations (session-service).
+  const recordAudit = (entry: SecurityAuditEntry) =>
+    appendFileSync(join(resolvedRecordsDir, "security-audit.jsonl"), `${JSON.stringify(entry)}\n`);
   // Writable/readable roots are computed by the one root-policy module,
   // evaluated per call: the Alt writable roots plus the workspace (primary +
   // the project's companion folders, both read live from the folder policy).
@@ -661,11 +666,7 @@ async function createAltTheorySessionWithManager(
         onAllowance: saveApprovals,
         isReadOnly: mediatesReadOnly,
         allowWriteOnce: (path) => onceWritablePaths.add(path),
-        recordAudit: (entry) =>
-          appendFileSync(
-            join(resolvedRecordsDir, "security-audit.jsonl"),
-            `${JSON.stringify(entry)}\n`
-          ),
+        recordAudit,
         isFullAccess: isFullAccessEffective,
         protectedDirs: config.dataDir ? [resolve(config.dataDir)] : [],
         getCommandAllowlist: config.readCommandAllowlist,
@@ -971,6 +972,10 @@ async function createAltTheorySessionWithManager(
       runtimeState.fullAccess = enabled;
     },
     getSmartApproval: () => runtimeState.smartApproval,
+    isSmartApprovalEffective,
+    /** Read-only in force, including a switch waiting for the turn to end. */
+    mediatesReadOnly,
+    recordAudit,
     setSmartApproval: (enabled: boolean): void => {
       runtimeState.smartApproval = enabled;
     },

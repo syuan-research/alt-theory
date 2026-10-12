@@ -122,10 +122,13 @@ export function formatEnvelopeForContext(
     `from="${safeLabel}"`,
     envelope.event ? `event="${envelope.event}"` : null,
     envelope.cause ? `cause="${envelope.cause}"` : null,
+    envelope.peer ? `peer="true"` : null,
   ]
     .filter(Boolean)
     .join(" ");
-  return `<${AGENT_MAIL_TAG} ${header}>\n${envelope.body}\n</${AGENT_MAIL_TAG}>`;
+  // A body cannot close the frame early and speak outside it.
+  const body = envelope.body.replaceAll(`</${AGENT_MAIL_TAG}`, `<\\/${AGENT_MAIL_TAG}`);
+  return `<${AGENT_MAIL_TAG} ${header}>\n${body}\n</${AGENT_MAIL_TAG}>`;
 }
 
 /** Extract display text from a tagged fragment; null when text is not one. */
@@ -134,7 +137,7 @@ export function parseAgentMailFragment(
 ): { fromLabel: string; event: string | null; cause: string | null; body: string } | null {
   const match = text.match(
     new RegExp(
-      `^<${AGENT_MAIL_TAG} from="([^"]*)"(?: event="([^"]*)")?(?: cause="([^"]*)")?>\\n([\\s\\S]*)\\n</${AGENT_MAIL_TAG}>$`,
+      `^<${AGENT_MAIL_TAG} from="([^"]*)"(?: event="([^"]*)")?(?: cause="([^"]*)")?(?: peer="true")?>\\n([\\s\\S]*)\\n</${AGENT_MAIL_TAG}>$`,
     ),
   );
   if (!match) return null;

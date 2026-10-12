@@ -386,17 +386,24 @@ for another conversation. One rule decides how it travels:
 - **Any other pair** (`approvePeerMessage`): Full Access in force sends.
   Otherwise a standing `contact:<id>` grant, or an unspent allowance, sends;
   else smart approval's reviewer (an allow grants the allowance) or the
-  user is asked: allow 5 messages each way, always allow, deny (Read-only:
-  allow once / deny, no grant). Grants are kept with the approving
+  user is asked: allow 5 messages each way, always allow, deny. Read-only
+  (including a pending switch) honours no grant, the other side's included,
+  never asks the reviewer, and offers allow once / deny with no grant.
+  Every decision is written to the conversation's `security-audit.jsonl`
+  (rule `peer_message`); `send_to_agent` runs one call at a time so two
+  sends in one turn cannot both spend the last message. Grants are kept with the approving
   conversation's "Allow for this conversation" grants
   (`records/approvals.json`, core `getGrants` / `addGrant`), so they last
   as long and Read-only clears them too. Either side's grant covers both
   directions. The allowance is derived, not counted: the latest
   `mail:<id>@<time>` grant from either side, minus the peer mail each
   direction has sent since then (read from the receiver's inbox).
-- Such mail carries `peer: true`. It is labelled with the sender's alias
-  and Session ID (the address to answer with), never makes its sender a
-  subagent's reporting target, and never makes it a lead. A closed target
+- Such mail carries `peer: true` (and `peer="true"` in its context frame;
+  a body cannot close the frame early). It is labelled with the sender's
+  alias and Session ID (the address to answer with), never makes its sender
+  a subagent's reporting target, never makes it a lead, and is never taken
+  as the latest user request in smart approval's review. A queued subagent
+  receives any mail into its context without starting a second run. A closed target
   is opened and woken. When the allowance was used up and the approval goes
   unanswered (timeout), the target receives an `undelivered` lifecycle
   envelope.
