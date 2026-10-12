@@ -1,4 +1,5 @@
 import { marked } from "marked";
+import { contentLink } from "@/lib/contentLinks";
 
 marked.setOptions({
   breaks: true,
@@ -20,10 +21,11 @@ function sanitizeRenderedHtml(html: string): string {
   template.content.querySelectorAll("*").forEach((node) => {
     if (node.tagName === "A") {
       const href = node.getAttribute("href") || "";
-      if (!/^(https?:|mailto:|#)/i.test(href)) {
+      if (!contentLink(href)) {
         node.removeAttribute("href");
       } else {
-        node.setAttribute("target", "_blank");
+        if (href.startsWith("#")) node.removeAttribute("target");
+        else node.setAttribute("target", "_blank");
         node.setAttribute("rel", "noreferrer noopener");
       }
       return;
@@ -37,9 +39,10 @@ function sanitizeRenderedHtml(html: string): string {
   return template.innerHTML;
 }
 
-/** Same path as v0.5 `public/client.js` renderMarkdown: escape → marked → sanitize. */
+/** Escape raw HTML tokens without changing Markdown link destinations or code. */
 export function renderMarkdown(text: string): string {
-  const escaped = escapeHtml(text);
-  const rawHtml = marked.parse(escaped) as string;
+  const renderer = new marked.Renderer();
+  renderer.html = ({ text }) => escapeHtml(text);
+  const rawHtml = marked.parse(text, { renderer }) as string;
   return sanitizeRenderedHtml(rawHtml);
 }

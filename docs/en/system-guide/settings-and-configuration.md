@@ -7,6 +7,12 @@ what is not obvious from opening it.
 
 ## When changes take effect
 
+Thinking is always shown as an expandable block. **Expand thinking** controls
+only whether blocks start open; it remains optional. The ordinary app no longer
+has study participation settings. Model reminders are enabled by default and
+have no UI toggle; advanced users can set `modelHooks: false` in
+`~/.alt-theory/data/app-settings.json`.
+
 - a new conversation picks up a settings change immediately
 - an open conversation picks it up when you reopen it
 

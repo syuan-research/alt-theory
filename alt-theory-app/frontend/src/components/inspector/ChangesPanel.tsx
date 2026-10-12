@@ -7,8 +7,7 @@ import { useShell } from "@/context/ShellContext";
 import { FilePreview } from "@/components/inspector/FilePreview";
 import { FolderHead, ListTools } from "@/components/inspector/FolderList";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
-import { copyText } from "@/lib/clipboard";
-import { hasNativeBridge, revealPath } from "@/lib/native";
+import { fileMenuItems } from "@/lib/fileMenu";
 import { CHANGES_KEPT_MAX } from "@/lib/limits";
 import { paneMemory, usePaneMemory } from "@/lib/paneMemory";
 import { targetKey } from "@/lib/viewTarget";
@@ -110,11 +109,9 @@ export function ChangesPanel() {
     return <div className="rp-empty">{t("No file changes in this conversation yet.")}</div>;
   }
 
-  const fileItems = (file: FileChange): ContextMenuItem[] => [
-    { label: t("Copy path"), icon: "ph-copy", onSelect: () => void copyText(file.resolvedPath) },
-    ...(file.contentRef ? [{ label: t("Show in file tree"), icon: "ph-tree-structure", onSelect: () => shell.revealWorkspacePath(file.resolvedPath) }] : []),
-    ...(hasNativeBridge() ? [{ label: t("Show in file manager"), icon: "ph-folder-open", onSelect: () => void revealPath(file.resolvedPath) }] : []),
-  ];
+  const fileItems = (file: FileChange): ContextMenuItem[] => fileMenuItems(
+    file.resolvedPath, file.contentRef ? () => shell.revealWorkspacePath(file.resolvedPath) : undefined,
+  );
   const roleText = (group: ChangeGroup) =>
     group.role === "primary" ? t("Main folder") : group.role === "companion" ? t("Companion folder") : t("Outside");
   const normalizedQuery = query.trim();

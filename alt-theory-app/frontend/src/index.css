@@ -1324,6 +1324,10 @@
   .child-switch button .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--ink); flex: 0 0 auto; }
 
   .child-conv { height: 100%; min-height: 0; display: flex; flex-direction: column; background: var(--canvas); }
+  .rpanel .body:has(.local-page) { display: flex; flex-direction: column; overflow: hidden; }
+  .local-page { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+  .local-page-actions { padding-bottom: var(--space-tight); }
+  .local-page iframe { width: 100%; flex: 1; min-height: 0; border: 0; background: var(--surface); }
   .child-head { display: flex; align-items: center; gap: var(--space-tight); padding: 0 var(--space-hair) var(--space-tight); color: var(--text-3); font-size: var(--fs-secondary); }
   .child-head .child-what { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .child-head .child-status { flex: 0 0 auto; }

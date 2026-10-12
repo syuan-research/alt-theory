@@ -181,6 +181,14 @@ function createWindow() {
     shell.openExternal(url);
     return { action: "deny" };
   });
+  // Links leaving an embedded local page use the user's normal browser.
+  mainWindow.webContents.on("will-frame-navigate", (event) => {
+    if (event.isMainFrame || !/^https?:\/\//i.test(event.url)) return;
+    const hostname = new URL(event.url).hostname;
+    if (["localhost", "127.0.0.1", "[::1]"].includes(hostname)) return;
+    event.preventDefault();
+    void shell.openExternal(event.url);
+  });
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -203,17 +211,11 @@ ipcMain.handle("alt:pickFiles", async () => {
 ipcMain.handle("alt:revealPath", (_event, target) => {
   if (typeof target === "string" && target) shell.showItemInFolder(target);
 });
-// Conversation files open in their default app — but only file types that
-// are documents or media. Agent-written files are untrusted: a .command or
-// .app would run on a click, so anything else is revealed instead.
-const OPENABLE_EXTENSIONS = new Set([
-  ".md", ".txt", ".csv", ".tsv", ".json", ".html", ".pdf", ".docx", ".xlsx", ".pptx", ".rtf", ".odt",
-  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".avif", ".mp4", ".mov", ".webm", ".m4v",
-]);
+// Explicit user action: use the operating system's normal file association.
 ipcMain.handle("alt:openPath", async (_event, target) => {
   if (typeof target !== "string" || !target) return;
-  if (OPENABLE_EXTENSIONS.has(path.extname(target).toLowerCase())) await shell.openPath(target);
-  else shell.showItemInFolder(target);
+  const error = await shell.openPath(target);
+  if (error) throw new Error(error);
 });
 
 // The OS overlay-button band must match the page behind it: the app shell
@@ -540,7 +542,7 @@ ipcMain.handle("alt:dismissUpdate", (_event, version) => {
   return status;
 });
 ipcMain.handle("alt:openExternal", async (_event, url) => {
-  if (typeof url !== "string" || !url.startsWith("https://github.com/")) {
+  if (typeof url !== "string" || !/^(https?:\/\/|mailto:)/i.test(url)) {
     return false;
   }
   await shell.openExternal(url);

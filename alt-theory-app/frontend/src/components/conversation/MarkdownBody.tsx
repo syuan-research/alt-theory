@@ -3,6 +3,10 @@ import type { MouseEvent } from "react";
 import { renderMarkdown } from "@/lib/markdown";
 import { cn } from "@/lib/cn";
 import { t } from "@/i18n";
+import { useConversationContext } from "@/context/ConversationContext";
+import { useContentLinks } from "@/components/conversation/useContentLinks";
+import { contentLink, selectionMarkdown } from "@/lib/contentLinks";
+import type { FileRef } from "@/lib/fileContent";
 
 let mermaidReady: Promise<typeof import("mermaid").default> | null = null;
 let diagramSeq = 0;
@@ -23,15 +27,6 @@ function loadMermaid() {
     });
   }
   return mermaidReady;
-}
-
-function decodeEntities(text: string): string {
-  return text
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, "&");
 }
 
 /**
@@ -58,12 +53,20 @@ export function MarkdownBody({
   className,
   renderMermaid = true,
   streaming = false,
+  sessionId,
+  baseFile,
+  baseFolderPath,
 }: {
   text: string;
   className?: string;
   renderMermaid?: boolean;
   streaming?: boolean;
+  sessionId?: string | null;
+  baseFile?: FileRef;
+  baseFolderPath?: string | null;
 }) {
+  const conversation = useConversationContext();
+  const links = useContentLinks(sessionId === undefined ? conversation.sessionId : sessionId, baseFile, baseFolderPath);
   const rootRef = useRef<HTMLDivElement>(null);
   const finishedRef = useRef<HTMLDivElement>(null);
   const tailRef = useRef<HTMLDivElement>(null);
@@ -109,7 +112,7 @@ export function MarkdownBody({
     void loadMermaid().then(async (mermaid) => {
       for (const block of blocks) {
         if (cancelled) return;
-        const source = decodeEntities(block.textContent ?? "");
+        const source = block.textContent ?? "";
         const target = block.parentElement ?? block;
         const id = `d${(diagramSeq += 1)}`;
         try {
@@ -129,13 +132,7 @@ export function MarkdownBody({
           toggle.textContent = t("Source code");
           const sourcePre = target.cloneNode(true) as HTMLElement;
           sourcePre.classList.add("mermaid-source");
-          // renderMarkdown escapes the whole document before parsing, so the
-          // code text carries one round of entities (--&gt;). Decode to the
-          // true source the user wrote — the toggle exists to copy it.
-          const sourceCode = sourcePre.querySelector("code");
-          if (sourceCode) {
-            sourceCode.textContent = decodeEntities(sourceCode.textContent ?? "");
-          }
+          // The fenced code already contains the original text for copying.
           wrap.append(toggle, figure, sourcePre);
           target.replaceWith(wrap);
         } catch {
@@ -161,16 +158,54 @@ export function MarkdownBody({
   // Stable identity prevents same-HTML renders from replacing selected DOM text.
   const innerHtml = useMemo(() => ({ __html: html }), [html]);
 
+  const onClick = (event: MouseEvent<HTMLDivElement>) => {
+    const anchor = (event.target as Element).closest<HTMLAnchorElement>("a[href]");
+    const href = anchor?.getAttribute("href");
+    if (href && contentLink(href)?.kind !== "anchor") {
+      event.preventDefault();
+      links.open(href);
+      return;
+    }
+    onMermaidToggle(event);
+  };
+  const onContextMenu = (event: MouseEvent<HTMLDivElement>) => {
+    const anchor = (event.target as Element).closest<HTMLAnchorElement>("a[href]");
+    const href = anchor?.getAttribute("href");
+    if (href) links.context(event, href);
+  };
+  const onCopy = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    const selection = window.getSelection();
+    if (!selection?.rangeCount || selection.isCollapsed) return;
+    const range = selection.getRangeAt(0);
+    if (!event.currentTarget.contains(range.commonAncestorContainer)) return;
+    const fragment = range.cloneContents();
+    const ancestor = range.commonAncestorContainer instanceof Element
+      ? range.commonAncestorContainer : range.commonAncestorContainer.parentElement;
+    const enclosingLink = ancestor?.closest<HTMLAnchorElement>("a[href]");
+    if (!fragment.querySelector("a[href]") && !enclosingLink) return;
+    const host = document.createElement("div");
+    if (enclosingLink) {
+      const anchor = document.createElement("a");
+      anchor.setAttribute("href", enclosingLink.getAttribute("href")!);
+      anchor.append(fragment);
+      host.append(anchor);
+    } else host.append(fragment);
+    event.preventDefault();
+    event.clipboardData.setData("text/plain", selectionMarkdown(host).trimEnd());
+    event.clipboardData.setData("text/html", host.innerHTML);
+  };
+
   if (streaming) {
     return (
-      <div ref={rootRef} className={cn("markdown-body", className)}>
+      <div ref={rootRef} className={cn("markdown-body", className)} onClick={onClick} onContextMenu={onContextMenu} onCopy={onCopy}>
         <div ref={finishedRef} className="md-stream-finished" />
         <div ref={tailRef} className="md-stream-tail" />
+        {links.menu}
       </div>
     );
   }
 
-  const onMermaidToggle = (event: MouseEvent<HTMLDivElement>) => {
+  function onMermaidToggle(event: MouseEvent<HTMLDivElement>) {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>(
       ".mermaid-toggle",
     );
@@ -179,13 +214,16 @@ export function MarkdownBody({
     if (!block) return;
     const showingSource = block.classList.toggle("show-source");
     button.textContent = showingSource ? t("Rendered") : t("Source code");
-  };
+  }
 
-  return (
+  return (<>
     <div
       className={cn("markdown-body", className)}
-      onClick={onMermaidToggle}
+      onClick={onClick}
+      onContextMenu={onContextMenu}
+      onCopy={onCopy}
       dangerouslySetInnerHTML={innerHtml}
     />
-  );
+    {links.menu}
+  </>);
 }

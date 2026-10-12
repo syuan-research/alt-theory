@@ -25,6 +25,7 @@ import { ProvenancePanel } from "@/components/inspector/ProvenancePanel";
 import { RuntimePanel } from "@/components/inspector/RuntimePanel";
 import { WorkspaceTree } from "@/components/inspector/WorkspaceTree";
 import { ChangesPanel } from "@/components/inspector/ChangesPanel";
+import { LocalPage } from "@/components/inspector/LocalPage";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 import { fetchSessionDetail, promoteToMainline } from "@/api/sessions";
 import { copyText } from "@/lib/clipboard";
@@ -166,7 +167,7 @@ export function InspectorPanel() {
         >
           {active === "chats" ? <RelatedConversations /> : null}
           {active === "changes" ? <ChangesPanel /> : null}
-          {active === "workspace" ? <WorkspaceTree /> : null}
+          {active === "workspace" ? shell.target?.kind === "page" ? <LocalPage /> : <WorkspaceTree /> : null}
           {active === "records" ? (
             <RecordsPanel
               sessionId={conv.sessionId}

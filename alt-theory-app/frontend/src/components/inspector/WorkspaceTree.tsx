@@ -16,7 +16,7 @@ import { t } from "@/i18n";
 import { useConversationContext } from "@/context/ConversationContext";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
-import { hasNativeBridge, revealPath as nativeRevealPath } from "@/lib/native";
+import { hasNativeBridge, openPath } from "@/lib/native";
 import { NEW_DRAFT, stageInDraft, unstageInDraft, useDraft } from "@/lib/draft";
 import { WORKSPACE_PATH_MIME } from "@/lib/workspace";
 import { FilePreview } from "@/components/inspector/FilePreview";
@@ -26,6 +26,7 @@ import type { PreviewMode } from "@/lib/fileContent";
 import { usePaneMemory } from "@/lib/paneMemory";
 import { useFindTarget } from "@/lib/find";
 import { copyText } from "@/lib/clipboard";
+import { fileMenuItems } from "@/lib/fileMenu";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 import { fileQueryScore, parseFileQuery } from "../../../../shared/quick-find";
 
@@ -37,6 +38,7 @@ export function WorkspaceTree() {
   const shell = useShell();
   const [entries, setEntries] = useState<WorkspaceFileEntry[] | null>(null);
   const [workingFolders, setWorkingFolders] = useState<WorkingFolderDescriptor[]>([]);
+  const [workspacePath, setWorkspacePath] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [expandSignal, setExpandSignal] = useState(0);
   const [collapseSignal, setCollapseSignal] = useState(0);
@@ -102,6 +104,7 @@ export function WorkspaceTree() {
   const folders = sessionId ? workingFolders : draftFolders;
 
   useEffect(() => {
+    setWorkspacePath("");
     if (!sessionId) {
       setEntries([]);
       return;
@@ -116,6 +119,7 @@ export function WorkspaceTree() {
         void listWorkingFolders(sessionId).then((working) => {
           if (cancelled) return;
           setWorkingFolders(working.folders);
+          setWorkspacePath(working.workspacePath ?? "");
         }).catch(() => undefined);
       })
       .catch((e) => !cancelled && setError(e?.message ?? "Failed to load files"));
@@ -133,7 +137,7 @@ export function WorkspaceTree() {
 
   const normalizedQuery = browsing ? "" : query.trim();
   const fileQuery = parseFileQuery(normalizedQuery);
-  const managedFolderPath = workingFolders.find((folder) => folder.managed)?.path ?? "";
+  const managedFolderPath = workspacePath || workingFolders.find((folder) => folder.managed)?.path || "";
   const filterEntries = (items: WorkspaceFileEntry[]): ManagedTreeEntry[] =>
     normalizedQuery
       ? withFolderEntries(items).map((entry) => ({ entry, score: fileQueryScore(
@@ -182,13 +186,22 @@ export function WorkspaceTree() {
 
   const openFile = (entry: ManagedTreeEntry) => {
     if ("isDirectory" in entry && entry.isDirectory) return;
-    if (!sessionId || !("kind" in entry) || entry.kind === "binary-original") return;
+    if (!sessionId || !("kind" in entry)) return;
+    if (entry.kind === "binary-original") {
+      void openPath(`${managedFolderPath}/${entry.path}`).catch(error => window.alert(String(error)));
+      return;
+    }
     setPreviewView("rendered");
     shell.openTarget({ kind: "file", sessionId, root: "workspace", path: entry.path });
   };
 
   const openWorkingFile = (entry: WorkingTreeEntry) => {
-    if (!sessionId || !entry.previewable) return;
+    if (!sessionId) return;
+    if (!entry.previewable) {
+      const folder = workingFolders.find(item => item.id === entry.folderId);
+      if (folder) void openPath(`${folder.path}/${entry.path}`).catch(error => window.alert(String(error)));
+      return;
+    }
     setPreviewView("rendered");
     shell.openTarget({ kind: "file", sessionId, root: "working", path: `${entry.folderId}/${entry.path}` });
   };
@@ -522,7 +535,7 @@ function WorkingTree({
       <FileTree
         entries={entries}
         onOpenFile={onOpenFile}
-        canOpen={(entry) => !entry.isDirectory && entry.previewable}
+        canOpen={(entry) => !entry.isDirectory && (entry.previewable || hasNativeBridge())}
         onExpandFolder={(entry) => void loadDirectory(entry.path)}
         initiallyExpanded={false}
         expandNewFolders={false}
@@ -686,10 +699,7 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
         const canOpenItem = node.isFolder || !node.entry || canOpen(node.entry);
         const pathWasCopied = copiedPath === node.fullPath;
         const copyLabel = t(pathWasCopied ? "Path copied" : "Copy path");
-        const contextItems: ContextMenuItem[] = [
-          { label: t("Copy path"), icon: "ph-copy", onSelect: () => void copyText(node.fullPath) },
-          ...(hasNativeBridge() ? [{ label: t("Show in file manager"), icon: "ph-folder-open", onSelect: () => void nativeRevealPath(node.fullPath) }] : []),
-        ];
+        const contextItems: ContextMenuItem[] = fileMenuItems(node.fullPath);
         return (
           <div
             {...item.getProps()}

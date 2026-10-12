@@ -1766,7 +1766,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         const folderId =
           typeof req.query.folderId === "string" ? req.query.folderId : null;
         if (!folderId) {
-          res.json({ folders: describeWorkingFolders(dataDir, sessionId) });
+          res.json({
+            folders: describeWorkingFolders(dataDir, sessionId),
+            workspacePath: join(resolveSessionRoot(dataDir, sessionId)!, "workspace"),
+          });
           return;
         }
         const path = typeof req.query.path === "string" ? req.query.path : "";

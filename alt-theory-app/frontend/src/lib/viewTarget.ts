@@ -13,6 +13,8 @@
 export type RailKey = "chats" | "changes" | "workspace" | "records" | "provenance" | "runtime";
 
 export type ViewTarget =
+  /** A local interactive page; it can be opened before a conversation exists. */
+  | { kind: "page"; sessionId: string | null; url: string }
   /** A conversation of the family, shown on its own (BTW, branch, subagent). */
   | { kind: "conversation"; sessionId: string }
   /** A file of a conversation: its managed workspace, or a working folder
@@ -26,6 +28,8 @@ export type ViewTarget =
 /** The rail a target opens on. */
 export function railOf(target: ViewTarget): RailKey {
   switch (target.kind) {
+    case "page":
+      return "workspace";
     case "conversation":
       return "chats";
     case "file":
@@ -44,6 +48,8 @@ export function railOf(target: ViewTarget): RailKey {
 /** The header line; a conversation says what it is in its own words. */
 export function targetTitle(target: ViewTarget): string | undefined {
   switch (target.kind) {
+    case "page":
+      return target.url;
     case "conversation":
       return undefined;
     case "file":
@@ -62,6 +68,8 @@ export function targetTitle(target: ViewTarget): string | undefined {
 /** A stable string for view memory (scroll, preview mode). */
 export function targetKey(target: ViewTarget): string {
   switch (target.kind) {
+    case "page":
+      return `page:${target.sessionId}:${target.url}`;
     case "conversation":
       return `conversation:${target.sessionId}`;
     case "file":
@@ -130,7 +138,8 @@ export function navigate(state: PaneState, action: PaneAction): PaneState {
     case "open": {
       const rail = railOf(action.target);
       if (state.rail === rail && state.target && targetKey(state.target) === targetKey(action.target)) return state;
-      const leaving = state.rail && state.rail !== rail ? { rail: state.rail, target: state.target } : state.returnTo;
+      const leaving = state.rail && (state.rail !== rail || (action.target.kind === "page" && state.target?.kind !== "page"))
+        ? { rail: state.rail, target: state.target } : state.returnTo;
       return place(state, rail, action.target, leaving);
     }
     case "back":
@@ -153,7 +162,7 @@ export function navigate(state: PaneState, action: PaneAction): PaneState {
       return place(state, action.rail, null, state.returnTo);
     case "forget": {
       const gone = (target: ViewTarget | null | undefined) =>
-        Boolean(target && action.sessionIds.includes(target.sessionId));
+        Boolean(target?.sessionId && action.sessionIds.includes(target.sessionId));
       const lastByRail = Object.fromEntries(
         Object.entries(state.lastByRail).map(([rail, target]) => [rail, gone(target) ? null : target]),
       ) as PaneState["lastByRail"];

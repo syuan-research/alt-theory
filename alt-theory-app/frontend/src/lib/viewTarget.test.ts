@@ -6,6 +6,15 @@ const play = (actions: PaneAction[]) => actions.reduce(navigate, INITIAL_PANE);
 const file: ViewTarget = { kind: "file", sessionId: "a", root: "workspace", path: "notes.md" };
 const child: ViewTarget = { kind: "conversation", sessionId: "c1" };
 
+test("a local page reuses the file rail and Back restores the preceding file", () => {
+  const page: ViewTarget = { kind: "page", sessionId: "a", url: "http://localhost:8080" };
+  const over = play([{ type: "open", target: file }, { type: "open", target: page }]);
+  assert.equal(over.rail, "workspace");
+  assert.deepEqual(navigate(over, { type: "back" }).target, file);
+  const draftPage: ViewTarget = { ...page, sessionId: null };
+  assert.deepEqual(play([{ type: "open", target: draftPage }, { type: "forget", sessionIds: ["a"] }]).target, draftPage);
+});
+
 test("a target opens on its own rail and names its conversation", () => {
   assert.equal(railOf(file), "workspace");
   assert.equal(railOf(child), "chats");

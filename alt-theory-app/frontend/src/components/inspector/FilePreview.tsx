@@ -309,7 +309,7 @@ export function FilePreview({
       return /\.html?$/i.test(path) ? (
         <iframe className="file-html" sandbox="" srcDoc={file.content} title={path} />
       ) : (
-        <MarkdownBody text={file.content} />
+        <MarkdownBody text={file.content} sessionId={sessionId} baseFile={fileRef ?? undefined} baseFolderPath={file.folderPath} />
       );
     }
     return <pre>{file.content}</pre>;

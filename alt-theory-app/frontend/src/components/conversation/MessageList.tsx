@@ -14,7 +14,7 @@ import { MarkdownBody } from "@/components/conversation/MarkdownBody";
 import { fileName, toolLabel, toolResultText } from "@/lib/tools";
 import { fetchToolResult } from "@/api/sessions";
 import { cn } from "@/lib/cn";
-import { hasNativeBridge, pickDirectory, revealPath } from "@/lib/native";
+import { pickDirectory } from "@/lib/native";
 import { shouldToggleCollapseOnClick } from "@/lib/collapseAnywhere";
 import { replyStopLine, retryDroppedLine } from "@/lib/replyStop";
 import { toolOutcome, type ToolOutcome } from "@/lib/toolOutcome";
@@ -23,7 +23,7 @@ import { autosizeTextarea } from "@/lib/autosizeTextarea";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
 import { useEarlierRows } from "@/hooks/useEarlierRows";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
-import { copyText } from "@/lib/clipboard";
+import { fileMenuItems } from "@/lib/fileMenu";
 import { useFindTarget } from "@/lib/find";
 
 export function MessageList() {
@@ -417,11 +417,7 @@ function absoluteOrWorkspacePath(path: string, workspace: string | null): string
 }
 
 function fileContextItems(path: string, shell: ReturnType<typeof useShell>): ContextMenuItem[] {
-  return [
-    { label: t("Copy path"), icon: "ph-copy", onSelect: () => void copyText(path) },
-    { label: t("Show in file tree"), icon: "ph-tree-structure", onSelect: () => shell.revealWorkspacePath(path) },
-    ...(hasNativeBridge() ? [{ label: t("Show in file manager"), icon: "ph-folder-open", onSelect: () => void revealPath(path) }] : []),
-  ];
+  return fileMenuItems(path, () => shell.revealWorkspacePath(path));
 }
 
 function countLines(text: string): number {

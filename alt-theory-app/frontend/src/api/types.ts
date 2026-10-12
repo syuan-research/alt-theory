@@ -598,6 +598,7 @@ export interface WorkingTreeEntry {
 
 export interface WorkingFoldersResponse {
   folders: WorkingFolderDescriptor[];
+  workspacePath?: string;
 }
 
 export interface WorkingDirectoryResponse {
