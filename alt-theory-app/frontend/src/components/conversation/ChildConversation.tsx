@@ -83,7 +83,6 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
   const ctxLineRef = useRef<HTMLDivElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
   const rowClassName = useComposerRow(rowRef);
-  const developer = app.transcriptView === "developer";
   const { messages, isRunning: running } = conversation;
   // A role chosen mid-run renders as the chosen value plus the pending mark
   // (same rule as the main composer).
@@ -223,12 +222,11 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
       >
         <SettledMessages
           messages={messages}
-          developer={developer}
           latestUserIndex={latestUserIndex}
           latestAssistantIndex={latestAssistantIndex}
           isRunning={running}
         />
-        <StreamPartsView parts={parts} developer={developer} />
+        <StreamPartsView parts={parts} />
       </div>
 
       {approval ? (

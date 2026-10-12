@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { fetchJson } from "@/api/http";
 import { fetchPermanentDeletionFiles } from "@/api/conversation-files";
 import {
   cancelProviderAuth,
@@ -88,23 +87,20 @@ const PANEL_KEYS = [
   "folders",
   "rolekb",
   "skills",
-  "participant",
   "features",
   "trash",
   "about",
 ];
 
 export function SettingsView() {
-  const app = useApp();
   const shell = useShell();
 
-  // If the participant tab is disabled while selected, fall back to general.
+  // Retired or unknown panels return to General.
   useEffect(() => {
     if (!PANEL_KEYS.includes(shell.settingsPanel)) {
       shell.setSettingsPanel("general");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shell.participantTabEnabled]);
+  }, [shell.settingsPanel, shell.setSettingsPanel]);
 
   return (
     <div className="settings">
@@ -116,9 +112,6 @@ export function SettingsView() {
           {shell.settingsPanel === "folders" ? <WorkingFoldersPanel /> : null}
           {shell.settingsPanel === "rolekb" ? <RoleKbPanel /> : null}
           {shell.settingsPanel === "skills" ? <SkillsPanel /> : null}
-          {shell.settingsPanel === "participant" ? (
-            <ParticipantPanel designated={app.participant?.designated ?? false} label={app.participant?.label ?? null} />
-          ) : null}
           {shell.settingsPanel === "features" ? <FeaturesPanel /> : null}
           {shell.settingsPanel === "trash" ? <TrashPanel /> : null}
           {shell.settingsPanel === "about" ? <AboutPanel /> : null}
@@ -1260,19 +1253,6 @@ function GeneralPanel() {
       <div className="set-card">
         <div className="row2">
           <div>
-            <h4>{t("Show thinking")}</h4>
-            <p>{t("Show Alt's thinking above each reply. Some models think at great length.")}</p>
-          </div>
-          <button
-            className={`toggle${shell.showThinking ? " on" : ""}`}
-            aria-pressed={shell.showThinking}
-            onClick={() => shell.setShowThinking(!shell.showThinking)}
-          />
-        </div>
-      </div>
-      <div className="set-card">
-        <div className="row2">
-          <div>
             <h4>{t("Expand thinking")}</h4>
             <p>{t("Open thinking blocks by default instead of collapsed.")}</p>
           </div>
@@ -1288,23 +1268,7 @@ function GeneralPanel() {
       <CommandAllowlistCard />
       <ApprovalReviewerCard />
       <AutoTitleCard />
-      <ModelHooksCard />
       <NativePiSkillsCard />
-      <div className="set-card">
-        <div className="row2">
-          <div>
-            <h4>{t("Study participant options")}</h4>
-            <p>
-              {t("Show the Participant mode settings. Only turn this on if you take part in a study; it stays hidden otherwise.")}
-            </p>
-          </div>
-          <button
-            className={`toggle${shell.participantTabEnabled ? " on" : ""}`}
-            aria-pressed={shell.participantTabEnabled}
-            onClick={() => shell.setParticipantTabEnabled(!shell.participantTabEnabled)}
-          />
-        </div>
-      </div>
     </div>
   );
 }
@@ -1597,58 +1561,6 @@ function NativePiSkillsCard() {
   );
 }
 
-function ModelHooksCard() {
-  const [enabled, setEnabled] = useState(true);
-  const [loaded, setLoaded] = useState(false);
-  const [available, setAvailable] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    fetchJson<{ enabled: boolean }>("/api/settings/model-hooks")
-      .then((r) => {
-        if (!alive) return;
-        setEnabled(r.enabled);
-        setAvailable(true);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (alive) setLoaded(true);
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
-  const persist = (next: boolean) => {
-    setEnabled(next);
-    void fetchJson("/api/settings/model-hooks", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled: next }),
-    }).catch(() => {});
-  };
-  // The route did not answer; showing a toggle that cannot save would lie
-  // (opus F1).
-  if (loaded && !available) return null;
-  return (
-    <div className="set-card">
-      <div className="row2">
-        <div>
-          <h4>{t("Model-specific reminders")}</h4>
-          <p>
-            {t("Some models get a short reminder tuned to their habits (currently GPT-5 and DeepSeek v4 Flash). Applies to conversations opened after the change.")}
-          </p>
-        </div>
-        <button
-          className={`toggle${enabled ? " on" : ""}`}
-          aria-pressed={enabled}
-          disabled={!loaded}
-          onClick={() => persist(!enabled)}
-        />
-      </div>
-    </div>
-  );
-}
-
-/** Configured models as chain-editor options, "inherit" first under its own label. */
 function useChainModelOptions(inheritLabel: () => string) {
   const [models, setModels] = useState<Array<{ value: string; label: string }>>([]);
   useEffect(() => {
@@ -2024,59 +1936,6 @@ function RoleKbPanel() {
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-function ParticipantPanel({
-  designated,
-  label,
-}: {
-  designated: boolean;
-  label: string | null;
-}) {
-  return (
-    <div className="set-panel">
-      <h2>{t("Participant mode")}</h2>
-      <p className="sub">
-        {t("Only relevant if you take part in a study. If you are not in a study, you can leave this hidden.")}
-      </p>
-
-      {designated ? (
-        <>
-          <div className="set-card">
-            <div className="row2">
-              <div>
-                <h4>{t("Display label")}</h4>
-                <p>
-                  {t("The name or code that identifies your data in the study. Set by your study when the app was installed.")}
-                </p>
-              </div>
-              <span className="participant-label">{label || t("Not set")}</span>
-            </div>
-          </div>
-          <div className="set-card">
-            <h4>{t("Sharing conversations with the research team")}</h4>
-            <p>
-              {t("This install is designated as a study participant, so new conversations are marked as exportable by default. You can mark any single conversation with the control next to the composer.")}
-            </p>
-            <div className="fine">
-              {t("On this local install the label only MARKS a conversation: nothing is hidden, uploaded, or deleted. You send an export to the research team yourself later.")}{" "}
-              {t("Installs obtained outside a study never share anything.")}
-            </div>
-          </div>
-        </>
-      ) : (
-        <div className="set-card">
-          <h4>{t("This install is not part of a study")}</h4>
-          <p>
-            {t("You got Alt outside a study, so there is nothing to share and no label to set. Conversations stay on this machine.")}
-          </p>
-          <div className="fine">
-            {t("If you later join a study, they will provide an install that turns these options on.")}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

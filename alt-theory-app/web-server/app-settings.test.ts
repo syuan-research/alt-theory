@@ -14,6 +14,18 @@ import {
 } from "./app-settings.js";
 import { discoverSkillResources } from "./resource-discovery.js";
 
+test("retired participant setting is ignored; modelHooks remains configurable", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-settings-retired-"));
+  writeFileSync(join(dataDir, "app-settings.json"), JSON.stringify({
+    schemaVersion: 1, participant: { designated: true, label: "old" }, modelHooks: false,
+  }));
+  const settings = readAppSettings(dataDir);
+  assert.equal("participant" in settings, false);
+  assert.equal(settings.modelHooks, false);
+  writeAppSettings(dataDir, settings);
+  assert.equal(readAppSettings(dataDir).modelHooks, false);
+});
+
 test("app settings default policy: every discovered external skill; default permission Ask", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-settings-"));
   const settings = readAppSettings(dataDir);

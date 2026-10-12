@@ -27,7 +27,6 @@ import { copyText } from "@/lib/clipboard";
 import { useFindTarget } from "@/lib/find";
 
 export function MessageList() {
-  const app = useApp();
   const main = useMainView();
   const conv = useConversationContext();
   const streamParts = useTurnParts();
@@ -45,7 +44,6 @@ export function MessageList() {
   const [scrubTip, setScrubTip] = useState<{ rowId: string; preview: string; y: number } | null>(null);
   /** A released rail jump to a row not loaded yet: loads down to it, then scrolls. */
   const [jumpTo, setJumpTo] = useState<string | null>(null);
-  const developer = app.transcriptView === "developer";
 
   const latestUserIndex = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -167,15 +165,12 @@ export function MessageList() {
       )}
       <SettledMessages
         messages={messages}
-        developer={developer}
         latestUserIndex={latestUserIndex}
         latestAssistantIndex={latestAssistantIndex}
         isRunning={conv.isRunning}
         actions={actions}
       />
-
-      <StreamPartsView parts={streamParts} developer={developer} />
-
+      <StreamPartsView parts={streamParts} />
       <TurnChangesCard />
     </div>
     {userRows.length > 1 ? (
@@ -222,14 +217,12 @@ export function MessageList() {
  */
 export const SettledMessages = memo(function SettledMessages({
   messages,
-  developer,
   latestUserIndex,
   latestAssistantIndex,
   isRunning,
   actions,
 }: {
   messages: DisplayMessage[];
-  developer: boolean;
   latestUserIndex: number;
   latestAssistantIndex: number;
   isRunning: boolean;
@@ -288,7 +281,6 @@ export const SettledMessages = memo(function SettledMessages({
         // is one replacement, not a reshuffle.
         key={message.rowId ?? `${index}-${message.timestamp ?? message.text.slice(0, 12)}`}
         message={message}
-        developer={developer}
         isLatestUser={index === latestUserIndex}
         isLatestAssistant={index === latestAssistantIndex}
         isDuplicateToolCall={duplicateToolCall[index]}
@@ -313,10 +305,8 @@ export const SettledMessages = memo(function SettledMessages({
 
 export function StreamPartsView({
   parts,
-  developer,
 }: {
   parts: StreamPart[];
-  developer: boolean;
 }) {
   const shell = useShell();
   return parts.map((part, index) => {
@@ -324,7 +314,6 @@ export function StreamPartsView({
       return <AssistantBubble key={`sp-${index}`} text={part.text} streaming />;
     }
     if (part.kind === "thinking") {
-      if (!developer && !shell.showThinking) return null;
       return (
         <ThinkingBlock
           key={`sp-${index}`}
@@ -559,14 +548,12 @@ export interface TranscriptActions {
 
 export function TranscriptEntry({
   message,
-  developer,
   isLatestUser,
   isDuplicateToolCall = false,
   isRunning,
   actions,
 }: {
   message: DisplayMessage;
-  developer: boolean;
   isLatestUser: boolean;
   isLatestAssistant?: boolean;
   /** Precomputed by SettledMessages: a later row for an already-shown call. */
@@ -575,7 +562,7 @@ export function TranscriptEntry({
   actions?: TranscriptActions;
 }) {
   const shell = useShell();
-  const { thinkingExpanded, showThinking } = shell;
+  const { thinkingExpanded } = shell;
 
   if (message.role === "user") {
     const replacementEdit = actions?.isReplacementEdit(message.entryId ?? null) ?? false;
@@ -601,7 +588,7 @@ export function TranscriptEntry({
     const stopLine = message.stopReason === "length" ? replyStopLine("length") : null;
     return (
       <>
-        {(developer || showThinking) && message.thinking ? (
+        {message.thinking ? (
           <ThinkingBlock
             text={message.thinking}
             defaultOpen={thinkingExpanded}

@@ -68,14 +68,6 @@ export interface ShellContextValue {
   revealWorkspacePath: (path: string) => void;
   clearWorkspaceRevealPath: () => void;
 
-  /** Whether the participant-mode settings tab is revealed (opt-in, General). */
-  participantTabEnabled: boolean;
-  setParticipantTabEnabled: (on: boolean) => void;
-
-  /** Whether thinking blocks appear at all outside developer view (General). */
-  showThinking: boolean;
-  setShowThinking: (on: boolean) => void;
-
   /** Whether thinking blocks start expanded in the transcript (General). */
   thinkingExpanded: boolean;
   setThinkingExpanded: (on: boolean) => void;
@@ -101,13 +93,11 @@ export interface ShellContextValue {
 
 const ShellContext = createContext<ShellContextValue | null>(null);
 
-const PARTICIPANT_TAB_KEY = "alt-theory-participant-tab";
 const LEFT_COLLAPSED_KEY = "alt-theory-left-collapsed";
 // Below this window width the settings column can no longer hold its widest
 // control row with the rail expanded, so the rail yields (see the window
 // minWidth in electron/main.cjs for the hard floor underneath this).
 const LEFT_COLLAPSE_AT = 800;
-const SHOW_THINKING_KEY = "alt-theory-show-thinking";
 const THINKING_EXPANDED_KEY = "alt-theory-thinking-expanded";
 const DARK_MODE_KEY = "alt-theory-dark-mode";
 const RIGHT_WIDTH_KEY = "alt-theory-right-width";
@@ -221,12 +211,6 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   paneRef.current = pane;
   const [workspaceRevealPath, setWorkspaceRevealPath] = useState<string | null>(null);
   const [rightWidth, setRightWidthState] = useState(() => readStoredRightWidth());
-  const [participantTabEnabled, setParticipantTabState] = useState(() =>
-    readFlag(PARTICIPANT_TAB_KEY)
-  );
-  const [showThinking, setShowThinkingState] = useState(() =>
-    readFlag(SHOW_THINKING_KEY)
-  );
   const [thinkingExpanded, setThinkingExpandedState] = useState(() =>
     readFlag(THINKING_EXPANDED_KEY)
   );
@@ -247,16 +231,6 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const setLeftCollapsed = useCallback((collapsed: boolean) => {
     setLeftCollapsedState(collapsed);
     writeFlag(LEFT_COLLAPSED_KEY, collapsed);
-  }, []);
-
-  const setParticipantTabEnabled = useCallback((on: boolean) => {
-    setParticipantTabState(on);
-    writeFlag(PARTICIPANT_TAB_KEY, on);
-  }, []);
-
-  const setShowThinking = useCallback((on: boolean) => {
-    setShowThinkingState(on);
-    writeFlag(SHOW_THINKING_KEY, on);
   }, []);
 
   const setThinkingExpanded = useCallback((on: boolean) => {
@@ -356,10 +330,6 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       workspaceRevealPath,
       revealWorkspacePath,
       clearWorkspaceRevealPath,
-      participantTabEnabled,
-      setParticipantTabEnabled,
-      showThinking,
-      setShowThinking,
       thinkingExpanded,
       setThinkingExpanded,
       darkMode,
@@ -401,10 +371,6 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       workspaceRevealPath,
       revealWorkspacePath,
       clearWorkspaceRevealPath,
-      participantTabEnabled,
-      setParticipantTabEnabled,
-      showThinking,
-      setShowThinking,
       thinkingExpanded,
       setThinkingExpanded,
       darkMode,

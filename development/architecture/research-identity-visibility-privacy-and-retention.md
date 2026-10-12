@@ -52,11 +52,10 @@ folders are marked in `server.ts` as never to be exposed to other users.
 
 ## Study designation
 
-An install-level participant designation is stored in `app-settings.json`
-as `participant { designated, label }`; absent means the ordinary
-GitHub-download posture. `GET /api/app` returns it. The designation controls
-whether study surfaces render and seeds the export marker's default. It is
-not a claim that the install can upload data.
+The ordinary app has no install-level participant designation or Participant
+settings page. Retired `participant { designated, label }` settings are ignored.
+`GET /api/app` no longer returns them. Existing session research metadata remains
+readable for the researcher workbench; it does not enroll this client in a study.
 
 The session-level research identifier is optional `studyTag { studyId, batch? }`.
 Absent means ordinary daily use. When present, it identifies the session for
@@ -71,8 +70,7 @@ Code: `alt-theory-app/web-server/app-settings.ts`,
 
 `visibility` on `records/session.json` is `exportable` or `no-export`: a
 marker for a future export filter. It hides, uploads and deletes nothing.
-New conversations default to `exportable` on a designated install and to
-`no-export` otherwise. A `no-export` conversation carries a
+New conversations default to `no-export`. A `no-export` conversation carries a
 `consentSnapshot` with research readability and quoting off and
 `privateOverride` set. An old header's hosted value is read as the marker
 the app always showed for it (`research` as `exportable`, `private` as

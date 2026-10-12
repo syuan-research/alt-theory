@@ -42,13 +42,6 @@ export interface AppSettings {
     work: { enabledPaths: string[] | null };
   };
   /**
-   * Install-level participant designation (M7 §3). Local carrier of the
-   * study-designation primitive: set at handout, drives the sharing default
-   * (designated → research, else private) and whether study surfaces render.
-   * Absent = non-participant (the GitHub-download posture).
-   */
-  participant?: { designated: boolean; label: string | null };
-  /**
    * Working folders the user added explicitly (M4). Lets an empty workspace
    * appear in the session list before any conversation exists in it; folders
    * that already host sessions are derived from session summaries instead.
@@ -243,17 +236,6 @@ export function readAppSettingsWithWarning(dataDir: string): {
       skills: {
         work: { enabledPaths: normalizePaths(parsed.skills?.work?.enabledPaths) },
       },
-      ...(parsed.participant
-        ? {
-            participant: {
-              designated: Boolean(parsed.participant.designated),
-              label:
-                typeof parsed.participant.label === "string"
-                  ? parsed.participant.label
-                  : null,
-            },
-          }
-        : {}),
       ...(parsed.sessionListSort &&
       (parsed.sessionListSort.folders === "name" ||
         parsed.sessionListSort.folders === "modified") &&

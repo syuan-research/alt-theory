@@ -290,15 +290,6 @@ function SettingsRail({ hidden }: { hidden?: boolean }) {
     { key: "folders", label: t("Projects and global folders"), icon: "ph-folders" },
     { key: "rolekb", label: t("Role & Knowledge"), icon: "ph-book-open" },
     { key: "skills", label: t("Skills"), icon: "ph-magic-wand" },
-    ...(shell.participantTabEnabled
-      ? [
-          {
-            key: "participant",
-            label: t("Participant mode"),
-            icon: "ph-identification-badge",
-          },
-        ]
-      : []),
     { key: "features", label: t("Help center"), icon: "ph-lifebuoy" },
     { key: "trash", label: t("Trash"), icon: "ph-trash" },
     { key: "about", label: t("About"), icon: "ph-info" },

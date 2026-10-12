@@ -18,7 +18,6 @@ import type {
   SessionSummary,
   TranscriptView,
   ViewMode,
-  ParticipantInfo,
   ConfigStatus,
   RuntimeMode,
 } from "@/api/types";
@@ -65,7 +64,6 @@ export interface AppContextValue {
 
   viewMode: ViewMode;
   toggleViewMode: () => void;
-  participant: ParticipantInfo | null;
   transcriptView: TranscriptView;
 
   discovery: DiscoveryLists | null;
@@ -145,7 +143,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [discovery, setDiscovery] = useState<DiscoveryLists | null>(null);
   const [localConfig, setLocalConfig] = useState<ConfigStatus | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("user");
-  const [participant, setParticipant] = useState<ParticipantInfo | null>(null);
   const [transcriptView, setTranscriptView] = useState<TranscriptView>("user");
 
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -178,7 +175,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const info = await fetchAppInfo();
       setRuntimeMode(info.app?.runtimeMode ?? "alt-theory");
-      setParticipant(info.participant ?? null);
       setLocalConfig(info.localConfig ?? null);
       setDiscovery(await fetchDiscovery());
     } catch {
@@ -482,7 +478,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       loading,
       viewMode,
       toggleViewMode,
-      participant,
       transcriptView,
       discovery,
       refreshDiscovery,
@@ -517,7 +512,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       loading,
       viewMode,
       toggleViewMode,
-      participant,
       transcriptView,
       discovery,
       refreshDiscovery,

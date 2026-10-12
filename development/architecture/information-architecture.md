@@ -336,6 +336,11 @@ surfaces remain designation-gated and absent for everyone else.
     cards — the default for new conversations, commands that run without
     asking, and the smart approval reviewer (auto or a model chain, with the
     dated recommendations) — and auto-naming's model chain.
+    Thinking blocks are always available; **Expand thinking** remains a preference
+    controlling only their initial expansion. Model reminders are enabled by
+    default, with `modelHooks` retained in `data/app-settings.json` for manual
+    configuration and no UI switch. The participant opt-in and settings page
+    have been retired from this client.
   - Models: provider connection, model choice, and model capability correction.
   - Projects and global folders (v1.5.1): two cards. Projects — each its own entity
     with a generated id, an editable name (defaults to the main folder's

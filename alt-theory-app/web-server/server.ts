@@ -1040,9 +1040,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         runtimeMode: settings.runtimeMode ?? "alt-theory",
         nativePiScanAltSkills: settings.nativePiScanAltSkills !== false,
       },
-      // Study designation (M7 §3): the install-level flag. Non-designated
-      // installs get zero study surfaces.
-      participant: settings.participant ?? null,
       localConfig: await getVerifiedConfigStatus(agentConfigDir()),
     });
   });
@@ -2265,9 +2262,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
    * export filter, never an expiry.
    */
   function defaultDraftVisibility(): SessionVisibility {
-    return readAppSettings(dataDir).participant?.designated
-      ? "exportable"
-      : "no-export";
+    return "no-export";
   }
 
   /**

@@ -14,18 +14,11 @@ export function isWithheld(visibility: SessionVisibility | undefined): boolean {
 
 export type TranscriptView = "user" | "developer";
 
-/** Install study designation — the only signal for study surfaces. */
-export interface ParticipantInfo {
-  designated: boolean;
-  label: string | null;
-}
-
 export interface AppInfoResponse {
   app: {
     runtimeMode: RuntimeMode;
     nativePiScanAltSkills: boolean;
   };
-  participant: ParticipantInfo | null;
   localConfig: ConfigStatus | null;
 }
 

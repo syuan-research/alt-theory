@@ -131,8 +131,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const canSend =
     interactive &&
     (hasText || conv.stagedWorkspacePaths.length > 0);
-  const showVisibility =
-    app.participant?.designated === true || app.viewMode === "researcher";
+  const showVisibility = app.viewMode === "researcher";
   const withheld = isWithheld(conv.selectors.visibility);
 
   /**
