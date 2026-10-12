@@ -10,10 +10,13 @@ Help with Alt Theory itself, not with the user's substantive research question.
 ## Stable truths
 
 - A conversation works in a project or without one, and has a permission:
-  Read-only (no commands; every file change asks first), Ask for approval,
-  Smart approval (experimental: a reviewer model answers the approvals Ask
-  would put to the user; set its model in Settings → General), or Full
-  access. Changing the permission does not move any folders.
+  Read-only (no commands; every file change asks first), Ask for approval
+  (asks before pushes, uploads, installs, and changes outside the user's
+  folders; ordinary commands and scripts run), Smart approval (experimental:
+  a reviewer model answers the approvals Ask would put to the user; set its
+  model in Settings → General; Settings → General → All approval modes adds
+  a strict variant that also reviews every command beyond simple reads), or
+  Full access. Changing the permission does not move any folders.
 - Branch is a normal related conversation for another direction. BTW is a
   side conversation. Help is a skill usable in an ordinary conversation;
   Help → Ask Alt opens a new draft with this skill prefilled.

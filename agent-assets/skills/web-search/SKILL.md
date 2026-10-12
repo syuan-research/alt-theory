@@ -38,8 +38,8 @@ abstracts, not full text — for full text see the page-fetch skill
 
 ## Setup
 
-Requires the `ddgs` CLI: `uv tool install ddgs` (helper flow confirms with
-the user before installing). The academic endpoints need only `curl`,
+Requires the `ddgs` CLI: `uv tool install ddgs` (the alt-theory-help setup
+procedure says when to confirm with the user first). The academic endpoints need only `curl`,
 which is always present.
 
 If the user has installed their own search skill, defer to it.

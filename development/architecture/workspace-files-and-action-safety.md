@@ -86,6 +86,10 @@ the runtime policy layer):
 - `project-secondary` — a companion folder of the project whose main folder
   is the session's primary working folder (the same Settings page, v1.5.1:
   the one folder mechanism); readable and writable.
+- `task-temp` — the system temp folder (`os.tmpdir()`, and `/tmp` outside
+  Windows, each with its real path; 2026-10-12): readable and writable, so a
+  download or conversion there reads back without a prompt. Wiping the temp
+  folder itself is braked like a project root (below).
 
 Both come from `app-settings.json` (`workingFolders`; `folderPolicyFor` in
 `web-server/app-settings.ts`) and are read live at every root check through
@@ -252,40 +256,78 @@ owns the session-specific roots, approval state, and audit sink around that Pi
 hook. See [`alt-theory-core.ts`](../../alt-theory-app/core/alt-theory-core.ts).
 
 Every tool call ends in one of three outcomes (the shared approval boundary,
-2026-09-26):
+2026-09-26; shell commands reworked 2026-10-12):
 
 - **refused** — destructive/system commands (`sudo`, `dd`, `mkfs`, …),
-  credential paths, cloud-metadata network destinations, obfuscated
-  commands, the accident guardrails below, writes into `.git/`, and writes
-  into Alt Theory's data folder outside the conversation's own workspace;
-- **passes without review** — read-only tools inside the readable roots,
-  `edit`/`write` inside the writable roots, a narrow set of read-only shell
-  commands over readable paths (`ls`, `cat`, `grep`, `find` without
-  `-delete`/`-exec`, `git status`/`log`/`diff`/`show`, `mkdir` inside the
-  writable roots, and similar; plain pipes and `&&`/`;` chains of them), and
-  the user's command-prefix allowlist (`commandAllowlist`, Settings >
-  General). Output redirection, command substitution, and background jobs
-  never pass;
-- **reviewed** — everything else: scripts and other commands, reads and
-  writes outside the roots, work-discarding git commands (`reset --hard`,
+  credential paths for the file tools, cloud-metadata network destinations,
+  obfuscated commands, the accident guardrails below, file-tool writes into
+  `.git/`, and writes into Alt Theory's data folder outside the
+  conversation's own workspace;
+- **reviewed** — reads and writes outside the roots, and for shell commands
+  what a command visibly does: work-discarding git (`reset --hard`,
   `clean -f`, forced push, `branch -D`, discarding `checkout`/`restore`,
-  `stash clear|drop`), and database files (`.sqlite`, `.db`, `.duckdb`,
-  `.accdb`, …) even inside the roots or in an allowlisted command. Ask puts
-  the review to the user; smart approval to the reviewer model (below).
+  `stash clear|drop`, deleting `.git`) and other writes into `.git`; a write
+  or read outside the roots (redirections, `cp`/`mv`/`rm`/`tee`/`sed -i`
+  targets, download outputs, the path arguments of read-only programs such
+  as `cat`); a database file (`.sqlite`, `.db`, `.duckdb`, `.accdb`, …)
+  changed by `write`/`edit` or a visible shell write, even inside the roots;
+  a credential store a command names; an ordinary `git push`; a visible
+  upload or publish (`curl -T`/`-F file=@`, `scp`/`rsync` to a remote,
+  `gh release create|upload`, `npm publish`, `twine upload`, …); and an
+  install into the computer (`pip install` outside a virtual environment,
+  global `npm`/`pnpm`/`yarn`, `brew`, `winget`, `choco`, `scoop`, `conda`,
+  `pipx`, `uv tool`, `cargo`, `gem`, `go install`). Ask puts the review to
+  the user; smart approval to the reviewer model (below);
+- **passes without review** — everything else: read-only tools inside the
+  readable roots, `edit`/`write` inside the writable roots, and any other
+  shell command — an unknown program, a script, a pipe, a redirect into the
+  roots. What a script does inside is not seen; the boundary reads only the
+  command line.
 
-"Allow for this conversation" lets a matching later command through in the
-same conversation, keyed by the command names (network commands also by
-destination host); work-discarding git offers only Allow once. The grants
-(command keys, read-outside and database-file keys, and approved write
-folders) are persisted by the core in the conversation's
-`records/approvals.json` and reloaded by every assembly, so they survive a
-released runtime, a replacement and a restart (Owner ruling R1, 2026-09-26;
-the dialog says "also after restart"). Switching to read-only clears them
-all; moving the conversation to another main folder drops the path grants
-and keeps the command grants (`dropPathApprovals`). The extension only holds
-the set it is given and reports additions. The
-boundary is `core/approval-boundary.ts`; the fast pass follows
-pi-auto-approval's shape, widened to read-only file commands.
+Shell commands are read from a syntax tree
+([`shell-evidence.ts`](../../alt-theory-app/core/shell-evidence.ts), over
+the vendored pure-TypeScript bash parser from Kimi Code in
+`core/bash-parser/`): each program it runs (through wrappers such as `env`,
+`nice`, `timeout`, `sudo`, and inside `bash -c`, `eval` and command
+substitutions), the folders it may run in (`cd` moves the commands after it
+within its scope; after a conditional `cd` both folders count), and its
+redirections; quoted text and quoted heredocs are data. Code handed to
+PowerShell (`powershell -Command`, `-EncodedCommand`) goes through
+[`powershell-evidence.ts`](../../alt-theory-app/core/powershell-evidence.ts):
+a parser seam (`PowerShellParser`) whose reading is mapped onto the same
+commands (Remove-Item → rm, Set-Content → a write, Invoke-WebRequest
+-InFile → an upload, Set-Location → cd); the light reader there is used when
+no native parser is configured or it fails. `cmd /c` gets a light reading.
+A parse that runs out of budget is reviewed. The policy over these facts is
+[`approval-boundary.ts`](../../alt-theory-app/core/approval-boundary.ts).
+
+"Allow for this conversation" covers the targets the dialog names, one
+"Needs approval:" line each: a push grant covers that repository's remote
+(read from the command, else the branch's upstream in `.git/config`), an
+upload grant that host, an install grant that package manager, a
+read grant that folder and the folders inside it, a database grant that
+file; a shell write outside the roots offers the folder itself, which
+becomes an approved writable root as with the file tools. Work-discarding
+git and `.git` writes offer only Allow once. The user's command-prefix
+allowlist (`commandAllowlist`, Settings > General) passes pushes, uploads
+and installs it matches, never the brakes or the git, database and
+outside-folder checks. The grants (target keys and approved write folders)
+are persisted by the core in the conversation's `records/approvals.json` and
+reloaded by every assembly, so they survive a released runtime, a
+replacement and a restart (Owner ruling R1, 2026-09-26; the dialog says
+"also after restart"). Switching to read-only clears them all; moving the
+conversation to another main folder drops the path grants and keeps the
+others (`dropPathApprovals`). The extension only holds the set it is given
+and reports additions.
+
+An approval nobody answers within five minutes, or one cancelled with its
+runtime, blocks the call with a timeout reason instead of "not approved by
+the user": the first in a row says the user may be away and the agent may
+try again later; the next ones say to continue with work that needs no
+approval or stop. The count is per run and starts over when the user answers
+any approval; the dialog for messages between conversations shares it
+(`ApprovalBridge` reports how each dialog ended through the caller's
+`onResolution`).
 
 **Accident guardrails.** Two checks hold under every permission, Full access
 included, and the refusal tells the agent to leave it to the user: deleting
@@ -294,13 +336,12 @@ or moving (`rm`, `rmdir`, `unlink`, `trash`, `mv`, unfiltered `find
 filesystem or a drive root, the home folder or its major folders (Desktop,
 Documents, Downloads, Library, Pictures, Movies, Music, the iCloud and
 cloud-storage roots), the project's folders — or any folder containing one
-of those, `*` included; and changing a system folder (`/System`, `/usr`,
+of those, `*` included (a temp root counts as such a folder); and changing a
+system folder (`/System`, `/usr`,
 `/bin`, `/sbin`, `/etc`, `/Library`, `/Applications`, and the Windows and
 Program Files folders) by `write`/`edit` or by a command's visible write
-targets. Both read the command heuristically — they follow `cd` within a
-command and look inside `bash -c '…'` and command substitutions — and a
-spelling they cannot see through (a script, a variable) falls to the normal
-boundary.
+targets. Both read the command's syntax tree as above, and a spelling they
+cannot see through (a script, a variable) falls to the normal boundary.
 They guard against a well-meaning agent's accidents, not a deliberate
 attacker.
 
@@ -321,14 +362,21 @@ project. It has four values:
 - **Ask for approval** — the default posture described on this page; reviews
   go to the user.
 - **Smart approval** (experimental) — the same boundary; reviews go to a
-  reviewer model (below).
+  reviewer model (below). Its strict variant (2026-10-12) also reviews every
+  shell command beyond the narrow read-only fast pass (`strictFastPass`:
+  `ls`, `cat`, `grep`, `find` without `-delete`/`-exec`, read-only `git`,
+  `mkdir` inside the roots and the like over readable paths, plain pipes and
+  chains, plus the allowlist; no redirection, substitution or background
+  job). The menu offers it only with Settings > General > "All approval
+  modes (advanced)" on (`showAllApprovalModes`), or on a conversation
+  already using it.
 - **Full access** — no agent-tool mediation except the two accident
   guardrails (below).
 
 It is stored as per-session fields: the mode (`AltMode`,
 `"read-only" | "work"`), Full Access (`fullAccess`), and smart approval
-(`smartApproval`); Ask is `work` with neither, and Full wins when both are
-stored. The client reads them as one value (`permissionOf` in
+(`smartApproval`: `true`, or `"strict"` for the strict variant); Ask is
+`work` with neither, and Full wins when both are stored. The client reads them as one value (`permissionOf` in
 `frontend/src/lib/conversation.ts`) and a choice sends only the fields that
 change. Stored modes from before 2026-09-25 (`understand`, and
 the v1-alpha `pure`/`full`) read as `work` (`toAltMode`); the Understand and
@@ -361,7 +409,8 @@ to Read-only mediates at once (`holdReadOnly`): shell calls are refused, each
 write asks, and Full Access is off; the tool set follows at the turn's end. Derived conversations —
 subagents, branches, BTW, A/B arms — inherit the parent's mode at
 birth and never Full Access; a child of a smart-approval or Full parent
-starts on smart approval (`inheritsSmartApproval`), so the inherited
+starts on smart approval (`inheritsSmartApproval`; a strict parent's child
+on strict, a Full parent's on ordinary smart approval), so the inherited
 permission is at most smart approval;
 `spawn_agent` may ask for a read-only child (`clampSubagentMode`), A/B arms
 are read-only, and a later change on the parent does not reach existing
@@ -376,7 +425,8 @@ Full Access. See
 ### Smart approval
 
 Smart approval (2026-09-26) is stored in the session header like Full Access
-(`smartApproval: true`, absent when off; traced as `smart_approval_changed`),
+(`smartApproval: true` or `"strict"`, absent when off; traced as
+`smart_approval_changed`),
 local only, dormant under Read-only, and switched immediately in both
 directions — the reviewer only answers where the user would otherwise be
 asked. For each reviewed action the security extension calls the session
@@ -389,10 +439,11 @@ readable roots. The prompt treats all of it as untrusted evidence that only
 user messages can authorize, and asks for strict JSON `allow | deny` with a
 reason.
 
-- **Allow** — the action runs; the exact action (tool, cwd, input) is not
-  reviewed again in this conversation (in memory only), except
-  work-discarding git and writes outside the roots, which are reviewed
-  every time. A write outside the
+- **Allow** — the action runs; the exact action (variant, tool, cwd, input)
+  is not reviewed again in this conversation (in memory only), except
+  work-discarding git, `.git` writes and file-tool writes outside the roots,
+  which are reviewed every time. A grant the user gave for the conversation
+  (under Ask, before switching) is honoured first, without the reviewer. A write outside the
   roots passes that one file (`allowWriteOnce`), not the folder. The verdict
   rides on the tool result's `details.altApproval`, so the tool row shows
   "Smart approval: allowed · reason"; the model never sees it.
@@ -509,9 +560,14 @@ in
   symlinked workspace read escalating like the matching write.
 - [`approval-boundary.test.ts`](../../alt-theory-app/core/approval-boundary.test.ts)
   and [`security-extension.test.ts`](../../alt-theory-app/core/security-extension.test.ts)
-  cover the fast pass, the allowlist, the four guardrails (the two brakes
-  also under Full), the data folder, and smart approval's allow, deny,
-  three-denial brake, unavailable hand-over, and single outside write;
+  cover what passes and what is reviewed, the grants per target, the
+  allowlist, the four guardrails (the two brakes also under Full, a temp
+  root included), the data folder, timeouts versus denials, the strict
+  variant's fast pass, and smart approval's allow, deny, three-denial brake,
+  unavailable hand-over, user grants first, and single outside write;
+  [`shell-evidence.test.ts`](../../alt-theory-app/core/shell-evidence.test.ts)
+  the command reading (quotes, newlines, `cd` scope, wrappers, nested
+  shells, PowerShell and cmd hand-offs, the parser seam's fallback);
   [`approval-reviewer.test.ts`](../../alt-theory-app/core/approval-reviewer.test.ts)
   the reviewer's material and strict parse; and
   [`smart-approval.test.ts`](../../alt-theory-app/web-server/smart-approval.test.ts)

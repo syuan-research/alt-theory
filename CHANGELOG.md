@@ -27,23 +27,31 @@ detail lives in commit history and `development/`.
 
 ### Approvals
 
-- **Ask for approval asks about more.** Simple read-only commands (listing
-  files, reading them, searching, `git status`) still run straight away, as
-  do file changes inside your folders. Other commands — running a script,
-  for example — now ask first; before, only a short list of risky commands
-  did. Settings > General > "Commands that run without asking" lets you add
-  commands you trust, such as `npm test`.
+- **Ask for approval asks about the actions that matter.** Commands,
+  scripts and file changes in your folders — and in the system's temporary
+  folder, where conversions often land — run straight away. Alt asks before
+  it pushes to a remote, uploads or publishes files, installs software on
+  your computer, reads or changes files outside your folders, or changes a
+  database file. "Allow for this conversation" covers what the question
+  names: that remote, that website, that installer, that folder. What a
+  script does inside is not checked.
+- Settings > General > "Commands that run without asking": pushes, uploads
+  and installs that start with one of these lines run without asking.
+- If nobody answers an approval within five minutes, Alt is told you may be
+  away rather than that you said no, and works on without it or waits.
 - **Smart approval** (experimental) asks a model instead of you. When it
   refuses, Alt gets the reason and adjusts or asks you in the conversation.
   If the model cannot answer, the question comes to you as usual. Choose the
   model, with backups, in Settings > General; it starts with this
   conversation's own model, and recommended models are listed with the date
   the list was last updated. Each decision and its reason shows on the tool
-  line in the conversation.
+  line in the conversation. Settings > General > "All approval modes
+  (advanced)" adds **Strict smart approval**, where the model also checks
+  every command beyond simple reads.
 - **Brakes against accidents.** Under every permission, including Full
   access, Alt will not delete or move your home folder, Desktop, Documents,
-  Downloads and similar folders, a whole disk, or the project folder itself,
-  and will not change system folders. Outside Full access, it also won't edit
+  Downloads and similar folders, a whole disk, the project folder itself or
+  the whole temporary folder, and will not change system folders. Outside Full access, it also won't edit
   a repository's `.git` folder directly, always asks before git commands that
   throw away work (such as `git reset --hard` or a forced push), asks before
   changing database files, and cannot write into Alt Theory's own records.

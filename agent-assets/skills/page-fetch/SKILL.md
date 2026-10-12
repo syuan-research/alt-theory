@@ -40,6 +40,6 @@ the public, that is what you will get. Say so rather than padding the gap.
 
 Base: `uv tool install "scrapling[fetchers,shell]"`.
 Protected tier additionally needs `scrapling install` — a large browser
-download; the helper flow must confirm with the user before running it.
+download; follow the alt-theory-help setup procedure before running it.
 
 If the user has installed their own fetching/scraping skill, defer to it.

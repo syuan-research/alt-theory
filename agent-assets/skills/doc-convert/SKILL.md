@@ -26,12 +26,13 @@ document, work on a copy and summarize your changes in plain language —
 the user's own file is theirs alone.
 
 Formats needing generation libraries (docx/pptx/xlsx writing) may require
-installing dependencies — go through the helper flow, never install
-silently.
+installing dependencies — follow the alt-theory-help setup procedure,
+never install silently.
 
 ## Setup
 
-`uv tool install "markitdown[all]"` (helper flow confirms first).
+`uv tool install "markitdown[all]"` (the alt-theory-help setup procedure
+says when to confirm first).
 
 If the user has installed their own document skill (e.g. a docx or xlsx
 skill), defer to it — it is likely richer than this one.

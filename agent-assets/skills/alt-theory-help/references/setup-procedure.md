@@ -1,14 +1,16 @@
 # Setup procedure
 
-Use this when the user wants Helper to perform setup, not merely explain it,
-and the conversation can act.
+Use this when the user wants setup performed, not merely explained, and the
+conversation can act.
 
 1. Read the exact setup instructions from the relevant current documentation
    or bundled skill. Do not improvise install commands from memory.
 2. In one or two plain sentences, say what will be installed, what it enables,
    and roughly how large it is.
-3. Ask before installing. If the user declines, accept that and give the
-   no-install alternative when one exists.
+3. When the user asked for this install, go ahead: under Ask the approval
+   dialog is their confirmation. When the install is your own suggestion,
+   ask in the conversation first; if the user declines, accept that and give
+   the no-install alternative when one exists.
 4. Install, then verify with the smallest meaningful check.
 5. Report what succeeded or failed without hiding a partial result.
 

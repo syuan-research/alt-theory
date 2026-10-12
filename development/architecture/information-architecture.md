@@ -82,7 +82,9 @@ surfaces remain designation-gated and absent for everyone else.
     about its normal tools.
   - The composer's shield holds the conversation's **permission** (Read-only,
     Ask for approval, Smart approval — marked experimental, naming which model
-    reviews — and Full access; local only). While a conversation is on smart
+    reviews — and Full access; local only; Strict smart approval joins them
+    with Settings > General > "All approval modes (advanced)", and stays
+    listed on a conversation already using it). While a conversation is on smart
     approval with the auto reviewer, a line above the composer says so, with
     a way to Settings and "Don't show again". The first-level paperclip
     adds a file by copy (into the conversation's folder, converted to text for
@@ -340,8 +342,9 @@ surfaces remain designation-gated and absent for everyone else.
     scrolling the menu's own anchor pane still dismisses them.
 - **Settings**
   - General: app behavior and ordinary preferences, including the permission
-    cards — the default for new conversations, commands that run without
-    asking, and the smart approval reviewer (auto or a model chain, with the
+    cards — the default for new conversations (with the "All approval modes
+    (advanced)" switch), commands that run without asking, and the smart
+    approval reviewer (auto or a model chain, with the
     dated recommendations) — and auto-naming's model chain.
     Thinking blocks are always available; **Expand thinking** remains a preference
     controlling only their initial expansion. Model reminders are enabled by
