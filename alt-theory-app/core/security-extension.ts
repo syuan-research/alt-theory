@@ -662,9 +662,11 @@ function isBlockedHost(hostname: string): boolean {
 }
 
 /** @vtstech/pi-security homoglyph check: invisible characters that change the
- * NFKC normalization outcome indicate an obfuscated command. */
+ * NFKC normalization outcome indicate an obfuscated command. Tab, newline and
+ * carriage return stay: the shell splits words and commands on them, so
+ * stripping them would check (and show for approval) a different command. */
 const INVISIBLE_CHARS =
-  /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\ufeff\u2060-\u2069]/g;
+  /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\ufeff\u2060-\u2069]/g;
 
 function hasUnicodeVariance(command: string): boolean {
   const normalizedThenStripped = command

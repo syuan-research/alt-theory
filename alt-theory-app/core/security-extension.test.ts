@@ -151,6 +151,19 @@ test("guardrails ① and ④ hold under Full; ② and ③ do not", async () => {
   assert.equal(h.asked.length, 0);
 });
 
+test("a multi-line command is checked line by line, as the shell runs it", async () => {
+  const h = harness();
+  h.answer("Deny");
+  assert.equal((await h.call("bash", { command: "cat notes.md\ngit push origin main" }))?.block, true);
+  assert.equal(h.asked.length, 1, "the push on the second line asks");
+  assert.match(h.asked[0].title, /cat notes\.md\ngit push origin main/, "the dock shows the command as written");
+  assert.equal((await h.call("bash", { command: "printf x\nrm -rf ." }))?.block, true);
+  assert.equal(await h.call("bash", { command: "ls\tsrc" }), undefined, "a tab still separates words");
+  assert.equal(h.asked.length, 1);
+  const full = harness({ full: true });
+  assert.equal((await full.call("bash", { command: "cd ~\nrm -rf Documents" }))?.block, true);
+});
+
 test("Windows: Full still blocks direct and visible shell writes to system folders", { skip: process.platform !== "win32" }, async () => {
   const h = harness({ full: true });
   const windows = "C:\\Windows\\alt-theory-test-never-create.txt";
