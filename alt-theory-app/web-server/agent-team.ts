@@ -131,6 +131,11 @@ export const SUBAGENT_PROMPT_SECTION = [
 // Tool definitions
 // ---------------------------------------------------------------------------
 
+/** What spawn_agent records about the child it created. */
+export interface SpawnResultDetails {
+  sessionId: string;
+}
+
 const text = (value: string) => ({
   content: [{ type: "text" as const, text: value }],
   details: undefined,
@@ -186,7 +191,7 @@ export function createAgentTeamTools(
   availableRoles: string[] = [],
 ): ToolDefinition<any, any>[] {
   const parameters = spawnSchema(availableRoles);
-  const spawnAgent: ToolDefinition<typeof parameters, undefined> = {
+  const spawnAgent: ToolDefinition<typeof parameters, SpawnResultDetails> = {
     name: "spawn_agent",
     label: "Spawn subagent",
     description:
@@ -201,7 +206,9 @@ export function createAgentTeamTools(
         model: params.model,
         permission: params.permission,
       });
-      return text(spawned.report);
+      // The child's id rides on the result's details (never shown to the
+      // model): a branch finds the subagents on its path by it.
+      return { ...text(spawned.report), details: { sessionId: spawned.sessionId } };
     },
   };
 

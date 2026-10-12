@@ -146,6 +146,7 @@ import { describeChildOutcome, type ChildOutcome } from "./child-outcome.js";
 import {
   clampSubagentMode,
   spawnedSessionId,
+  type SpawnResultDetails,
   inheritsSmartApproval,
   createAgentTeamTools,
   LEAD_DELEGATION_PROMPT_SECTION,
@@ -4231,16 +4232,21 @@ export class SessionService implements AgentTeamBridge {
   /**
    * Session ids named by spawn_agent results on a session's active Pi path;
    * the path survives compaction, so a branch keeps its subagents after one.
+   * The id is the result's details; results written before 2026-10-12 carry
+   * it only in the report text.
    */
   private subagentsSpawnedOnPath(sessionId: string): Set<string> {
     const ids = new Set<string>();
     const managed = this.sessions.get(sessionId);
     if (!managed) return ids;
     for (const entry of managed.session.sessionManager.getBranch()) {
-      const message = (entry as { message?: { role?: string; toolName?: string; content?: unknown } })
-        .message;
+      const message = (
+        entry as {
+          message?: { role?: string; toolName?: string; content?: unknown; details?: Partial<SpawnResultDetails> };
+        }
+      ).message;
       if (message?.role !== "toolResult" || message.toolName !== "spawn_agent") continue;
-      const id = spawnedSessionId(contentToText(message.content));
+      const id = message.details?.sessionId ?? spawnedSessionId(contentToText(message.content));
       if (id) ids.add(id);
     }
     return ids;

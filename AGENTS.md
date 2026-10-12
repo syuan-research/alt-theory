@@ -116,6 +116,10 @@ agents mistake them for in-progress work.
 ### Current branch status
 
 - `main` — active product line.
+- `archive/runtime-panel-spawn-details` — merged into main (researcher
+  Runtime rail and its approval-marker plumbing removed; spawn_agent
+  records the child's id in its result details, the report text stays the
+  fallback for older results; owner 2026-10-12); archived after the merge.
 - `archive/agent-mail-contacts` — merged into main (send_to_agent reaches
   any conversation by Session ID: lead and own subagents free both ways;
   other pairs need approval — 5 messages each way, always, or deny; Full

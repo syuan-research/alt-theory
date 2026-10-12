@@ -1457,3 +1457,40 @@ test("peer mail is framed as another conversation's and cannot close its frame",
   assert.equal(fragment.match(/<\/agent-team-mail>/g)?.length, 1, "only the real closing tag");
   assert.equal(parseAgentMailFragment(fragment)?.fromLabel, "Data (Session ID x)");
 });
+
+test("spawn_agent records the child's id in details, and a branch finds it there whatever the report says", async () => {
+  const spawnTool = createAgentTeamTools(
+    { spawnSubagent: async () => ({ report: "Spawned", sessionId: "child-1" }) } as never,
+    "s1",
+    "lead",
+  ).find((tool) => tool.name === "spawn_agent")!;
+  const result = await spawnTool.execute("call", { message: "go" } as never, undefined as never, undefined as never, undefined as never);
+  assert.deepEqual(result.details, { sessionId: "child-1" });
+
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  try {
+    const parent = await service.createSession(SELECTORS);
+    const parentManaged = managedOf(service, parent.sessionId);
+    stubEchoPrompt(parentManaged, "planning");
+    await service.runPrompt(parent.sessionId, "plan").completion;
+    const child = await service.createSession(SELECTORS, {
+      forkedFrom: { sessionId: parent.sessionId, purpose: "subagent" },
+    });
+    const forkPoint = parentManaged.session.sessionManager.appendMessage({
+      role: "toolResult",
+      toolCallId: "call-reworded",
+      toolName: "spawn_agent",
+      content: [{ type: "text", text: "A reworded report that names no session." }],
+      details: { sessionId: child.sessionId },
+      isError: false,
+      timestamp: Date.now(),
+    });
+    const branch = await service.forkSession(parent.sessionId, "fork", forkPoint, undefined, {
+      exactForkPoint: true,
+    });
+    assert.match(await service.listSubagents(branch.sessionId), new RegExp(child.sessionId));
+  } finally {
+    await service.disposeAll();
+  }
+});
