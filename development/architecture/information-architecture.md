@@ -234,8 +234,10 @@ surfaces remain designation-gated and absent for everyone else.
     Deleting conversations drops their targets from the view (it shows the
     rail's list), from each rail's memory and from the way back.
   - A Related conversation uses the same history, live thinking/tool rendering,
-    approvals, skills, and slash commands as the center. It exposes model and
-    role; the permission control is omitted only because the rail is narrow.
+    approvals, skills, and slash commands as the center. Role stays above the
+    composer; model and permission sit in its bottom toolbar. Both panes share
+    the permission picker and toolbar width rules: permission labels fold below
+    460px and model labels below 360px, retaining their icons.
   - A pending approval in another conversation produces one global notice on
     every surface, including Settings. The notice does not approve in place: it
     returns to the owner. Roots and Branches open in the center; BTW, Helper, and
@@ -452,8 +454,8 @@ Fetch.
   the conversation area.
 - Main and related composers stay **visually the same card height** when
   side-by-side. Related is a compact variant of the same conversation surface:
-  it keeps slash commands, skills, model, and role; the permission control is
-  hidden for space. Both composers grow with their text up to about eight
+  it keeps slash commands, skills, model, role, and permission. Both composers
+  grow with their text up to about eight
   lines and re-measure when their width changes.
 - v6 serve uses static `web-server/public-v6` — frontend source changes require
   `npm run build:frontend-v6` before they appear in `dev:web` / `dev:web:local`.

@@ -6,6 +6,8 @@ import { useShell } from "@/context/ShellContext";
 import { PendingMark } from "@/components/ui/PendingMark";
 import { ApprovalDock } from "@/components/conversation/ApprovalDock";
 import { ModelChip } from "@/components/conversation/ModelChip";
+import { PermissionChip } from "@/components/conversation/PermissionChip";
+import { useComposerRow } from "@/components/conversation/useComposerRow";
 import { ContextRing } from "@/components/conversation/ContextRing";
 import { QueuedCards } from "@/components/conversation/QueuedCards";
 import { ContinueButton, hasRunNotes, NoticeLine, RunStatusSlot } from "@/components/conversation/RunNotes";
@@ -18,15 +20,8 @@ import { WORKSPACE_PATH_MIME } from "@/lib/workspace";
 import { isWithheld, type SessionVisibility } from "@/api/types";
 import { t } from "@/i18n";
 import { useAutosizeTextarea } from "@/lib/autosizeTextarea";
-import { dismissApprovalHint, modelReferenceLabel, useApprovalReviewer } from "@/lib/approvalReviewer";
+import { dismissApprovalHint, useApprovalReviewer } from "@/lib/approvalReviewer";
 import { runPhaseLabels } from "@/lib/runState";
-import {
-  PERMISSIONS,
-  PERMISSION_DETAIL,
-  PERMISSION_ICON,
-  PERMISSION_LABEL,
-  fullAccessConsequences,
-} from "@/lib/permission";
 
 type MenuKey = "model" | "role" | "kb" | "presetcfg" | "perm" | null;
 const SHOW_HELP_STARTERS = false;
@@ -66,16 +61,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   };
   const [fileDragOver, setFileDragOver] = useState(false);
   const rowRef = useRef<HTMLDivElement>(null);
-  // The toolbar never wraps (smart-approval M4): as the composer narrows the
-  // permission name, then the model name, fold into their icons.
-  const [rowWidth, setRowWidth] = useState(Infinity);
-  useEffect(() => {
-    const row = rowRef.current;
-    if (!row) return;
-    const observer = new ResizeObserver(([entry]) => setRowWidth(entry.contentRect.width));
-    observer.observe(row);
-    return () => observer.disconnect();
-  }, []);
+  const rowClassName = useComposerRow(rowRef);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Grow with content up to the CSS max-height (~8 lines), then scroll.
@@ -669,7 +655,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             }}
           />
           <div
-            className={`row${rowWidth < 460 ? " narrow" : ""}${rowWidth < 360 ? " tiny" : ""}`}
+            className={rowClassName}
             ref={rowRef}
           >
             {/* commands and skills: opens the / palette, same as typing / */}
@@ -684,71 +670,11 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             >
               <i className="ph ph-magic-wand" />
             </button>
-            <span className="perm-anchor">
-              <button
-                className={`flat${conv.permission === "full" ? " perm-on" : ""}`}
-                data-tip={t("Permission: {name}", { name: PERMISSION_LABEL[conv.permission]() })}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggle("perm");
-                }}
-              >
-                <i className={`ph ${PERMISSION_ICON[conv.permission]}`} />
-                <span className="perm-label">{PERMISSION_LABEL[conv.permission]()}</span>
-                <PendingMark
-                  when={
-                    conv.pendingChanges.fullAccess !== undefined ||
-                    conv.pendingChanges.mode !== undefined
-                  }
-                />
-              </button>
-              <div
-                className={`menu${menu === "perm" ? " on" : ""}`}
-                onClick={(e) => e.stopPropagation()}
-              >
-                {PERMISSIONS.map((permission) => (
-                  <div
-                    key={permission}
-                    className="mi"
-                    onClick={() => {
-                      setMenu(null);
-                      if (permission === conv.permission) return;
-                      // Full goes through the standard confirm window;
-                      // lowering is immediate, no confirmation.
-                      if (permission !== "full") {
-                        conv.setPermission(permission);
-                        return;
-                      }
-                      app.requestConfirm({
-                        message: t("Enable full access?"),
-                        details: fullAccessConsequences(),
-                        confirmLabel: t("Enable full access"),
-                        onConfirm: () => conv.setPermission("full"),
-                      });
-                    }}
-                  >
-                    <i
-                      className={`ph ${PERMISSION_ICON[permission]}${permission === "full" ? " perm-warn-icon" : ""}`}
-                    />
-                    <span>
-                      {PERMISSION_LABEL[permission]()}
-                      {permission === "smart" ? <span className="exp-tag">{t("Experimental")}</span> : null}
-                      <span className="d">{PERMISSION_DETAIL[permission]()}</span>
-                      {permission === "smart" ? (
-                        <span className="d">
-                          {reviewer?.reviewer
-                            ? t("Reviews with {model}", { model: modelReferenceLabel(reviewer.reviewer.model) })
-                            : t("Reviews with this conversation's model at low thinking; each review is an extra call to it")}
-                        </span>
-                      ) : null}
-                    </span>
-                    {conv.permission === permission ? (
-                      <i className="ph ph-check check" />
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            </span>
+            <PermissionChip
+              open={menu === "perm"}
+              onToggle={() => toggle("perm")}
+              onClose={() => setMenu(null)}
+            />
             {/* First-level attach, in every conversation. */}
             {canAttach ? (
               <>

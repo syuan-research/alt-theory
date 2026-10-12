@@ -16,6 +16,8 @@ import { t } from "@/i18n";
 import { ApprovalDock } from "@/components/conversation/ApprovalDock";
 import { SettledMessages, StreamPartsView } from "@/components/conversation/MessageList";
 import { ModelChip } from "@/components/conversation/ModelChip";
+import { PermissionChip } from "@/components/conversation/PermissionChip";
+import { useComposerRow } from "@/components/conversation/useComposerRow";
 import { QueuedCards } from "@/components/conversation/QueuedCards";
 import { ContinueButton, hasRunNotes, NoticeLine, RunStatusSlot } from "@/components/conversation/RunNotes";
 import { SlashPalette, useSlashCommands, useSlashPalette } from "@/components/conversation/SlashPalette";
@@ -77,8 +79,10 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
   // Grow with content like the main composer (CSS max-height caps it).
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   useAutosizeTextarea(textareaRef, draft);
-  const [menu, setMenu] = useState<"role" | "model" | null>(null);
+  const [menu, setMenu] = useState<"role" | "model" | "perm" | null>(null);
   const ctxLineRef = useRef<HTMLDivElement>(null);
+  const rowRef = useRef<HTMLDivElement>(null);
+  const rowClassName = useComposerRow(rowRef);
   const developer = app.transcriptView === "developer";
   const { messages, isRunning: running } = conversation;
   // A role chosen mid-run renders as the chosen value plus the pending mark
@@ -90,12 +94,12 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
   const earlier = useEarlierRows(messagesRef, messages, conversation);
   useFindTarget(messagesRef, earlier.findSpec);
 
-  // Role/model menus close on any click outside the context line (same
-  // pattern as the main Composer).
+  // The role lives above the editor; model and permission live in its toolbar.
   useEffect(() => {
     if (!menu) return;
     const onDoc = (event: MouseEvent) => {
-      if (!ctxLineRef.current?.contains(event.target as Node)) setMenu(null);
+      const anchor = menu === "role" ? ctxLineRef.current : rowRef.current;
+      if (!anchor?.contains(event.target as Node)) setMenu(null);
     };
     document.addEventListener("click", onDoc);
     return () => document.removeEventListener("click", onDoc);
@@ -268,7 +272,6 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
             ))}
           </div>
         </div>
-        <ModelChip open={menu === "model"} onToggle={() => setMenu(menu === "model" ? null : "model")} />
       </div>
       <SlashPalette palette={palette} className="slash-palette child-slash-palette" />
       {hasRunNotes(conversation) ? (
@@ -304,7 +307,13 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
             }
           }}
         />
-        <div className="row">
+        <div className={rowClassName} ref={rowRef}>
+          <PermissionChip
+            open={menu === "perm"}
+            onToggle={() => setMenu(menu === "perm" ? null : "perm")}
+            onClose={() => setMenu(null)}
+          />
+          <ModelChip open={menu === "model"} onToggle={() => setMenu(menu === "model" ? null : "model")} />
           <button
             className="send"
             disabled={!(draft.trim() || conversation.stagedWorkspacePaths.length) || !conversation.sessionReady}
