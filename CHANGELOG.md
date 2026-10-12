@@ -124,6 +124,8 @@ detail lives in commit history and `development/`.
   count), always allow messages between the two conversations, or deny.
   When the 5 are used up you are asked again; if nobody answers, the other
   conversation is told that the message could not be sent.
+- A subagent's task now shows as a line from its lead, like every later
+  message between conversations, instead of as a message you wrote.
 - Under Full access nothing is asked; under Read-only you approve one
   message at a time. Switching a conversation to Read-only also clears what
   it allowed, as with its other "allow in this conversation" approvals.

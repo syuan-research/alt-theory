@@ -45,7 +45,7 @@ import {
 } from "./tool-detail.js";
 import type { SessionMetrics, TranscriptMessage } from "./websocket-protocol.js";
 import { isListMember } from "../frontend/src/lib/listMember.js";
-import { parseAgentMailFragment } from "./agent-mail.js";
+import { parseAgentMailFrame } from "../core/agent-mail-frame.js";
 import { t } from "./i18n.js";
 import {
   readV4SessionHeader,
@@ -2297,7 +2297,7 @@ export function buildTranscriptFromEntries(
       // Agent-team envelopes travel as tagged user-role fragments (steered
       // or wake turns); render them as addressed system lines, not as words
       // the user typed.
-      const mail = parseAgentMailFragment(text);
+      const mail = parseAgentMailFrame(text);
       if (mail) {
         transcript.push({
           role: "system",
@@ -2528,7 +2528,7 @@ function agentMailEventLabel(event: string): string {
 }
 
 function agentMailDisplayText(raw: string): string {
-  const mail = parseAgentMailFragment(raw);
+  const mail = parseAgentMailFrame(raw);
   if (!mail) return raw;
   const eventLabel =
     mail.event && mail.event !== "update"

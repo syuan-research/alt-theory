@@ -15,6 +15,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { randomUUID } from "crypto";
 import { dirname, join } from "path";
 import type { InterruptionCause } from "./run-records.js";
+import { frameAgentMail } from "../core/agent-mail-frame.js";
 
 export interface AgentMailEnvelope {
   at: string;
@@ -44,8 +45,6 @@ export interface AgentMailEnvelope {
   peer?: boolean;
 }
 
-/** Tag wrapping envelope text injected into a receiver's LLM context. */
-export const AGENT_MAIL_TAG = "agent-team-mail";
 
 const MAIL_FILE = "agent-mail.jsonl";
 
@@ -106,45 +105,16 @@ export function markAgentMailDelivered(recordsDir: string): void {
   }
 }
 
-/**
- * Render an envelope as the tagged user-role fragment the receiver's model
- * sees (Codex-style `<subagent_notification>` pattern). The transcript
- * builder detects the tag and renders a system line instead of a user bubble.
- */
+/** An envelope as the framed fragment its receiver's model sees (core/agent-mail-frame.ts). */
 export function formatEnvelopeForContext(
   envelope: AgentMailEnvelope,
   fromLabel: string,
 ): string {
-  // Quotes in a user-chosen subagent name would break the attribute syntax
-  // (and the round-trip parse below), so normalize them.
-  const safeLabel = fromLabel.replace(/"/g, "'");
-  const header = [
-    `from="${safeLabel}"`,
-    envelope.event ? `event="${envelope.event}"` : null,
-    envelope.cause ? `cause="${envelope.cause}"` : null,
-    envelope.peer ? `peer="true"` : null,
-  ]
-    .filter(Boolean)
-    .join(" ");
-  // A body cannot close the frame early and speak outside it.
-  const body = envelope.body.replaceAll(`</${AGENT_MAIL_TAG}`, `<\\/${AGENT_MAIL_TAG}`);
-  return `<${AGENT_MAIL_TAG} ${header}>\n${body}\n</${AGENT_MAIL_TAG}>`;
-}
-
-/** Extract display text from a tagged fragment; null when text is not one. */
-export function parseAgentMailFragment(
-  text: string,
-): { fromLabel: string; event: string | null; cause: string | null; body: string } | null {
-  const match = text.match(
-    new RegExp(
-      `^<${AGENT_MAIL_TAG} from="([^"]*)"(?: event="([^"]*)")?(?: cause="([^"]*)")?(?: peer="true")?>\\n([\\s\\S]*)\\n</${AGENT_MAIL_TAG}>$`,
-    ),
-  );
-  if (!match) return null;
-  return {
-    fromLabel: match[1],
-    event: match[2] ?? null,
-    cause: match[3] ?? null,
-    body: match[4],
-  };
+  return frameAgentMail({
+    fromLabel,
+    event: envelope.event,
+    cause: envelope.cause,
+    peer: envelope.peer,
+    body: envelope.body,
+  });
 }

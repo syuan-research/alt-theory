@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { formatEnvelopeForContext, parseAgentMailFragment } from "./agent-mail.js";
+import { formatEnvelopeForContext } from "./agent-mail.js";
+import { parseAgentMailFrame } from "../core/agent-mail-frame.js";
 import { describeChildOutcome } from "./child-outcome.js";
 
 test("a user stop tells the lead so and forbids a restart; the status word is never idle", () => {
@@ -51,14 +52,15 @@ test("the cause travels in the mail envelope and round-trips through the context
   };
   const fragment = formatEnvelopeForContext(envelope, "researcher");
   assert.match(fragment, /event="interrupted" cause="user_abort"/);
-  assert.deepEqual(parseAgentMailFragment(fragment), {
+  assert.deepEqual(parseAgentMailFrame(fragment), {
     fromLabel: "researcher",
     event: "interrupted",
     cause: "user_abort",
+    peer: false,
     body: "The user stopped this subagent.",
   });
   assert.equal(
-    parseAgentMailFragment(formatEnvelopeForContext({ ...envelope, cause: null }, "r"))?.cause,
+    parseAgentMailFrame(formatEnvelopeForContext({ ...envelope, cause: null }, "r"))?.cause,
     null,
   );
 });

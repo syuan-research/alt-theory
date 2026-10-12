@@ -355,8 +355,17 @@ per-session `agent-mail.jsonl` inbox. Only terminal child turn outcomes—
 provider auto-retry and a successful initial fallback do not. A running parent
 receives the envelope at its next step boundary; an idle open parent receives a
 normal notification turn; a closed parent receives the undelivered envelope on
-next open (`session-service.ts`, `deliverEnvelope` and `openSession`). The
-mail envelope is rendered as addressed context, not as an ordinary user bubble.
+next open (`session-service.ts`, `deliverEnvelope` and `openSession`).
+
+One frame carries every text an agent or the system delivers into a
+conversation (`core/agent-mail-frame.ts`): the lead's task — the spawn task
+included, which is the child's first mail (2026-10-12) — reports, lifecycle
+outcomes, messages from other conversations, notices. The frame names the
+sender; the user's own words are never framed. The transcript shows a framed
+text as a line naming its sender, not as a user bubble, and smart approval's
+reviewer labels each context line by source (`user`, `mail from …`, `tool`)
+and takes the latest user request only from the user's own words
+(`core/approval-reviewer.ts`; `leadUserRequest` likewise).
 
 Which subagents a conversation can address, and where a subagent reports,
 are two separate derivations (`session-service.ts`):

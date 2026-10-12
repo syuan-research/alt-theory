@@ -133,8 +133,8 @@ import {
 } from "../frontend/src/lib/transcriptWindow.js";
 import { TRANSCRIPT_PAGE_MAX, TRANSCRIPT_TAIL_ROWS } from "./limits.js";
 import { continueAgentTurnAfterModelSwitch } from "../core/model-switch.js";
+import { AGENT_MAIL_TAG, parseAgentMailFrame } from "../core/agent-mail-frame.js";
 import {
-  AGENT_MAIL_TAG,
   appendAgentMail,
   formatEnvelopeForContext,
   markAgentMailDelivered,
@@ -3655,7 +3655,10 @@ export class SessionService implements AgentTeamBridge {
       const message = (entry as { type?: string; message?: { role?: string; content?: unknown } }).message;
       if ((entry as { type?: string }).type !== "message" || message?.role !== "user") continue;
       const text = contentToText(message.content).trim();
-      if (text) return text;
+      // The user's own words: framed mail is an agent's or a notice.
+      const mail = parseAgentMailFrame(text);
+      if (mail && mail.fromLabel !== "user") continue;
+      if (text) return mail ? mail.body : text;
     }
     return null;
   }
@@ -3803,7 +3806,22 @@ export class SessionService implements AgentTeamBridge {
       delivered: true,
     });
 
-    const started = this.startSubagentRun(child.sessionId, options.message.trim(), true);
+    // The task is the lead's first mail: the child, the transcript and smart
+    // approval's reviewer all see it as the lead's words, like every later one.
+    const task: AgentMailEnvelope = {
+      at: new Date().toISOString(),
+      from: parentSessionId,
+      to: child.sessionId,
+      kind: "message",
+      body: options.message.trim(),
+      delivered: true,
+    };
+    appendAgentMail(childManaged.manifest.recordsDir, task);
+    const started = this.startSubagentRun(
+      child.sessionId,
+      formatEnvelopeForContext(task, "lead"),
+      true,
+    );
     // Birth push only — no receipt, no catalog special case. Visibility rides
     // on the accepted run record runPromptWithLineage writes before the model
     // call, so the child is listed the moment its run starts, under the same

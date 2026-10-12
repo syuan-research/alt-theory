@@ -3,12 +3,12 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSyn
 import { tmpdir } from "os";
 import { join, resolve } from "path";
 import test from "node:test";
+import { parseAgentMailFrame } from "../core/agent-mail-frame.js";
 import { PEER_ALLOW_ALWAYS, PEER_ALLOW_MESSAGES, SessionService } from "./session-service.js";
 import {
   appendAgentMail,
   formatEnvelopeForContext,
   markAgentMailDelivered,
-  parseAgentMailFragment,
   readAgentMail,
   undeliveredAgentMail,
   type AgentMailEnvelope,
@@ -219,14 +219,15 @@ test("agent mail roundtrips, marks delivered, and parses fragments", () => {
   assert.equal(readAgentMail(recordsDir).length, 1);
 
   const fragment = formatEnvelopeForContext(envelope, "subagent-1");
-  const parsed = parseAgentMailFragment(fragment);
+  const parsed = parseAgentMailFrame(fragment);
   assert.deepEqual(parsed, {
     fromLabel: "subagent-1",
     event: "completed",
     cause: null,
+    peer: false,
     body: "done: the answer",
   });
-  assert.equal(parseAgentMailFragment("plain user text"), null);
+  assert.equal(parseAgentMailFrame("plain user text"), null);
 });
 
 // ---------------------------------------------------------------------------
@@ -677,7 +678,7 @@ test("formatEnvelopeForContext survives quotes in a subagent label", () => {
     },
     'my "cool" subagent',
   );
-  const parsed = parseAgentMailFragment(fragment);
+  const parsed = parseAgentMailFrame(fragment);
   assert.ok(parsed, "fragment with quoted label must still parse");
   assert.equal(parsed!.fromLabel, "my 'cool' subagent");
   assert.equal(parsed!.body, "hello");
@@ -1455,7 +1456,7 @@ test("peer mail is framed as another conversation's and cannot close its frame",
   );
   assert.match(fragment, /^<agent-team-mail from="Data \(Session ID x\)" peer="true">/);
   assert.equal(fragment.match(/<\/agent-team-mail>/g)?.length, 1, "only the real closing tag");
-  assert.equal(parseAgentMailFragment(fragment)?.fromLabel, "Data (Session ID x)");
+  assert.equal(parseAgentMailFrame(fragment)?.fromLabel, "Data (Session ID x)");
 });
 
 test("spawn_agent records the child's id in details, and a branch finds it there whatever the report says", async () => {
@@ -1490,6 +1491,30 @@ test("spawn_agent records the child's id in details, and a branch finds it there
       exactForkPoint: true,
     });
     assert.match(await service.listSubagents(branch.sessionId), new RegExp(child.sessionId));
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("a subagent's first task is the lead's mail like every later one", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  try {
+    const parent = await service.createSession(SELECTORS);
+    stubEchoPrompt(managedOf(service, parent.sessionId), "planning");
+    await service.runPrompt(parent.sessionId, "plan").completion;
+    let firstPrompt = "";
+    (service as unknown as { startSubagentRun: (id: string, prompt: string) => string }).startSubagentRun = (_id, prompt) => {
+      firstPrompt = prompt;
+      return "started";
+    };
+    const spawned = await service.spawnSubagent(parent.sessionId, { message: "read chapter 1" });
+    const frame = parseAgentMailFrame(firstPrompt);
+    assert.equal(frame?.fromLabel, "lead");
+    assert.equal(frame?.body, "read chapter 1");
+    const inbox = readAgentMail(managedOf(service, spawned.sessionId).manifest.recordsDir);
+    assert.equal(inbox[0].from, parent.sessionId);
+    assert.equal(inbox[0].body, "read chapter 1");
   } finally {
     await service.disposeAll();
   }

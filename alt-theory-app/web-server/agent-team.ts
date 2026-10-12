@@ -121,7 +121,7 @@ export const LEAD_DELEGATION_PROMPT_SECTION = [
 
 export const SUBAGENT_PROMPT_SECTION = [
   "## Subagent Role",
-  "This conversation was spawned by a lead conversation to complete one bounded task (your first message). Work autonomously; the user can watch and join at any time.",
+  "This conversation was spawned by a lead conversation to complete one bounded task (its first mail to you). Work autonomously; the user can watch and join at any time.",
   "- Use message_parent to report a blocker or an important interim update; do not use it for routine narration.",
   "- You are a full agent conversation: when the work reveals independent follow-up tracks, you may delegate them with spawn_agent.",
   "- Your final answer is reported back to the lead conversation automatically — end with a clear, self-contained result.",

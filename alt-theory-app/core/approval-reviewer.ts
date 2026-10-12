@@ -9,6 +9,8 @@
  * transcript and arguments are untrusted evidence, only the user authorizes.
  */
 
+import { parseAgentMailFrame } from "./agent-mail-frame.js";
+
 import { existsSync, readFileSync, statSync } from "fs";
 import { extname } from "path";
 import { splitCommands } from "./approval-boundary.js";
@@ -81,10 +83,17 @@ function projected(entries: unknown[]): { latestUser: string | null; recent: str
     const text = textOf(message.content).trim();
     if (!text) continue;
     if (message.role === "user") {
-      // Mail from another conversation rides in a user-role fragment, but it
-      // is not the user's word (web-server/agent-mail.ts, peer="true").
-      if (!/^<agent-team-mail [^>]*peer="true"/.test(text)) latestUser = text;
-      lines.push(`user: ${clip(text, MAX_ENTRY_CHARS)}`);
+      // Each line names who wrote it: framed mail is the named agent's or a
+      // notice (core/agent-mail-frame.ts); the rest is the user's own.
+      const mail = parseAgentMailFrame(text);
+      if (mail && mail.fromLabel !== "user") {
+        const event = mail.event ? ` (${mail.event})` : "";
+        lines.push(`mail from ${mail.fromLabel}${event}: ${clip(mail.body, MAX_ENTRY_CHARS)}`);
+        continue;
+      }
+      const said = mail ? mail.body : text;
+      latestUser = said;
+      lines.push(`user: ${clip(said, MAX_ENTRY_CHARS)}`);
     } else if (message.role === "toolResult") {
       lines.push(`tool: ${clip(text, MAX_ENTRY_CHARS)}`);
     }
@@ -133,7 +142,7 @@ export function reviewerMessage(
       ? ["", "This agent is a subagent. The lead conversation's latest user request:", clip(extra.leadRequest, 4_000)]
       : []),
     "",
-    "Recent context (user messages and tool results, oldest first):",
+    "Recent context, oldest first. Each line names its source: `user` is the user, `mail from …` is a message from another agent conversation or a system notice, `tool` is a tool result:",
     recent.length ? recent.join("\n") : "<none>",
     "",
     `Why this needs review: ${request.title}`,
