@@ -21,11 +21,13 @@ function sanitizeRenderedHtml(html: string): string {
   template.content.querySelectorAll("*").forEach((node) => {
     if (node.tagName === "A") {
       const href = node.getAttribute("href") || "";
-      if (!contentLink(href)) {
+      const link = contentLink(href);
+      if (!link) {
         node.removeAttribute("href");
       } else {
-        if (href.startsWith("#")) node.removeAttribute("target");
-        else node.setAttribute("target", "_blank");
+        // Only web links may open a window; the click handler routes the rest.
+        if (link.kind === "web" || link.kind === "page") node.setAttribute("target", "_blank");
+        else node.removeAttribute("target");
         node.setAttribute("rel", "noreferrer noopener");
       }
       return;

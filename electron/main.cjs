@@ -178,7 +178,8 @@ function createWindow() {
     ) {
       return { action: "allow" };
     }
-    shell.openExternal(url);
+    // Only web and mail links leave the app; file: URLs would run executables.
+    if (/^(https?:\/\/|mailto:)/i.test(url)) shell.openExternal(url);
     return { action: "deny" };
   });
   // Links leaving an embedded local page use the user's normal browser.
@@ -212,8 +213,33 @@ ipcMain.handle("alt:revealPath", (_event, target) => {
   if (typeof target === "string" && target) shell.showItemInFolder(target);
 });
 // Explicit user action: use the operating system's normal file association.
+// Agent-written files are untrusted, so types that run on open are revealed
+// instead. (Links to network hosts are refused in the renderer.)
+const RUNS_ON_OPEN = new Set([
+  ".app", ".command", ".sh", ".tool", ".terminal", ".workflow", ".scpt", ".pkg", ".jar",
+  ".exe", ".bat", ".cmd", ".com", ".ps1", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh",
+  ".hta", ".lnk", ".url", ".msi", ".scr", ".reg", ".cpl", ".py", ".pyw",
+]);
+function runsOnOpen(target) {
+  const ext = path.extname(target.replace(/[\\/]+$/, "")).toLowerCase();
+  if (RUNS_ON_OPEN.has(ext)) return true;
+  // macOS/Linux run an executable file without an extension in a terminal.
+  // Documents often carry a stray execute bit (exFAT, zips), so only those.
+  if (ext || process.platform === "win32") return false;
+  try {
+    const stat = fs.statSync(target);
+    return stat.isFile() && (stat.mode & 0o111) !== 0;
+  } catch {
+    return false;
+  }
+}
 ipcMain.handle("alt:openPath", async (_event, target) => {
   if (typeof target !== "string" || !target) return;
+  if (runsOnOpen(target)) {
+    shell.showItemInFolder(target);
+    void dialog.showMessageBox(mainWindow, { type: "info", message: menuLabels().runsAsProgram });
+    return;
+  }
   const error = await shell.openPath(target);
   if (error) throw new Error(error);
 });
@@ -342,6 +368,7 @@ const MENU_LABELS = {
     view: "View", zoomIn: "Zoom In", zoomOut: "Zoom Out",
     actualSize: "Actual Size", fullScreen: "Toggle Full Screen",
     window: "Window", minimize: "Minimize", zoom: "Zoom", close: "Close Window",
+    runsAsProgram: "This file can run as a program, so Alt Theory showed it in the file manager instead of opening it.",
   },
   "zh-Hans": {
     about: "关于 Alt Theory", hide: "隐藏 Alt Theory", quit: "退出 Alt Theory",
@@ -350,6 +377,7 @@ const MENU_LABELS = {
     view: "显示", zoomIn: "放大", zoomOut: "缩小",
     actualSize: "实际大小", fullScreen: "进入/退出全屏幕",
     window: "窗口", minimize: "最小化", zoom: "缩放", close: "关闭窗口",
+    runsAsProgram: "这个文件可以作为程序运行，Alt Theory 没有直接打开，已在文件管理器中显示。",
   },
   "zh-Hant-HK": {
     about: "關於 Alt Theory", hide: "隱藏 Alt Theory", quit: "結束 Alt Theory",
@@ -358,6 +386,7 @@ const MENU_LABELS = {
     view: "顯示", zoomIn: "放大", zoomOut: "縮小",
     actualSize: "實際大小", fullScreen: "進入/退出全螢幕",
     window: "視窗", minimize: "縮到最小", zoom: "縮放", close: "關閉視窗",
+    runsAsProgram: "這個檔案可以作為程式執行，Alt Theory 沒有直接開啟，已在檔案管理器中顯示。",
   },
 };
 

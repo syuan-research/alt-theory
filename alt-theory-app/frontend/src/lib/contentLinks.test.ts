@@ -10,6 +10,10 @@ test("links distinguish local pages, web addresses, and files without changing d
   assert.deepEqual(contentLink("file:///C:/work/my%20notes.md"), { kind: "file", address: "C:/work/my notes.md" });
   assert.deepEqual(contentLink("C:\\work\\notes.md"), { kind: "file", address: "C:/work/notes.md" });
   assert.equal(contentLink("javascript:alert(1)"), null);
+  // Network hosts would make the OS connect and send credentials on click.
+  assert.equal(contentLink("file://server/share/a.exe"), null);
+  assert.equal(contentLink("//server/share/a.exe"), null);
+  assert.equal(contentLink("\\\\server\\share\\a.exe"), null);
   assert.equal(contentLink("#methods")?.kind, "anchor");
   assert.equal(contentLink("file:///C:/work/notes%23one.md#methods")?.address, "C:/work/notes#one.md");
 });
@@ -29,4 +33,5 @@ test("file links reuse working/managed addresses and resolve relative to the sho
   assert.deepEqual(resolveFileLink("C:/work/notes.md:12", folders).ref, { root: "working", path: "primary/notes.md" });
   assert.deepEqual(resolveFileLink("other.md", folders, { root: "records", path: "summary.md" }).ref,
     { root: "records", path: "other.md" });
+  assert.deepEqual(resolveFileLink("c:/work/session/records/summary.md", folders).ref, { root: "records", path: "summary.md" });
 });

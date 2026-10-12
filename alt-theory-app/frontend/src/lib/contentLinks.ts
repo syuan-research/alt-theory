@@ -18,12 +18,14 @@ export function contentLink(href: string): ContentLink | null {
       const url = new URL(href);
       let address = decodeURIComponent(url.pathname);
       if (/^\/[a-z]:\//i.test(address)) address = address.slice(1);
-      if (url.hostname) address = `//${url.hostname}${address}`;
+      // A network host would make the OS connect (and send credentials) on click.
+      if (url.hostname) return null;
       return { kind: "file", address };
     } catch { return null; }
   }
   if (/^[a-z][a-z\d+.-]*:/i.test(href) && !/^[a-z]:[\\/]/i.test(href)) return null;
   const path = href.split("#", 1)[0];
+  if (/^[\\/]{2}/.test(path)) return null;
   try { return { kind: "file", address: decodeURIComponent(path).replace(/\\/g, "/") }; }
   catch { return { kind: "file", address: path.replace(/\\/g, "/") }; }
 }
@@ -56,15 +58,16 @@ export function resolveFileLink(address: string, folders: WorkingFolderDescripto
     target = `${root}/${dir}/${target}`;
   }
   target = normalizePath(target);
-  if (recordsRoot && recordsRoot !== managedRoot && target.startsWith(normalizePath(recordsRoot) + "/")) {
+  const within = (root: string) => {
+    const windows = /^[a-z]:|^\/\//i.test(root);
+    return (windows ? target.toLowerCase() : target).startsWith((windows ? root.toLowerCase() : root) + "/");
+  };
+  if (recordsRoot && recordsRoot !== managedRoot && within(normalizePath(recordsRoot))) {
     return { address: target, ref: { root: "records", path: target.slice(normalizePath(recordsRoot).length + 1) } };
   }
   // Longest root wins when the managed folder is nested inside a project.
-  const folder = [...folders].sort((a, b) => b.path.length - a.path.length).find(item => {
-    const root = normalizePath(item.path).replace(/\/$/, "");
-    const windows = /^[a-z]:|^\/\//i.test(root);
-    return (windows ? target.toLowerCase() : target).startsWith((windows ? root.toLowerCase() : root) + "/");
-  });
+  const folder = [...folders].sort((a, b) => b.path.length - a.path.length)
+    .find(item => within(normalizePath(item.path).replace(/\/$/, "")));
   if (!folder) return { address: target, ref: null };
   const path = target.slice(normalizePath(folder.path).replace(/\/$/, "").length + 1);
   return { address: target, ref: folder.managed ? { root: "workspace", path } : { root: "working", path: `${folder.id}/${path}` } };

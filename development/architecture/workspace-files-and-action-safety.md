@@ -232,6 +232,17 @@ conversation) after checking that the conversation exists. Download and delete a
 identity/access contract in
 [`research-identity-visibility-privacy-and-retention.md`](research-identity-visibility-privacy-and-retention.md).
 
+Opening a file outside the app (links, file tree, Changes, "Open with
+default app") goes through the desktop bridge's `alt:openPath`. Files the
+agent wrote are untrusted, so types that run on open (`RUNS_ON_OPEN`: `.app`,
+`.command`, `.sh`, `.exe`, `.bat`, `.ps1`, `.js`, `.lnk`, `.py`, …, plus an
+extensionless file with an execute bit on macOS/Linux) are shown in the file
+manager with a notice instead; every other type opens with its default app.
+Rendered links to network hosts (`file://host/…`, `//host/…`, `\\host\…`)
+are dropped, and the window-open handler only hands `http(s):` and `mailto:`
+to the system. See [`main.cjs`](../../electron/main.cjs) and
+[`contentLinks.ts`](../../alt-theory-app/frontend/src/lib/contentLinks.ts).
+
 ## Pi interception and Alt-owned action boundary
 
 Pi's native `tool_call` interception is the integration point. Alt Theory

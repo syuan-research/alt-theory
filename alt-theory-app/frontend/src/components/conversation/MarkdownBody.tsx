@@ -168,6 +168,14 @@ export function MarkdownBody({
     }
     onMermaidToggle(event);
   };
+  // A middle click would open a file link as a window of the app's own address.
+  const onAuxClick = (event: MouseEvent<HTMLDivElement>) => {
+    const href = (event.target as Element).closest<HTMLAnchorElement>("a[href]")?.getAttribute("href");
+    const kind = href ? contentLink(href)?.kind : undefined;
+    if (event.button !== 1 || !href || kind === "web" || kind === "page") return;
+    event.preventDefault();
+    if (kind === "file") links.open(href);
+  };
   const onContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     const anchor = (event.target as Element).closest<HTMLAnchorElement>("a[href]");
     const href = anchor?.getAttribute("href");
@@ -197,7 +205,7 @@ export function MarkdownBody({
 
   if (streaming) {
     return (
-      <div ref={rootRef} className={cn("markdown-body", className)} onClick={onClick} onContextMenu={onContextMenu} onCopy={onCopy}>
+      <div ref={rootRef} className={cn("markdown-body", className)} onClick={onClick} onAuxClick={onAuxClick} onContextMenu={onContextMenu} onCopy={onCopy}>
         <div ref={finishedRef} className="md-stream-finished" />
         <div ref={tailRef} className="md-stream-tail" />
         {links.menu}
@@ -220,6 +228,7 @@ export function MarkdownBody({
     <div
       className={cn("markdown-body", className)}
       onClick={onClick}
+      onAuxClick={onAuxClick}
       onContextMenu={onContextMenu}
       onCopy={onCopy}
       dangerouslySetInnerHTML={innerHtml}
