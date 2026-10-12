@@ -33,25 +33,58 @@ const TITLE_KINDS: Array<[prefix: string, label: () => string]> = [
   ["Message another conversation: ", () => t("Message another conversation")],
 ];
 const UNAVAILABLE = "Smart approval unavailable: ";
+const NEEDS = "Needs approval: ";
+
+/** Why an action is asked about (core/security-extension.ts), translated by its kind. */
+const REASON_KINDS: Array<[prefix: string, label: () => string]> = [
+  ["Push to: ", () => t("Push to")],
+  ["Upload to: ", () => t("Upload to")],
+  ["Publish to: ", () => t("Publish to")],
+  ["Install with: ", () => t("Install with")],
+  ["Write outside your folders: ", () => t("Write outside your folders")],
+  ["Read outside your folders: ", () => t("Read outside your folders")],
+  ["Database file: ", () => t("Database file")],
+  ["Credential location: ", () => t("Credential location")],
+  ["Discards git work: ", () => t("Discards git work")],
+  ["Changes git's own files: ", () => t("Changes git's own files")],
+];
+
+function reasonLabel(reason: string): string {
+  for (const [prefix, label] of REASON_KINDS) {
+    if (reason.startsWith(prefix)) return `${label()}: ${reason.slice(prefix.length)}`;
+  }
+  return reason === "Too complex to check" ? t("Too complex to check") : reason;
+}
 
 /**
  * The security extension's title read as its parts: a note (smart approval
  * could not answer), what kind of action, and the command or path itself —
  * which gets the room, since it is what the user has to judge.
  */
-export function approvalParts(title: string): { note: string | null; label: string; value: string | null } {
+export function approvalParts(title: string): {
+  note: string | null;
+  reasons: string[];
+  label: string;
+  value: string | null;
+} {
   let note: string | null = null;
   let rest = title;
-  if (rest.startsWith(UNAVAILABLE)) {
+  const firstLine = () => {
     const newline = rest.indexOf("\n");
-    const reason = rest.slice(UNAVAILABLE.length, newline < 0 ? undefined : newline);
-    note = t("Smart approval could not answer ({reason}), so this one is up to you.", { reason });
+    const line = rest.slice(0, newline < 0 ? undefined : newline);
     rest = newline < 0 ? "" : rest.slice(newline + 1);
+    return line;
+  };
+  if (rest.startsWith(UNAVAILABLE)) {
+    const reason = firstLine().slice(UNAVAILABLE.length);
+    note = t("Smart approval could not answer ({reason}), so this one is up to you.", { reason });
   }
+  const reasons: string[] = [];
+  while (rest.startsWith(NEEDS)) reasons.push(reasonLabel(firstLine().slice(NEEDS.length)));
   for (const [prefix, label] of TITLE_KINDS) {
-    if (rest.startsWith(prefix)) return { note, label: label(), value: rest.slice(prefix.length) };
+    if (rest.startsWith(prefix)) return { note, reasons, label: label(), value: rest.slice(prefix.length) };
   }
-  return { note, label: rest, value: null };
+  return { note, reasons, label: rest, value: null };
 }
 
 /**
@@ -77,6 +110,11 @@ export function ApprovalDock({ request, onRespond }: ApprovalDockProps) {
         <span className="dock-kind">{parts.label}</span>
       </div>
       {parts.note ? <div className="dock-note">{parts.note}</div> : null}
+      {parts.reasons.map((reason) => (
+        <div className="dock-reason" key={reason}>
+          {reason}
+        </div>
+      ))}
       {parts.value ? <pre className="dock-value">{parts.value}</pre> : null}
       {request.message ? <div className="l2">{request.message}</div> : null}
 

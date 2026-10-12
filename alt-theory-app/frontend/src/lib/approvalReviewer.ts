@@ -43,6 +43,11 @@ export function setApprovalReviewer(reviewer: ModelChain | null): Promise<void> 
   return saveApprovalReviewer({ reviewer }).then(publish);
 }
 
+export function setShowAllApprovalModes(showAllModes: boolean): void {
+  if (current) publish({ ...current, showAllModes });
+  void saveApprovalReviewer({ showAllModes }).then(publish).catch(() => {});
+}
+
 export function dismissApprovalHint(): void {
   if (current) publish({ ...current, hintDismissed: true });
   void saveApprovalReviewer({ hintDismissed: true }).then(publish).catch(() => {});

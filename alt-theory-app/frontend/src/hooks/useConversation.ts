@@ -27,6 +27,7 @@ import {
   pendingChanges,
   permissionOf,
   queuedTexts,
+  smartApprovalOfPermission,
   recoveryOf,
   reduce,
   type ConversationState,
@@ -391,7 +392,7 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
         });
         const mode: AltMode = permission === "read-only" ? "read-only" : "work";
         const fullAccess = permission === "full";
-        const smartApproval = permission === "smart";
+        const smartApproval = smartApprovalOfPermission(permission);
         if (mode !== now.mode) setting({ mode }, { type: "switch_mode", payload: { mode } });
         if (fullAccess !== now.fullAccess) {
           setting({ fullAccess }, { type: "set_full_access", payload: { enabled: fullAccess } });

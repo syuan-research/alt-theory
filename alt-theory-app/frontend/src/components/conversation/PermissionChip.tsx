@@ -2,7 +2,14 @@ import { useApp } from "@/context/AppProvider";
 import { useConversationContext } from "@/context/ConversationContext";
 import { PendingMark } from "@/components/ui/PendingMark";
 import { modelReferenceLabel, useApprovalReviewer } from "@/lib/approvalReviewer";
-import { PERMISSIONS, PERMISSION_DETAIL, PERMISSION_ICON, PERMISSION_LABEL, fullAccessConsequences } from "@/lib/permission";
+import {
+  ALL_PERMISSIONS,
+  PERMISSIONS,
+  PERMISSION_DETAIL,
+  PERMISSION_ICON,
+  PERMISSION_LABEL,
+  fullAccessConsequences,
+} from "@/lib/permission";
 import { t } from "@/i18n";
 
 /** The permission of the conversation shown in this composer. */
@@ -14,6 +21,9 @@ export function PermissionChip({ open, onToggle, onClose }: {
   const app = useApp();
   const conv = useConversationContext();
   const reviewer = useApprovalReviewer();
+  // Strict smart approval shows with Settings' advanced switch, or where a
+  // conversation already uses it (switching the setting off never hides it).
+  const choices = reviewer?.showAllModes || conv.permission === "smart-strict" ? ALL_PERMISSIONS : PERMISSIONS;
   return (
     <span className="perm-anchor">
       <button
@@ -29,7 +39,7 @@ export function PermissionChip({ open, onToggle, onClose }: {
         <PendingMark when={conv.pendingChanges.fullAccess !== undefined || conv.pendingChanges.mode !== undefined} />
       </button>
       <div className={`menu${open ? " on" : ""}`} onClick={(event) => event.stopPropagation()}>
-        {PERMISSIONS.map((permission) => (
+        {choices.map((permission) => (
           <div
             key={permission}
             className="mi"
@@ -54,7 +64,7 @@ export function PermissionChip({ open, onToggle, onClose }: {
               {PERMISSION_LABEL[permission]()}
               {permission === "smart" ? <span className="exp-tag">{t("Experimental")}</span> : null}
               <span className="d">{PERMISSION_DETAIL[permission]()}</span>
-              {permission === "smart" ? (
+              {permission === "smart" || permission === "smart-strict" ? (
                 <span className="d">
                   {reviewer?.reviewer
                     ? t("Reviews with {model}", { model: modelReferenceLabel(reviewer.reviewer.model) })

@@ -135,6 +135,8 @@ export interface ModelChain {
 export interface ApprovalReviewerSettings {
   reviewer: ModelChain | null;
   hintDismissed: boolean;
+  /** Advanced: the permission menu also offers strict smart approval. */
+  showAllModes: boolean;
 }
 
 export async function getApprovalReviewer(): Promise<ApprovalReviewerSettings> {
@@ -142,7 +144,7 @@ export async function getApprovalReviewer(): Promise<ApprovalReviewerSettings> {
 }
 
 export async function saveApprovalReviewer(
-  patch: { reviewer?: ModelChain | null; hintDismissed?: true },
+  patch: { reviewer?: ModelChain | null; hintDismissed?: true; showAllModes?: boolean },
 ): Promise<ApprovalReviewerSettings> {
   return fetchJson("/api/settings/approval-reviewer", {
     method: "PUT",

@@ -46,7 +46,7 @@ import type {
   SessionSummary,
 } from "@/api/types";
 import { PERMISSIONS, PERMISSION_LABEL, fullAccessConsequences } from "@/lib/permission";
-import { setApprovalReviewer, useApprovalReviewer } from "@/lib/approvalReviewer";
+import { setApprovalReviewer, setShowAllApprovalModes, useApprovalReviewer } from "@/lib/approvalReviewer";
 import { ModelConfigPage } from "@/pages/ModelConfigPage";
 import { authConnectEntryStep } from "@/lib/authConnect";
 import { MenuSelect } from "@/components/ui/MenuSelect";
@@ -1332,6 +1332,7 @@ function LanguageCard() {
 
 function DefaultPermissionCard() {
   const app = useApp();
+  const reviewer = useApprovalReviewer();
   const [permission, setPermission] = useState<Permission | null>(null);
 
   useEffect(() => {
@@ -1391,6 +1392,20 @@ function DefaultPermissionCard() {
           }}
         />
       </div>
+      {reviewer ? (
+        <div className="row2" style={{ marginTop: "var(--space-control)" }}>
+          <div>
+            <h4>{t("All approval modes (advanced)")}</h4>
+            <p>{t("Adds strict smart approval to the permission menu: the reviewer also checks every command beyond simple reads.")}</p>
+          </div>
+          <button
+            className={`toggle${reviewer.showAllModes ? " on" : ""}`}
+            aria-pressed={reviewer.showAllModes}
+            aria-label={t("All approval modes (advanced)")}
+            onClick={() => setShowAllApprovalModes(!reviewer.showAllModes)}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1417,7 +1432,7 @@ function CommandAllowlistCard() {
     <div className="set-card">
       <h4>{t("Commands that run without asking")}</h4>
       <p>
-        {t("One per line. A command that starts with one of these runs without an approval. Destructive git commands and database files are still asked about.")}
+        {t("One per line. Matching pushes, uploads and installs run without asking; under strict smart approval, matching commands skip the review. Destructive git, database files and changes outside your folders still ask.")}
       </p>
       <textarea
         className="set-lines"

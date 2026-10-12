@@ -231,7 +231,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   // one or turns the hint off for good (ruling G).
   const reviewer = useApprovalReviewer();
   const reviewerHint =
-    conv.permission === "smart" && reviewer !== null && reviewer.reviewer === null && !reviewer.hintDismissed;
+    (conv.permission === "smart" || conv.permission === "smart-strict") && reviewer !== null && reviewer.reviewer === null && !reviewer.hintDismissed;
 
   return (
     <div className="composer-wrap">

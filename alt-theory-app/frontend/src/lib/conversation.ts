@@ -35,6 +35,7 @@ import type {
   SessionModelOverride,
   SessionSelectors,
   SessionSnapshot,
+  SmartApprovalValue,
   StreamPart,
   StudyTag,
   TranscriptMessage,
@@ -753,17 +754,23 @@ export interface EffectiveSettings {
   selectors: SessionSelectors;
   mode: AltMode;
   fullAccess: boolean;
-  smartApproval: boolean;
+  smartApproval: SmartApprovalValue;
   modelOverride: SessionModelOverride | null;
   studyTag: StudyTag | null;
   workspacePrimaryDir: string | null;
 }
 
 /** The permission control's reading of a conversation's stored fields (Full wins over smart). */
-export function permissionOf(settings: { mode: AltMode; fullAccess: boolean; smartApproval?: boolean }): Permission {
+export function permissionOf(settings: { mode: AltMode; fullAccess: boolean; smartApproval?: SmartApprovalValue }): Permission {
   if (settings.mode === "read-only") return "read-only";
   if (settings.fullAccess) return "full";
+  if (settings.smartApproval === "strict") return "smart-strict";
   return settings.smartApproval ? "smart" : "ask";
+}
+
+/** Smart approval as a permission stores it. */
+export function smartApprovalOfPermission(permission: Permission): SmartApprovalValue {
+  return permission === "smart" ? true : permission === "smart-strict" ? "strict" : false;
 }
 
 export function effectiveSettings(
