@@ -875,8 +875,8 @@
   /* composer */
   .composer-wrap { padding: var(--space-block) var(--space-column) var(--space-block); }
   .composer-col { max-width: 660px; margin: 0 auto; }
-  .ctx-line { display: flex; align-items: center; gap: 16px; min-width: 0; padding: 0 6px 6px; font-size: var(--fs-secondary); color: var(--text-2); }
-  .ctx-picker { display: inline-block; position: relative; min-width: 0; max-width: 45%; }
+  .ctx-line { position: relative; display: flex; align-items: center; gap: 16px; min-width: 0; padding: 0 6px 6px; font-size: var(--fs-secondary); color: var(--text-2); }
+  .ctx-picker { display: inline-block; min-width: 0; max-width: 45%; }
   .ctx-item { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; cursor: pointer; background: none; border: none; color: inherit; font: inherit; padding: 0; }
   .ctx-item > i { flex-shrink: 0; }
   /* Steer bar (v1.4 round 1): tinted band + filled CTA buttons — the same
@@ -1010,10 +1010,18 @@
   /* Full Access (v1.4.8): warning-color shield states in the composer. */
   .flat.perm-on { color: var(--color-warning); }
   .menu .mi i.perm-warn-icon { color: var(--color-warning); }
-  /* Anchors the permission menu under the shield control, not the row edge. */
-  .perm-anchor { position: relative; display: inline-flex; }
-  .perm-anchor > .menu { left: 0; bottom: 40px; width: min(340px, calc(100vw - 32px)); max-height: 460px; }
-  .model-picker { min-width: 280px; }
+  /* Composer menus share a preferred width and fit the row, even in a narrow rail. */
+  .composer .row .menu, .ctx-line .menu {
+    box-sizing: border-box;
+    width: min(320px, 100%);
+    min-width: 0;
+    max-height: min(340px, calc(100vh - 180px));
+    overflow-wrap: anywhere;
+  }
+  .perm-anchor { display: inline-flex; }
+  .perm-anchor > .menu { left: 0; bottom: 40px; }
+  .composer .row > .model-picker { right: 0; bottom: 36px; left: auto; }
+  .child-ctx-line .menu { left: 0; top: 100%; bottom: auto; }
   .model-provider-section + .model-provider-section { border-top: 1px solid var(--hairline); margin-top: var(--space-hair); padding-top: var(--space-hair); }
   .model-provider-label { padding: var(--space-hair) var(--space-control) var(--space-hair); }
   /* MenuSelect: native-select replacement reusing the .menu pattern above.

@@ -299,7 +299,6 @@ export function ModelChip({
       </button>
       <div
         className={`menu model-picker${open ? " on" : ""}`}
-        style={{ right: 40, bottom: 36, left: "auto" }}
         onClick={(event) => event.stopPropagation()}
       >
         <button
