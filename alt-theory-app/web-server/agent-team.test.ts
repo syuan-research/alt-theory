@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSyn
 import { tmpdir } from "os";
 import { join, resolve } from "path";
 import test from "node:test";
-import { SessionService } from "./session-service.js";
+import { PEER_ALLOW_ALWAYS, PEER_ALLOW_MESSAGES, SessionService } from "./session-service.js";
 import {
   appendAgentMail,
   formatEnvelopeForContext,
@@ -548,7 +548,7 @@ test("mail for a closed lead stays undelivered and is injected on reopen", async
   }
 });
 
-test("sendToSubagent makes an idle subagent act immediately (owner 2026-08-07: no unread mail)", async () => {
+test("sendToAgent makes an idle subagent act immediately (owner 2026-08-07: no unread mail)", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
   try {
@@ -559,7 +559,7 @@ test("sendToSubagent makes an idle subagent act immediately (owner 2026-08-07: n
     const childManaged = managedOf(service, child.sessionId);
     const prompts = stubEchoPrompt(childManaged, "chapter 1 done");
     await service.runPrompt(child.sessionId, "cover chapter 1").completion;
-    const reply = await service.sendToSubagent(
+    const reply = await service.sendToAgent(
       parent.sessionId,
       child.sessionId,
       "please also cover chapter 2",
@@ -615,7 +615,7 @@ test("a branch shares the subagents spawned before its fork point, and they repo
     // Routing: a task from the branch reports back to the branch, not the spawner.
     const childManaged = managedOf(service, before.sessionId);
     const childPrompts = stubEchoPrompt(childManaged, "scouted");
-    await service.sendToSubagent(branch.sessionId, before.sessionId, "scout the data");
+    await service.sendToAgent(branch.sessionId, before.sessionId, "scout the data");
     await waitFor(() =>
       readAgentMail(branchManaged.manifest.recordsDir).some(
         (envelope) => envelope.event === "completed" && envelope.from === before.sessionId,
@@ -705,7 +705,7 @@ test("a queued subagent is not double-queued by send_to_agent and can be removed
 
     // send_to_agent on a queued subagent must not queue a second run; the
     // message joins its context instead.
-    const reply = await service.sendToSubagent(
+    const reply = await service.sendToAgent(
       parent.sessionId,
       child.sessionId,
       "extra context",
@@ -1077,7 +1077,7 @@ test("explicit interrupt sends exactly one interrupted outcome and the child sta
         timestamp: Date.now(),
       });
     };
-    await service.sendToSubagent(parent.sessionId, child.sessionId, "continue");
+    await service.sendToAgent(parent.sessionId, child.sessionId, "continue");
     await waitFor(() =>
       readAgentMail(parentManaged.manifest.recordsDir).some(
         (envelope) =>
@@ -1174,4 +1174,239 @@ test("marking delivered is atomic: a failed rewrite leaves the inbox intact", ()
   // With the obstacle gone, the rewrite lands and marks everything delivered.
   markAgentMailDelivered(recordsDir);
   assert.deepEqual(undeliveredAgentMail(recordsDir), []);
+});
+
+// ---------------------------------------------------------------------------
+// Messages between conversations by Session ID (owner 2026-10-12)
+// ---------------------------------------------------------------------------
+
+type Approvals = {
+  approvalBridge: {
+    listPending(): Array<{ approvalId: string; options?: string[]; title: string }>;
+    respond(approvalId: string, response: { choice?: string | null }): boolean;
+    uiContext: { select: (...args: unknown[]) => Promise<string | undefined> };
+  };
+  setFullAccess(enabled: boolean): void;
+  getGrants(): string[];
+};
+
+function approvalsOf(service: SessionService, sessionId: string): Approvals {
+  return managedOf(service, sessionId) as unknown as Approvals;
+}
+
+/** Send, answering the approval with `choice` if one is asked; reports whether one was. */
+async function sendAnswering(
+  service: SessionService,
+  from: string,
+  to: string,
+  body: string,
+  choice: string,
+): Promise<{ reply: string; asked: string[] | null }> {
+  const bridge = approvalsOf(service, from).approvalBridge;
+  let asked: string[] | null = null;
+  const sending = service.sendToAgent(from, to, body);
+  const answering = (async () => {
+    for (let i = 0; i < 80 && asked === null; i++) {
+      const pending = bridge.listPending()[0];
+      if (pending) {
+        asked = pending.options ?? [];
+        bridge.respond(pending.approvalId, { choice });
+      } else {
+        await new Promise((r) => setTimeout(r, 10));
+      }
+    }
+  })();
+  const reply = await sending;
+  await answering;
+  return { reply, asked };
+}
+
+function peerMail(service: SessionService, to: string, from: string) {
+  return readAgentMail(managedOf(service, to).manifest.recordsDir).filter(
+    (envelope) => envelope.peer && envelope.from === from,
+  );
+}
+
+async function twoConversations(service: SessionService) {
+  const a = await service.createSession(SELECTORS);
+  const b = await service.createSession(SELECTORS);
+  stubEchoPrompt(managedOf(service, a.sessionId), "a here");
+  stubEchoPrompt(managedOf(service, b.sessionId), "b here");
+  const idle = () =>
+    waitFor(() => managedOf(service, a.sessionId).runState.isIdle() && managedOf(service, b.sessionId).runState.isIdle());
+  return { a: a.sessionId, b: b.sessionId, idle };
+}
+
+test("another conversation is reached by Session ID after approval; the allowance is 5 each way, replies included", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  try {
+    const { a, b, idle } = await twoConversations(service);
+    const first = await sendAnswering(service, a, b, "data summary 1", PEER_ALLOW_MESSAGES);
+    assert.deepEqual(first.asked, [PEER_ALLOW_MESSAGES, PEER_ALLOW_ALWAYS, "Deny"]);
+    assert.match(first.reply, /Delivered/);
+    await idle();
+    assert.match(
+      readAgentMail(managedOf(service, b).manifest.recordsDir).at(-1)!.body,
+      /data summary 1/,
+    );
+    for (let i = 2; i <= 5; i++) {
+      const next = await sendAnswering(service, a, b, `data summary ${i}`, "Deny");
+      assert.equal(next.asked, null, `message ${i} is within the allowance`);
+      await idle();
+    }
+    // Replies spend the other direction's own 5.
+    for (let i = 1; i <= 5; i++) {
+      const reply = await sendAnswering(service, b, a, `reply ${i}`, "Deny");
+      assert.equal(reply.asked, null, `reply ${i} is within the allowance`);
+      await idle();
+    }
+    const sixth = await sendAnswering(service, a, b, "data summary 6", "Deny");
+    assert.ok(sixth.asked, "the sixth message asks again");
+    assert.match(sixth.reply, /declined/);
+    assert.equal(peerMail(service, b, a).length, 5);
+    assert.equal(peerMail(service, a, b).length, 5);
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("'always' holds both ways; a deny sends nothing; Full Access never asks", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  try {
+    const { a, b, idle } = await twoConversations(service);
+    const denied = await sendAnswering(service, a, b, "first", "Deny");
+    assert.match(denied.reply, /declined/);
+    assert.equal(peerMail(service, b, a).length, 0);
+
+    await sendAnswering(service, a, b, "second", PEER_ALLOW_ALWAYS);
+    assert.ok(approvalsOf(service, a).getGrants().includes(`contact:${b}`));
+    await idle();
+    for (let i = 0; i < 7; i++) {
+      assert.equal((await sendAnswering(service, b, a, `back ${i}`, "Deny")).asked, null);
+      await idle();
+    }
+
+    const c = await service.createSession(SELECTORS);
+    stubEchoPrompt(managedOf(service, c.sessionId), "c here");
+    approvalsOf(service, a).setFullAccess(true);
+    assert.equal((await sendAnswering(service, a, c.sessionId, "full", "Deny")).asked, null);
+    assert.equal(peerMail(service, c.sessionId, a).length, 1);
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("a read-only sender gets one message at a time and keeps no grant", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  try {
+    const { a, b, idle } = await twoConversations(service);
+    await service.switchMode(a, "read-only");
+    const once = await sendAnswering(service, a, b, "one", "Allow once");
+    assert.deepEqual(once.asked, ["Allow once", "Deny"]);
+    await idle();
+    assert.ok((await sendAnswering(service, a, b, "two", "Deny")).asked, "asks again");
+    assert.deepEqual(approvalsOf(service, a).getGrants(), []);
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("an unanswered approval after the allowance ran out tells the other side", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  try {
+    const { a, b, idle } = await twoConversations(service);
+    await sendAnswering(service, a, b, "m1", PEER_ALLOW_MESSAGES);
+    await idle();
+    for (let i = 2; i <= 5; i++) {
+      await sendAnswering(service, a, b, `m${i}`, "Deny");
+      await idle();
+    }
+    // Stand-in for the 5-minute timeout: the dialog resolves with no answer.
+    approvalsOf(service, a).approvalBridge.uiContext.select = async () => undefined;
+    const reply = await service.sendToAgent(a, b, "m6");
+    assert.match(reply, /timed out/);
+    await idle();
+    const notice = readAgentMail(managedOf(service, b).manifest.recordsDir).at(-1)!;
+    assert.equal(notice.event, "undelivered");
+    assert.equal(notice.from, a);
+    assert.equal(peerMail(service, b, a).length, 5);
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("a subagent reaches its leads freely, and another conversation's mail never becomes its lead", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  try {
+    const parent = await service.createSession(SELECTORS);
+    const parentManaged = managedOf(service, parent.sessionId);
+    stubEchoPrompt(parentManaged, "planning");
+    await service.runPrompt(parent.sessionId, "plan").completion;
+    const child = await service.createSession(SELECTORS, {
+      forkedFrom: { sessionId: parent.sessionId, purpose: "subagent" },
+    });
+    const forkPoint = parentManaged.session.sessionManager.appendMessage({
+      role: "toolResult",
+      toolCallId: "call-scout",
+      toolName: "spawn_agent",
+      content: [{ type: "text", text: `Spawned subagent "Scout" (session ${child.sessionId}, general-medium, ask permission, model test/model). It is working in the background.` }],
+      isError: false,
+      timestamp: Date.now(),
+    });
+    const branch = await service.forkSession(parent.sessionId, "fork", forkPoint, undefined, {
+      exactForkPoint: true,
+    });
+    stubEchoPrompt(managedOf(service, branch.sessionId), "branch here");
+    const childManaged = managedOf(service, child.sessionId);
+    stubEchoPrompt(childManaged, "scouting");
+    const settled = () =>
+      waitFor(() =>
+        [parent.sessionId, branch.sessionId, child.sessionId].every((id) =>
+          managedOf(service, id).runState.isIdle(),
+        ),
+      );
+
+    // Both leads — the spawner and the branch that inherited it — free, by ID.
+    assert.equal((await sendAnswering(service, child.sessionId, parent.sessionId, "to spawner", "Deny")).asked, null);
+    await settled();
+    assert.equal((await sendAnswering(service, child.sessionId, branch.sessionId, "to branch", "Deny")).asked, null);
+    await settled();
+
+    // Another conversation reaches the subagent only by approval, and its mail
+    // does not redirect the subagent's reports.
+    const stranger = await service.createSession(SELECTORS);
+    stubEchoPrompt(managedOf(service, stranger.sessionId), "stranger here");
+    const asked = await sendAnswering(service, stranger.sessionId, child.sessionId, "peek", PEER_ALLOW_MESSAGES);
+    assert.ok(asked.asked);
+    await settled();
+    await waitFor(() => managedOf(service, stranger.sessionId).runState.isIdle());
+    await service.messageParent(child.sessionId, "report", "update");
+    assert.ok(
+      readAgentMail(parentManaged.manifest.recordsDir).some((envelope) => envelope.body === "report"),
+    );
+    assert.ok(
+      !readAgentMail(managedOf(service, stranger.sessionId).manifest.recordsDir).some(
+        (envelope) => envelope.body === "report",
+      ),
+    );
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("send_to_agent refuses an unknown or own Session ID", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  try {
+    const a = await service.createSession(SELECTORS);
+    await assert.rejects(service.sendToAgent(a.sessionId, "no-such-conversation", "hi"), /Unknown agent/);
+    await assert.rejects(service.sendToAgent(a.sessionId, a.sessionId, "hi"), /itself/);
+  } finally {
+    await service.disposeAll();
+  }
 });

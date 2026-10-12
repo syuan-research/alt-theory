@@ -12,13 +12,17 @@ interface ApprovalDockProps {
   onSessionAllow: (label: string) => void;
 }
 
-// Security-extension approval options (core/security-extension.ts).
+// Security-extension approval options (core/security-extension.ts), plus
+// the options of a message to another conversation (session-service.ts).
 const ALLOW_SESSION = "Allow for this conversation";
+const PEER_ALLOW_ALWAYS = "Always allow between these conversations";
 const DENY_LABELS = new Set(["Deny", "Block", "No", "Cancel"]);
 
 function approvalOption(option: string): string {
   if (option === "Allow once") return t("Allow once");
   if (option === ALLOW_SESSION) return t("Allow in this conversation, also after restart");
+  if (option === "Allow 5 messages each way") return t("Allow 5 messages each way");
+  if (option === PEER_ALLOW_ALWAYS) return t("Always allow between these conversations");
   if (option === "Deny") return t("Deny");
   return option;
 }
@@ -29,6 +33,7 @@ const TITLE_KINDS: Array<[prefix: string, label: () => string]> = [
   ["Allow writes in this folder for this session: ", () => t("Allow writes in this folder in this conversation, also after restart")],
   ["Edit file: ", () => t("Edit file")],
   ["Write file: ", () => t("Write file")],
+  ["Message another conversation: ", () => t("Message another conversation")],
 ];
 const UNAVAILABLE = "Smart approval unavailable: ";
 
@@ -65,7 +70,7 @@ export function ApprovalDock({ request, onRespond, onSessionAllow }: ApprovalDoc
     onRespond(request.approvalId, { accept: false, choice: null, text: null });
 
   const choose = (option: string) => {
-    if (option === ALLOW_SESSION) onSessionAllow(request.title);
+    if (option === ALLOW_SESSION || option === PEER_ALLOW_ALWAYS) onSessionAllow(request.title);
     onRespond(request.approvalId, { choice: option });
   };
 

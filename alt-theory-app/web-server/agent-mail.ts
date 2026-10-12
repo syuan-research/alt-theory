@@ -23,11 +23,25 @@ export interface AgentMailEnvelope {
   /** Receiver sessionId (owner of the inbox file this lives in). */
   to: string;
   kind: "message" | "lifecycle";
-  event?: "spawned" | "completed" | "failed" | "interrupted" | "input-requested";
+  event?:
+    | "spawned"
+    | "completed"
+    | "failed"
+    | "interrupted"
+    | "input-requested"
+    /** A message to this conversation could not be sent (approval timed out). */
+    | "undelivered";
   /** Why an interrupted child stopped (card 8); absent for other events. */
   cause?: InterruptionCause | null;
   body: string;
   delivered: boolean;
+  /**
+   * Sent by another conversation rather than a lead or own subagent
+   * (owner 2026-10-12). Peer mail counts against the pair's allowance and
+   * never makes its sender a subagent's lead. Absent on older mail, which
+   * only leads and subagents could send.
+   */
+  peer?: boolean;
 }
 
 /** Tag wrapping envelope text injected into a receiver's LLM context. */

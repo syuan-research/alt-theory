@@ -977,6 +977,15 @@ async function createAltTheorySessionWithManager(
     getWorkspace: () => ({
       primaryDir: cwd,
     }),
+    /** This conversation's "Allow for this conversation" grant keys. */
+    getGrants: (): string[] => [...sessionAllowances],
+    /** Add a grant, dropping keys that start with `replacing` first, and persist it. */
+    addGrant: (key: string, replacing?: string): void => {
+      const next = withGrant([...sessionAllowances], key, replacing);
+      sessionAllowances.clear();
+      for (const item of next) sessionAllowances.add(item);
+      saveApprovals();
+    },
   };
 }
 
@@ -994,6 +1003,10 @@ function readConversationApprovals(recordsDir: string): { keys: string[]; writab
   } catch {
     return { keys: [], writableRoots: [] };
   }
+}
+
+function withGrant(keys: string[], key: string, replacing?: string): string[] {
+  return [...keys.filter((item) => !(replacing && item.startsWith(replacing)) && item !== key), key];
 }
 
 /**

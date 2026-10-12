@@ -14,6 +14,11 @@ import {
   type ReviewRequest,
   type ReviewVerdict,
 } from "../core/approval-reviewer.js";
+import {
+  APPROVAL_ALLOW_ONCE,
+  APPROVAL_DENY,
+  APPROVAL_TIMEOUT_MS,
+} from "../core/security-extension.js";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { getSupportedThinkingLevels, type ImageContent, type Model } from "@earendil-works/pi-ai";
 import {
@@ -394,7 +399,12 @@ interface ManagedSession {
   setFullAccess: (enabled: boolean) => void;
   getSmartApproval: () => boolean;
   setSmartApproval: (enabled: boolean) => void;
+  /** Full Access in force (dormant under read-only). */
+  isFullAccessEffective: () => boolean;
   getWorkspace: () => { primaryDir: string };
+  /** "Allow for this conversation" grants (records/approvals.json). */
+  getGrants: () => string[];
+  addGrant: (key: string, replacing?: string) => void;
   approvalBridge: ApprovalBridge;
   selectors: SessionSelectors;
   openedFrom: "new" | "existing";
@@ -468,6 +478,10 @@ interface ReclaimedRuntime {
 
 /** Background subagent runs allowed at once; further first-runs queue FIFO. */
 const SUBAGENT_CONCURRENCY = 10;
+/** Messages each way one approval allows between two conversations (owner 2026-10-12: default starting point). */
+const PEER_MESSAGE_ALLOWANCE = 5;
+export const PEER_ALLOW_MESSAGES = "Allow 5 messages each way";
+export const PEER_ALLOW_ALWAYS = "Always allow between these conversations";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -1006,7 +1020,7 @@ export class SessionService implements AgentTeamBridge {
             customType: "agent-team",
             content: formatEnvelopeForContext(
               envelope,
-              this.agentMailLabel(envelope.from, managed),
+              this.agentMailLabel(envelope, managed),
             ),
             display: true,
             details: { from: envelope.from, event: envelope.event ?? null },
@@ -3803,12 +3817,173 @@ export class SessionService implements AgentTeamBridge {
     return { report, sessionId: child.sessionId };
   }
 
-  async sendToSubagent(
-    parentSessionId: string,
+  /**
+   * send_to_agent: one of this conversation's subagents (name or Session ID),
+   * or any other conversation by the Session ID the user gave. A lead and
+   * its own subagents — spawned, or inherited along a branch's path — talk
+   * freely in both directions; every other pair needs the user's approval
+   * first (owner 2026-10-12), checked by approvePeerMessage.
+   */
+  async sendToAgent(
+    fromId: string,
     agent: string,
     message: string,
+    signal?: AbortSignal,
   ): Promise<string> {
-    const childId = this.resolveSubagentId(parentSessionId, agent);
+    const needle = agent.trim();
+    const own = this.subagentChildren(fromId).find(
+      (child) =>
+        child.sessionId === needle ||
+        child.alias?.toLowerCase() === needle.toLowerCase(),
+    );
+    if (own) return this.messageSubagent(fromId, own.sessionId, message);
+    if (needle === fromId) {
+      throw new Error("That Session ID belongs to this conversation itself.");
+    }
+    const listed =
+      this.sessions.has(needle) ||
+      listSessionSummaries(this.config.dataDir).sessions.some(
+        (summary) => summary.sessionId === needle && !summary.deletedAt,
+      );
+    if (!listed) {
+      throw new Error(
+        `Unknown agent "${agent}". Use one of your subagents (list_agents), or a conversation's Session ID that the user gave you.`,
+      );
+    }
+    const from = this.requireSession(fromId);
+    if (!this.sessions.get(needle)) await this.openSession(needle, from.selectors);
+    const target = this.requireSession(needle);
+    const label = this.sessionAlias(needle) ?? needle;
+    // One rule both ways: the target counts this conversation among its own
+    // subagents (a subagent writing to a lead), else it is another
+    // conversation.
+    const peer = !this.subagentChildren(needle).some((child) => child.sessionId === fromId);
+    if (peer) {
+      const refused = await this.approvePeerMessage(from, target, label, message, signal);
+      if (refused) return refused;
+    }
+    const idle = target.runState.isIdle();
+    this.deliverEnvelope(needle, {
+      at: new Date().toISOString(),
+      from: fromId,
+      to: needle,
+      kind: "message",
+      body: message,
+      ...(peer ? { peer: true } : {}),
+    });
+    return idle
+      ? `Delivered to ${label}; it is acting on your message now.`
+      : `Delivered to ${label}; it sees your message at its next step.`;
+  }
+
+  /**
+   * A message to another conversation (not a lead/subagent pair): Full
+   * Access sends; otherwise a standing "always" or an unspent allowance
+   * sends, and anything else asks — smart approval's reviewer, else the
+   * user. Returns the refusal the agent reads, or null to send. Grants live
+   * with the approving conversation's "Allow for this conversation" grants,
+   * so they last like those and are cleared with them.
+   */
+  private async approvePeerMessage(
+    from: ManagedSession,
+    target: ManagedSession,
+    label: string,
+    message: string,
+    signal?: AbortSignal,
+  ): Promise<string | null> {
+    if (from.isFullAccessEffective()) return null;
+    const fromId = from.manifest.sessionId;
+    const targetId = target.manifest.sessionId;
+    const mine = from.getGrants();
+    const theirs = target.getGrants();
+    if (mine.includes(`contact:${targetId}`) || theirs.includes(`contact:${fromId}`)) {
+      return null;
+    }
+    // The latest allowance either side granted covers both directions; what
+    // is left of it is counted from the mail itself.
+    const since = [
+      ...mine.filter((key) => key.startsWith(`mail:${targetId}@`)),
+      ...theirs.filter((key) => key.startsWith(`mail:${fromId}@`)),
+    ]
+      .map((key) => key.slice(key.lastIndexOf("@") + 1))
+      .sort()
+      .at(-1);
+    if (since) {
+      const sent = readAgentMail(target.manifest.recordsDir).filter(
+        (envelope) => envelope.peer && envelope.from === fromId && envelope.at >= since,
+      ).length;
+      if (sent < PEER_MESSAGE_ALLOWANCE) return null;
+    }
+    const allowMessages = () =>
+      from.addGrant(`mail:${targetId}@${new Date().toISOString()}`, `mail:${targetId}@`);
+    let title = `Message another conversation: ${label} (${targetId})\n${clip(message, 600)}`;
+    if (from.getSmartApproval()) {
+      const verdict = await this.reviewAction(
+        fromId,
+        {
+          toolName: "send_to_agent",
+          input: { agent: targetId, message },
+          cwd: from.getWorkspace().primaryDir,
+          title,
+          entries: from.session.sessionManager.getBranch(),
+          readableFile: () => null,
+        },
+        { toolCallId: "send_to_agent", priorDenials: 0, signal },
+      );
+      if (verdict.outcome === "allow") {
+        allowMessages();
+        return null;
+      }
+      if (verdict.outcome === "deny") {
+        return `Smart approval denied this message: ${verdict.reason}`;
+      }
+      title = `Smart approval unavailable: ${verdict.reason}\n${title}`;
+    }
+    // Read-only keeps no conversation-wide grants (security extension).
+    const options =
+      from.getAltMode() === "read-only"
+        ? [APPROVAL_ALLOW_ONCE, APPROVAL_DENY]
+        : [PEER_ALLOW_MESSAGES, PEER_ALLOW_ALWAYS, APPROVAL_DENY];
+    const choice = await from.approvalBridge.uiContext.select(title, options, {
+      signal,
+      timeout: APPROVAL_TIMEOUT_MS,
+    });
+    if (choice === APPROVAL_ALLOW_ONCE) return null;
+    if (choice === PEER_ALLOW_MESSAGES) {
+      allowMessages();
+      return null;
+    }
+    if (choice === PEER_ALLOW_ALWAYS) {
+      from.addGrant(`contact:${targetId}`);
+      return null;
+    }
+    if (choice === APPROVAL_DENY) return "The user declined this message; it was not sent.";
+    if (signal?.aborted) return "The message was not sent: the run was stopped.";
+    // ponytail: a dialog cancelled because the runtime was replaced also
+    // lands here and reads as a timeout; a distinct timeout signal belongs
+    // to the approval-timeout issue (2026-10-12).
+    if (since) {
+      // The allowance ran out and nobody answered: the other side should
+      // not wait for a reply that cannot come (owner 2026-10-12).
+      this.deliverEnvelope(targetId, {
+        at: new Date().toISOString(),
+        from: fromId,
+        to: targetId,
+        kind: "lifecycle",
+        event: "undelivered",
+        body: `${this.sessionAlias(fromId) ?? fromId} could not send you a message: its allowed messages to you are used up, and the user did not answer the approval in time.`,
+      });
+    }
+    return `The approval timed out, so the message was not sent; the user may be away.${
+      since ? ` ${label} was told that your allowed messages are used up.` : ""
+    }`;
+  }
+
+  private async messageSubagent(
+    parentSessionId: string,
+    childId: string,
+    message: string,
+  ): Promise<string> {
     if (!this.sessions.get(childId)) {
       const parent = this.requireSession(parentSessionId);
       await this.openSession(childId, parent.selectors);
@@ -4163,6 +4338,7 @@ export class SessionService implements AgentTeamBridge {
     const tasks = readAgentMail(child.manifest.recordsDir).filter(
       (envelope) =>
         envelope.kind === "message" &&
+        !envelope.peer &&
         envelope.from !== "user" &&
         envelope.from !== childId,
     );
@@ -4227,7 +4403,7 @@ export class SessionService implements AgentTeamBridge {
     appendAgentMail(dirs.recordsDir, { ...envelope, delivered: true });
     const fragment = formatEnvelopeForContext(
       { ...envelope, delivered: true },
-      this.agentMailLabel(envelope.from, target),
+      this.agentMailLabel(envelope, target),
     );
     if (!target.runState.isIdle()) {
       void target.session.steer(fragment).catch(() => {});
@@ -4243,10 +4419,16 @@ export class SessionService implements AgentTeamBridge {
     }
   }
 
-  private agentMailLabel(from: string, target: ManagedSession): string {
+  private agentMailLabel(
+    envelope: Pick<AgentMailEnvelope, "from" | "peer">,
+    target: ManagedSession,
+  ): string {
+    const { from } = envelope;
     if (from === "user") return "user";
     if (target.subagentParentId === from) return "lead";
-    return this.sessionAlias(from) ?? from;
+    const alias = this.sessionAlias(from) ?? from;
+    // Another conversation: its Session ID is the address to answer with.
+    return envelope.peer ? `${alias} (Session ID ${from})` : alias;
   }
 
   private async createManagedFromExisting(
@@ -4654,7 +4836,10 @@ export class SessionService implements AgentTeamBridge {
     setFullAccess: (enabled: boolean) => void;
     getSmartApproval: () => boolean;
     setSmartApproval: (enabled: boolean) => void;
+    isFullAccessEffective: () => boolean;
     getWorkspace: () => { primaryDir: string };
+    getGrants: () => string[];
+    addGrant: (key: string, replacing?: string) => void;
     selectors: SessionSelectors;
     subagentConfig: SubagentConfig;
     openedFrom: "new" | "existing";

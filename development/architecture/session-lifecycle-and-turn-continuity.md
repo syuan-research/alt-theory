@@ -375,9 +375,34 @@ are two separate derivations (`session-service.ts`):
   the user request that smart approval reviews a subagent against
   (`leadUserRequest`).
 
-This is the rule of one step (owner 2026-09-29), not a settled boundary:
-granting a conversation access to agents outside its path is expected later
-(`agent-team.test.ts`, branch-sharing case).
+Mail between other conversations (owner 2026-10-12) uses the same tool and
+inbox. `send_to_agent` (`sendToAgent`) takes a subagent's name or Session ID,
+or any listed conversation's Session ID — the Session ID is the only address
+for another conversation. One rule decides how it travels:
+
+- **Lead and own subagent, both directions:** free. The target counts the
+  sender among its `subagentChildren` (a subagent writing to its spawner or
+  to a branch that inherited it), or the sender counts the target.
+- **Any other pair** (`approvePeerMessage`): Full Access in force sends.
+  Otherwise a standing `contact:<id>` grant, or an unspent allowance, sends;
+  else smart approval's reviewer (an allow grants the allowance) or the
+  user is asked: allow 5 messages each way, always allow, deny (Read-only:
+  allow once / deny, no grant). Grants are kept with the approving
+  conversation's "Allow for this conversation" grants
+  (`records/approvals.json`, core `getGrants` / `addGrant`), so they last
+  as long and Read-only clears them too. Either side's grant covers both
+  directions. The allowance is derived, not counted: the latest
+  `mail:<id>@<time>` grant from either side, minus the peer mail each
+  direction has sent since then (read from the receiver's inbox).
+- Such mail carries `peer: true`. It is labelled with the sender's alias
+  and Session ID (the address to answer with), never makes its sender a
+  subagent's reporting target, and never makes it a lead. A closed target
+  is opened and woken. When the allowance was used up and the approval goes
+  unanswered (timeout), the target receives an `undelivered` lifecycle
+  envelope.
+
+There is no way to revoke a grant other than switching the conversation to
+Read-only (known gap, 2026-10-12).
 
 What the lead is told is composed in one place, `describeChildOutcome()`
 (`web-server/child-outcome.ts`): the envelope's `event`, its `cause`, the body,

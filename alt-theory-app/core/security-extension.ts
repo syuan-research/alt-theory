@@ -200,7 +200,7 @@ const APPROVAL_OPTIONS = [
   APPROVAL_DENY,
 ];
 /** An unattended approval fails closed after this long instead of hanging. */
-const APPROVAL_TIMEOUT_MS = 5 * 60_000;
+export const APPROVAL_TIMEOUT_MS = 5 * 60_000;
 
 const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
 

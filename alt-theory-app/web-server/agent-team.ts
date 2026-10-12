@@ -36,10 +36,11 @@ export interface AgentTeamBridge {
     parentSessionId: string,
     options: SpawnSubagentOptions,
   ): Promise<{ report: string; sessionId: string }>;
-  sendToSubagent(
-    parentSessionId: string,
+  sendToAgent(
+    fromSessionId: string,
     agent: string,
     message: string,
+    signal?: AbortSignal,
   ): Promise<string>;
   checkSubagent(
     parentSessionId: string,
@@ -203,18 +204,21 @@ export function createAgentTeamTools(
   };
 
   const sendSchema = Type.Object({
-    agent: agentRef,
-    message: Type.String({ description: "The message for the subagent" }),
+    agent: Type.String({
+      description:
+        "A subagent's name or Session ID, or the Session ID of another conversation that the user gave you",
+    }),
+    message: Type.String({ description: "The message for that agent" }),
   });
   const sendToAgent: ToolDefinition<typeof sendSchema, undefined> = {
     name: "send_to_agent",
     label: "Message subagent",
     description:
-      "Send a message to a subagent. A running subagent sees it at its next step; an idle subagent starts acting on it immediately.",
+      "Send a message to a subagent, or to another conversation by the Session ID the user gave you. A running agent sees it at its next step; an idle one starts acting on it immediately. Your own subagents and your lead conversations are always reachable; for any other conversation the user may be asked to approve first, and an approval allows a limited number of messages each way.",
     parameters: sendSchema,
-    async execute(_id, params) {
+    async execute(_id, params, signal) {
       return text(
-        await bridge.sendToSubagent(sessionId, params.agent, params.message),
+        await bridge.sendToAgent(sessionId, params.agent, params.message, signal),
       );
     },
   };

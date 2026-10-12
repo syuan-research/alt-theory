@@ -2520,6 +2520,8 @@ function agentMailEventLabel(event: string): string {
       return t("interrupted");
     case "input-requested":
       return t("needs input");
+    case "undelivered":
+      return t("message not sent");
     default:
       return event;
   }

@@ -113,6 +113,20 @@ detail lives in commit history and `development/`.
   or waiting for your approval shows at once, without the list checking
   every few seconds; it is complete again right after a reconnect.
 
+### Conversations can message each other
+
+- Copy a conversation's Session ID (from its menu) and give it to the agent
+  in another conversation: that agent can now send it a message. A
+  conversation and its own subagents still message each other freely; a
+  subagent shared by a branch can also message the branch.
+- Any other pair asks you first. You can allow 5 messages each way (replies
+  count), always allow messages between the two conversations, or deny.
+  When the 5 are used up you are asked again; if nobody answers, the other
+  conversation is told that the message could not be sent.
+- Under Full access nothing is asked; under Read-only you approve one
+  message at a time. Switching a conversation to Read-only also clears what
+  it allowed, as with its other "allow in this conversation" approvals.
+
 ### Fixes
 
 - A compaction no longer disappears when the conversation is reopened
