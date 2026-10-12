@@ -116,6 +116,9 @@ agents mistake them for in-progress work.
 ### Current branch status
 
 - `main` — active product line.
+- `archive/approval-newlines` — merged into main (the approval check keeps
+  tabs and newlines, so a multi-line command is checked and shown as the
+  shell runs it; owner 2026-10-12); archived after the merge.
 - `archive/runtime-panel-spawn-details` — merged into main (researcher
   Runtime rail and its approval-marker plumbing removed; spawn_agent
   records the child's id in its result details, the report text stays the
