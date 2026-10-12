@@ -289,6 +289,9 @@ export function readAppSettingsWithWarning(dataDir: string): {
       ...(typeof parsed.nativePiScanAltSkills === "boolean"
         ? { nativePiScanAltSkills: parsed.nativePiScanAltSkills }
         : {}),
+      ...(typeof parsed.modelHooks === "boolean"
+        ? { modelHooks: parsed.modelHooks }
+        : {}),
       ...(parsed.lang === "auto" ||
       parsed.lang === "en" ||
       parsed.lang === "zh-Hans" ||
