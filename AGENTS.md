@@ -116,6 +116,11 @@ agents mistake them for in-progress work.
 ### Current branch status
 
 - `main` — active product line.
+- `archive/agent-mail-contacts` — merged into main (send_to_agent reaches
+  any conversation by Session ID: lead and own subagents free both ways;
+  other pairs need approval — 5 messages each way, always, or deny; Full
+  sends, read-only one at a time; grants kept with the conversation's
+  approvals; owner 2026-10-12); archived after the reviewed merge.
 - `archive/branch-subagents` — merged into main (a branch shares the
   subagents spawned before its fork point; outcomes and `message_parent` go
   to the latest live task-giver; this version's rule, owner 2026-09-29).
