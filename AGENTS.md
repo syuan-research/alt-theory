@@ -116,6 +116,13 @@ agents mistake them for in-progress work.
 ### Current branch status
 
 - `main` — active product line.
+- `archive/wp-approval-ask` — merged into main (one approver per
+  conversation in `core/approval-ask.ts`: reviewer, dialog, denial brake,
+  timeout count and tool-row verdict shared by commands and messages to
+  other conversations; reviewer context keeps at most 20 tool results with
+  their calls, and for a message the user's words around its Session ID
+  plus the message rule; owner 2026-10-13); archived after the reviewed
+  merge.
 - `archive/wp-approval-targets` — merged into main (Ask and smart approval
   read a command's syntax tree — vendored Kimi bash parser, a PowerShell
   seam with a light reader — and ask only about visible significant

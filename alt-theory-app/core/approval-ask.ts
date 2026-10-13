@@ -108,6 +108,8 @@ export function createApprover(options: {
     startRun() {
       denials = 0;
       timeouts = 0;
+      // A call stopped before it ran leaves its verdict behind.
+      records.clear();
     },
     async review({ rule, toolCallId, signal, cacheKey, ...request }) {
       const cached = cacheKey === undefined ? undefined : allowed.get(cacheKey);

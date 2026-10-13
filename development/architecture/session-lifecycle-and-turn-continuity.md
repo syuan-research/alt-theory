@@ -400,8 +400,9 @@ for another conversation. One rule decides how it travels:
   never asks the reviewer, and offers allow once / deny with no grant.
   The reviewer and the dialog are the conversation's approver
   (`core/approval-ask.ts`), shared with its commands: a refusal is the
-  tool's error, a reviewer denial counts toward the denial brake, and the
-  verdict shows on the tool row. Every decision is written to the conversation's `security-audit.jsonl`
+  tool's error, a reviewer denial counts toward the denial brake, the
+  verdict shows on the tool row, and a dialog dismissed without a choice
+  reads as declined (only a timeout counts as unanswered). Every decision is written to the conversation's `security-audit.jsonl`
   (rule `peer_message`); `send_to_agent` runs one call at a time so two
   sends in one turn cannot both spend the last message. Grants are kept with the approving
   conversation's "Allow for this conversation" grants

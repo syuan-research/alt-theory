@@ -121,6 +121,11 @@ test("a message to another conversation: the user's words around its Session ID,
   const reply = request([message("user", '<agent-team-mail from="Charts (Session ID s-42)" peer="true">\nWhich year?\n</agent-team-mail>')]);
   assert.match(reply, /its latest message to this conversation:\nmail from Charts \(Session ID s-42\): Which year\?/);
   assert.match(request([message("user", "Hello.")]), /has not written to this one/);
+  // A sibling ID created in the same minute (`s-42-2`) is another conversation.
+  assert.match(request([message("user", "Work with s-42-2 on it."), message("user", '<agent-team-mail from="Other (Session ID s-42-2)" peer="true">\nHi.\n</agent-team-mail>')]), /has not written to this one/);
+  // Mail delivered while this conversation was closed is a custom message entry.
+  const closed = request([{ type: "custom_message", customType: "agent-team", content: '<agent-team-mail from="Charts (Session ID s-42)" peer="true">\nDone with 2024.\n</agent-team-mail>' }]);
+  assert.match(closed, /its latest message to this conversation:\nmail from Charts \(Session ID s-42\): Done with 2024\./);
   const command = reviewerMessage({ toolName: "bash", input: { command: "ls" }, cwd: "/tmp", title: "Run", entries: [], readableFile: () => null });
   assert.doesNotMatch(command, /How to judge this message|Session ID/);
 });
