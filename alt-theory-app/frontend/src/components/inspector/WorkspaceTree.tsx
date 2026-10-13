@@ -8,6 +8,7 @@ import { useTree } from "@headless-tree/react";
 import type { WorkingFolderDescriptor, WorkingTreeEntry, WorkspaceFileEntry } from "@/api/types";
 import {
   listWorkingDirectory,
+  listRecentWorkingFiles,
   listWorkingFolders,
   listWorkspaceFiles,
   searchWorkingDirectory,
@@ -20,7 +21,8 @@ import { hasNativeBridge, openPath } from "@/lib/native";
 import { NEW_DRAFT, stageInDraft, unstageInDraft, useDraft } from "@/lib/draft";
 import { WORKSPACE_PATH_MIME } from "@/lib/workspace";
 import { FilePreview } from "@/components/inspector/FilePreview";
-import { FolderHead, ListTools } from "@/components/inspector/FolderList";
+import { FolderHead, ListTools, MenuButton } from "@/components/inspector/FolderList";
+import { fmtTime } from "@/lib/format";
 import { buildFileTreeModel, getFileTreeNode, withFolderEntries, type FileTreeNode } from "@/lib/fileTree";
 import type { PreviewMode } from "@/lib/fileContent";
 import { usePaneMemory } from "@/lib/paneMemory";
@@ -64,6 +66,9 @@ export function WorkspaceTree() {
   const ownerAttachments = useDraft(owner ?? NEW_DRAFT).draft.attachments;
   const [previewView, setPreviewView] = usePaneMemory<PreviewMode>(`${owner}:files:mode`, "rendered");
   const [query, setQuery] = usePaneMemory(`${sessionId}:files:query`, "");
+  // Name = the folder trees; recent = each folder's files flat, newest first.
+  const [order, setOrder] = usePaneMemory<"name" | "recent">(`${sessionId}:files:order`, "name");
+  const recent = order === "recent";
   const [browsing, setBrowsing] = usePaneMemory<{ folderId: string; path: string } | null>(`${sessionId}:files:browsing`, null);
   const resultScroll = useRef({ outer: 0, inner: 0, folderId: "" });
   const [closedFolders, setClosedFolders] = usePaneMemory<string[]>(`${sessionId}:files:closedFolders`, []);
@@ -136,6 +141,16 @@ export function WorkspaceTree() {
   }, [shell.workspaceRevealPath, shell.clearWorkspaceRevealPath, setQuery]);
 
   const normalizedQuery = browsing ? "" : query.trim();
+  const orderLabels = { name: t("Name"), recent: t("Recently modified") };
+  const orderControl = (
+    <MenuButton
+      icon="ph-sort-ascending"
+      label={orderLabels[order]}
+      choices={(["name", "recent"] as const).map((key) => ({
+        label: orderLabels[key], on: order === key, onSelect: () => { setBrowsing(null); setOrder(key); },
+      }))}
+    />
+  );
   const fileQuery = parseFileQuery(normalizedQuery);
   const managedFolderPath = workspacePath || workingFolders.find((folder) => folder.managed)?.path || "";
   const filterEntries = (items: WorkspaceFileEntry[]): ManagedTreeEntry[] =>
@@ -255,7 +270,8 @@ export function WorkspaceTree() {
         onBack={browsing ? backToResults : undefined}
         onClear={clearSearch}
         placeholder={t("Filter files")}
-        {...(workingFolders.some((folder) => folder.available && !folder.managed) || (entries?.length ?? 0) > 0
+        controls={orderControl}
+        {...(!recent && (workingFolders.some((folder) => folder.available && !folder.managed) || (entries?.length ?? 0) > 0)
           ? {
               onExpandAll: () => {
                 setClosedFolders([]);
@@ -286,7 +302,18 @@ export function WorkspaceTree() {
               {!folder.available ? (
                 <div className="working-folder-missing">{t("Folder is not available on this device.")}</div>
               ) : null}
-              {folder.available && !folder.managed && sessionId ? (
+              {folder.available && !folder.managed && sessionId && recent ? (
+                <div hidden={folderClosed(folder.id)}>
+                  <RecentWorkingFiles
+                    key={`${sessionId}:${folder.id}`}
+                    sessionId={sessionId}
+                    folderId={folder.id}
+                    refreshSignal={runCount}
+                    query={normalizedQuery}
+                    onOpenFile={openWorkingFile}
+                  />
+                </div>
+              ) : folder.available && !folder.managed && sessionId ? (
                 // Folded with `hidden`, not unmounted: the loaded levels and
                 // expansion stay. A filter shows matches even when folded.
                 <div hidden={folderClosed(folder.id)}>
@@ -322,7 +349,15 @@ export function WorkspaceTree() {
         <div className="rp-empty">{t("No attachments or conversation-folder files.")}</div>
       ) : (
         <>
-          {referenceEntries.length > 0 ? (
+          {recent ? (
+            <RecentList
+              entries={[...referenceEntries, ...conversationFolderEntries]
+                .filter((entry): entry is WorkspaceFileEntry => "kind" in entry)
+                .sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))}
+              onOpen={openFile}
+            />
+          ) : null}
+          {!recent && referenceEntries.length > 0 ? (
             <>
               <div className="files-section-title">{t("Attachments")}</div>
               <div className="tree">
@@ -342,7 +377,7 @@ export function WorkspaceTree() {
               </div>
             </>
           ) : null}
-          {conversationFolderEntries.length > 0 ? (
+          {!recent && conversationFolderEntries.length > 0 ? (
             <>
               <div className="files-section-title">{t("Conversation folder")}</div>
               <div className="tree">
@@ -364,6 +399,54 @@ export function WorkspaceTree() {
           ) : null}
         </>
       )}
+    </div>
+  );
+}
+
+/** Flat newest-first rows (Files' "Recently modified" order). */
+function RecentList<T extends { path: string; updatedAt: string | null }>({ entries, onOpen }: {
+  entries: T[];
+  onOpen: (entry: T) => void;
+}) {
+  return (
+    <>
+      {entries.map((entry) => (
+        <button key={entry.path} className="file-item" data-tip={entry.path} onClick={() => onOpen(entry)}>
+          <i className="ph ph-file-text" />
+          <span className="s-title">{entry.path}</span>
+          <span className="delta">{entry.updatedAt ? fmtTime(entry.updatedAt) : ""}</span>
+        </button>
+      ))}
+    </>
+  );
+}
+
+function RecentWorkingFiles({ sessionId, folderId, refreshSignal, query, onOpenFile }: {
+  sessionId: string;
+  folderId: string;
+  refreshSignal: number;
+  query: string;
+  onOpenFile: (entry: WorkingTreeEntry) => void;
+}) {
+  const [result, setResult] = useState<{ entries: WorkingTreeEntry[]; truncated: boolean } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    listRecentWorkingFiles(sessionId, folderId)
+      .then((response) => !cancelled && setResult({ entries: response.entries, truncated: Boolean(response.truncated) }))
+      .catch(() => !cancelled && setResult({ entries: [], truncated: false }));
+    return () => { cancelled = true; };
+  }, [sessionId, folderId, refreshSignal]);
+  if (!result) return <div className="wb-note">{t("Loading…")}</div>;
+  // ponytail: the filter narrows the newest 200 only; the Name order searches the whole folder.
+  const fileQuery = parseFileQuery(query);
+  const shown = query
+    ? result.entries.filter((entry) => fileQueryScore(fileQuery, entry.path.split("/").at(-1) ?? "", entry.path) > 0)
+    : result.entries;
+  if (shown.length === 0) return <div className="wb-note">{t("No matching files.")}</div>;
+  return (
+    <div className="working-tree">
+      <RecentList entries={shown} onOpen={onOpenFile} />
+      {result.truncated ? <div className="wb-note">{t("Showing the 200 most recently modified files.")}</div> : null}
     </div>
   );
 }

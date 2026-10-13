@@ -286,7 +286,7 @@ function SettingsRail({ hidden }: { hidden?: boolean }) {
   const items = [
     { key: "general", label: t("General"), icon: "ph-gear" },
     { key: "models", label: t("Models"), icon: "ph-cpu" },
-    { key: "agents", label: t("Subagents"), icon: "ph-robot" },
+    { key: "agents", label: t("Subagents"), icon: "ph-arrow-elbow-down-right" },
     { key: "folders", label: t("Projects and global folders"), icon: "ph-folders" },
     { key: "rolekb", label: t("Role & Knowledge"), icon: "ph-book-open" },
     { key: "skills", label: t("Skills"), icon: "ph-magic-wand" },

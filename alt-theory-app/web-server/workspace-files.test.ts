@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -12,6 +12,7 @@ import {
   describeWorkingFolders,
   listWorkingFolderChildren,
   readWorkingFolderTextFile,
+  recentWorkingFiles,
   searchWorkingFolder,
   SESSION_WORKSPACE_QUOTA_BYTES,
   uploadWorkspaceFile,
@@ -200,6 +201,12 @@ test("working-folder browsing follows the persisted external workspace", async (
     "primary/notes/idea.md"
   );
   assert.equal(file.content, "# Actual work\n");
+  utimesSync(join(external, "notes", "idea.md"), new Date(), new Date(Date.now() + 60_000));
+  const recent = await recentWorkingFiles(dataDir, sessionId, "primary", 3);
+  assert.deepEqual(recent.entries[0]?.path, "notes/idea.md");
+  assert.equal(recent.entries.length, 3);
+  assert.equal(recent.truncated, true);
+  assert.ok(recent.entries.every((entry) => !entry.isDirectory && !entry.path.startsWith("node_modules")));
   const search = await searchWorkingFolder(dataDir, sessionId, "primary", "IDEA");
   assert.deepEqual(search.entries.map((entry) => entry.path), ["notes/idea.md"]);
   assert.equal(search.truncated, false);

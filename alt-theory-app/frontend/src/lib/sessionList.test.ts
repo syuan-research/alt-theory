@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { SessionSummary } from "../api/types.ts";
-import { buildWorkspaceTree, canTakeMainline, contentRailMatchIds, familyKeyOf, familyMembersOf, filterRelatedRows, isFamilyHead, isListMember, nearestAncestor, railMatchIds, relatedRowsFor, sessionQueryScore, sessionTitle } from "./sessionList.ts";
+import { buildWorkspaceTree, canTakeMainline, contentRailMatchIds, familyKeyOf, familyMembersOf, filterRelatedRows, isFamilyHead, isListMember, nearestAncestor, railMatchIds, relatedRowsFor, sessionQueryScore, sessionTitle, sortRelatedRows } from "./sessionList.ts";
 
 function child(
   sessionId: string,
@@ -447,4 +447,18 @@ test("Related search keeps the ancestor chain in root-to-parent order", () => {
   const titleOf = (session: SessionSummary) => titles[session.sessionId];
   const visible = filterRelatedRows(rows, { kinds: new Set(["side"]), query: "notes", titleOf });
   assert.deepEqual(visible.map((row) => row.session.sessionId), ["root", "mid", "side"]);
+});
+
+test("related rows sort by activity, creation or name; the ancestor chain stays first", () => {
+  const root = { ...child("root", "", "fork", "2026-07-01T00:00:00.000Z"), forkedFrom: null } as SessionSummary;
+  const a = { ...child("a", "root", "subagent", "2026-07-02T00:00:00.000Z"), updatedAt: "2026-07-03T00:00:00.000Z" };
+  const b = { ...child("b", "root", "subagent", "2026-07-03T00:00:00.000Z"), updatedAt: "2026-07-10T00:00:00.000Z" };
+  const c = child("c", "b", "subagent", "2026-07-04T00:00:00.000Z");
+  const ids = (rows: ReturnType<typeof sortRelatedRows>) => rows.map((r) => r.session.sessionId);
+  const fromRoot = relatedRowsFor("root", [root, a, b]);
+  assert.deepEqual(ids(sortRelatedRows(fromRoot, "activity", (s) => s.sessionId)), ["b", "a"]);
+  assert.deepEqual(ids(sortRelatedRows(fromRoot, "created", (s) => s.sessionId)), ["a", "b"]);
+  assert.deepEqual(ids(sortRelatedRows(fromRoot, "name", (s) => (s.sessionId === "a" ? "z" : "y"))), ["b", "a"]);
+  // From a grandchild: root → parent chain first, then the attached rows.
+  assert.deepEqual(ids(sortRelatedRows(relatedRowsFor("c", [root, a, b, c]), "activity", (s) => s.sessionId)), ["root", "b", "a"]);
 });

@@ -14,6 +14,8 @@ import {
   isListMember,
   relatedKindLabel,
   relatedRowsFor,
+  sortRelatedRows,
+  type RelatedSort,
   sessionTitle,
   type RelatedKind,
   type RelatedRow,
@@ -25,6 +27,7 @@ import { ProvenancePanel } from "@/components/inspector/ProvenancePanel";
 import { WorkspaceTree } from "@/components/inspector/WorkspaceTree";
 import { ChangesPanel } from "@/components/inspector/ChangesPanel";
 import { LocalPage } from "@/components/inspector/LocalPage";
+import { MenuButton } from "@/components/inspector/FolderList";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 import { fetchSessionDetail, promoteToMainline } from "@/api/sessions";
 import { copyText } from "@/lib/clipboard";
@@ -233,6 +236,8 @@ function RelatedConversations() {
   const [searchOpen, setSearchOpen] = usePaneMemory(`${memoryKey}:searchOpen`, false);
   const [query, setQuery] = usePaneMemory(`${memoryKey}:query`, "");
   const [closedKinds, setClosedKinds] = usePaneMemory<Set<RelatedKind>>(`${memoryKey}:closed`, () => new Set());
+  const [sort, setSort] = usePaneMemory<RelatedSort>(`${memoryKey}:sort`, "activity");
+  const [onlyRunning, setOnlyRunning] = usePaneMemory(`${memoryKey}:running`, false);
   const filterRowRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   useFindTarget(filterRowRef, {
@@ -254,10 +259,19 @@ function RelatedConversations() {
     [app.sessions, conv.sessionId, scope],
   );
   const visible = useMemo(
-    () => filterRelatedRows(rows, { kinds, query, titleOf: (s) => sessionTitle(s, app.sessionDisplayNames, app.sessions) }),
+    () => {
+      const title = (s: (typeof app.sessions)[number]) => sessionTitle(s, app.sessionDisplayNames, app.sessions);
+      const matched = filterRelatedRows(rows, { kinds, query, titleOf: title }).filter((row) =>
+        !onlyRunning || row.kind === null || row.runStatus === "running" || row.runStatus === "awaiting-approval");
+      // A search ranks by relevance; otherwise the chosen order.
+      return query.trim() ? matched : sortRelatedRows(matched, sort, title);
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows, kinds, query, app.sessionDisplayNames, app.sessions],
+    [rows, kinds, query, sort, onlyRunning, app.sessionDisplayNames, app.sessions],
   );
+  const sortLabels: Record<RelatedSort, string> = {
+    activity: t("Recent activity"), created: t("Creation order"), name: t("Name"),
+  };
   const countOf = (kind: RelatedKind) => rows.filter((row) => row.kind === kind).length;
   const presentKinds = RELATED_KINDS.filter((kind) => countOf(kind) > 0);
   const chain = visible.filter((row) => row.kind === null);
@@ -385,10 +399,15 @@ function RelatedConversations() {
 
   // One row of small buttons, then the conversation itself: switching between
   // related conversations should not cost a round trip through a list.
+  // The switcher keeps creation order: an activity order would move its
+  // buttons under the pointer whenever a member starts or ends a run.
+  const switchRows = sort === "activity" && !query.trim()
+    ? sortRelatedRows(visible, "created", titleOf)
+    : visible;
   const switcher =
-    visible.length > 0 ? (
+    switchRows.length > 0 ? (
       <div className="child-switch" ref={switchRef}>
-        {visible.map((row) => (
+        {switchRows.map((row) => (
           <button
             key={row.session.sessionId}
             className={row.session.sessionId === activeChildId ? "on" : ""}
@@ -508,6 +527,13 @@ function RelatedConversations() {
     >
       {switcher}
       <div className="frow" ref={filterRowRef}>
+        <MenuButton
+          icon="ph-sort-ascending"
+          label={sortLabels[sort]}
+          choices={(Object.keys(sortLabels) as RelatedSort[]).map((key) => ({
+            label: sortLabels[key], on: sort === key, onSelect: () => setSort(key),
+          }))}
+        />
         <span className="flabel">{t("Filter")}</span>
         <span
           className={`fexp${filterOpen ? " open" : ""}`}
@@ -546,6 +572,15 @@ function RelatedConversations() {
         >
           {scope === "family" ? <i className="ph ph-check" /> : null}
           {t("Whole family")}
+        </button>
+        <button
+          type="button"
+          className={`fcard${onlyRunning ? " on" : ""}`}
+          aria-pressed={onlyRunning}
+          onClick={() => setOnlyRunning((prev) => !prev)}
+        >
+          {onlyRunning ? <i className="ph ph-check" /> : null}
+          {t("Running")}
         </button>
         <span className="fspacer" />
         <button

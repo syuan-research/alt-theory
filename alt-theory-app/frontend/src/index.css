@@ -1135,7 +1135,7 @@
   /* related pane filter row (proto E): one card that expands on hover or click,
      a whole-family card in the same style, search as an icon that drops a
      borderless field under the row; selected = check + darker hairline */
-  .frow { display: flex; align-items: center; gap: var(--space-tight); padding: var(--space-hair) var(--space-hair) var(--space-tight); min-height: 30px; }
+  .frow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-tight); padding: var(--space-hair) var(--space-hair) var(--space-tight); min-height: 30px; }
   .flabel { flex: 0 0 auto; }
   .fspacer { flex: 1; }
   .fcard { display: inline-flex; align-items: center; gap: var(--space-tight); flex: 0 0 auto; border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--surface); color: var(--ink-soft); font: inherit; font-size: var(--fs-secondary); padding: var(--space-hair) var(--space-tight); cursor: pointer; white-space: nowrap; }
@@ -1168,6 +1168,10 @@
   .fsearch input:focus, .inline-search input:focus { border-bottom-color: var(--hairline); }
   .sect-head { display: flex; align-items: center; gap: var(--space-tight); width: 100%; border: 0; background: none; padding: var(--space-tight) var(--space-hair) var(--space-hair); font: inherit; font-size: var(--fs-micro); cursor: pointer; text-align: left; }
   .sect-head .n { color: var(--text-3); }
+  .sect-head .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink); flex: 0 0 auto; }
+  .file-item .s-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .change-author { flex: 0 1 auto; max-width: 8em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-micro); color: var(--text-2); background: var(--card); border-radius: var(--r-sm); padding: 0 var(--space-hair); }
+  .change-author.own { background: var(--selected); color: var(--ink); }
   .sc-item .t i { color: var(--text-3); }
   .sc-item .fline i { font-size: 0.78rem; }
   /* in-place rail filter (proto E): borderless, a hairline only on focus */
@@ -1192,7 +1196,8 @@
   .tree .ti:hover { background: var(--row-active); }
   .tree .ti span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tree .ti.indent { padding-left: 28px; }
-  .files-tree-toolbar { display: flex; justify-content: flex-end; gap: var(--space-hair); margin: 0 var(--space-hair) var(--space-hair); }
+  .files-tree-toolbar { display: flex; align-items: center; gap: var(--space-hair); margin: 0 var(--space-hair) var(--space-hair); }
+  .context-menu .menu-blank { width: 1em; }
   .files-tree-toolbar .flat { display: inline-flex; align-items: center; gap: var(--space-tight); font-size: var(--fs-micro); }
   .files-search { display: flex; align-items: center; gap: var(--space-tight); margin: var(--space-hair) var(--space-tight) var(--space-tight); padding: var(--space-tight) var(--space-control); border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--surface); color: var(--text-3); }
   .files-search.browsing { position: sticky; top: 0; z-index: 1; }

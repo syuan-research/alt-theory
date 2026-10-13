@@ -123,6 +123,12 @@ export async function listWorkingDirectory(
   return fetchJson<WorkingDirectoryResponse>(`${sessionFilesBase(sessionId)}?${qs}`);
 }
 
+/** A folder's most recently modified files, newest first (capped by the server). */
+export async function listRecentWorkingFiles(sessionId: string, folderId: string): Promise<WorkingDirectoryResponse> {
+  const qs = new URLSearchParams({ root: "working", folderId, recent: "1" });
+  return fetchJson<WorkingDirectoryResponse>(`${sessionFilesBase(sessionId)}?${qs}`);
+}
+
 export async function searchWorkingDirectory(
   sessionId: string,
   folderId: string,

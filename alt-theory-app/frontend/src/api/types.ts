@@ -410,6 +410,7 @@ export interface FileChange {
   diff: string;
   contentRef?: { root: "workspace" | "working"; path: string };
   sessionIds: string[];
+  touchedAt: string | null;
 }
 
 export interface ChangeGroup {

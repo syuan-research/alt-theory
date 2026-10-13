@@ -113,6 +113,16 @@ detail lives in commit history and `development/`.
   adds it to its own conversation's message. A changed file opened from a
   side conversation shows that conversation's change.
 - Deleting a conversation that is open in the right pane closes it there.
+- **Changes can be sorted and filtered.** Sort by folder (newest change
+  first in each folder), recently changed, by agent, or name; filter to one
+  conversation, the running agents, or the agents you pick. When several
+  agents changed files, each file says who changed it. The list now updates
+  while subagents work in the background.
+- **Files can be sorted by recently modified**, which lists each folder's
+  newest files, including files made by commands.
+- **Related conversations can be sorted** by recent activity, creation order
+  or name, and filtered to the running ones.
+- Subagents have a new icon.
 - The researcher view's Runtime tab is gone; Records and Provenance stay.
 
 ### Conversation list

@@ -170,6 +170,7 @@ import {
 import {
   describeWorkingFolders,
   listWorkingFolderChildren,
+  recentWorkingFiles,
   searchWorkingFolder,
   readWorkingFolderTextFile,
 } from "./workspace-files.js";
@@ -1780,6 +1781,12 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         }
         const path = typeof req.query.path === "string" ? req.query.path : "";
         const search = typeof req.query.search === "string" ? req.query.search : "";
+        if (req.query.recent === "1") {
+          const closed = new AbortController();
+          res.on("close", () => closed.abort());
+          res.json(await recentWorkingFiles(dataDir, sessionId, folderId, 200, closed.signal));
+          return;
+        }
         if (!search) {
           res.json(listWorkingFolderChildren(dataDir, sessionId, folderId, path));
           return;

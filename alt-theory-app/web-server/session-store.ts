@@ -1705,6 +1705,8 @@ export interface FileChange {
   contentRef?: { root: "workspace" | "working"; path: string };
   /** Family members that touched it. */
   sessionIds: string[];
+  /** When the last successful write to it was recorded; null when the transcript has no time. */
+  touchedAt: string | null;
 }
 
 export interface ChangeGroup {
@@ -1852,11 +1854,17 @@ export function mergeSessionChanges(
         diff: [existing?.diff, file.diff].filter(Boolean).join("\n").split("\n").slice(0, MAX_DIFF_LINES).join("\n"),
         ...(located.contentRef ? { contentRef: located.contentRef } : {}),
         sessionIds: [...new Set([...(existing?.sessionIds ?? []), sessionId])],
+        touchedAt: latestStamp(existing?.touchedAt ?? null, file.touchedAt ?? null),
         groupRoot: located.groupRoot,
       } as LocatedFile);
     }
   }
   return [...byPath.values()].reverse();
+}
+
+function latestStamp(a: string | null, b: string | null): string | null {
+  if (!a || !b) return a ?? b;
+  return Date.parse(b) > Date.parse(a) ? b : a;
 }
 
 /** Where a tool path lands on disk and, when it is inside a root, how the content route reaches it. */
@@ -1975,7 +1983,7 @@ function commonAncestor(dirs: string[]): string {
 }
 
 /** A file touch as one session's transcript records it, before family merge and placement. */
-export type ProjectedChange = Pick<FileChange, "path" | "added" | "removed" | "diff">;
+export type ProjectedChange = Pick<FileChange, "path" | "added" | "removed" | "diff"> & { touchedAt?: string | null };
 
 export function projectChangesFromEntries(branchEntries: unknown[]): { files: ProjectedChange[] } {
   // Aggregate per path, keeping most-recently-touched first.
@@ -1998,6 +2006,7 @@ export function projectChangesFromEntries(branchEntries: unknown[]): { files: Pr
       );
     }
   }
+  let touchedAt: string | null = null;
   const touch = (path: string, added: number, removed: number, diff: string) => {
     const existing = byPath.get(path);
     byPath.delete(path);
@@ -2007,10 +2016,13 @@ export function projectChangesFromEntries(branchEntries: unknown[]): { files: Pr
       added: (existing?.added ?? 0) + added,
       removed: (existing?.removed ?? 0) + removed,
       diff: diffLines.slice(0, MAX_DIFF_LINES).join("\n"),
+      touchedAt: touchedAt ?? existing?.touchedAt ?? null,
     });
   };
 
   for (const entry of branchEntries) {
+    const stamp = (entry as { timestamp?: unknown })?.timestamp;
+    touchedAt = typeof stamp === "string" ? stamp : null;
     const content = (entry as { message?: { content?: unknown } })?.message?.content;
     if (!Array.isArray(content)) continue;
     for (const part of content) {

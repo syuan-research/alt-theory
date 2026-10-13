@@ -8,8 +8,9 @@ import {
   statSync,
   unlinkSync,
   writeFileSync,
+  type Stats,
 } from "fs";
-import { readdir } from "fs/promises";
+import { readdir, stat } from "fs/promises";
 import { basename, extname, isAbsolute, join, relative, resolve } from "path";
 import { fileQueryScore, parseFileQuery } from "../shared/quick-find.js";
 import { resolveSessionRoot, resolveSessionsRoot } from "../core/data-dir.js";
@@ -605,6 +606,38 @@ export async function searchWorkingFolder(
     }
   }
   return { folderId, path: "", entries, truncated: matches.length > limit };
+}
+
+/** A folder's most recently modified files, newest first (Files' "Recently modified" order). */
+export async function recentWorkingFiles(
+  dataDir: string,
+  sessionId: string,
+  folderId: string,
+  limit = 200,
+  signal?: AbortSignal,
+): Promise<{ folderId: string; path: string; entries: WorkingTreeEntry[]; truncated: boolean }> {
+  const folder = describeWorkingFolders(dataDir, sessionId).find((item) => item.id === folderId);
+  if (!folder?.available) throw new Error("This folder is not available");
+  const paths = await listSearchablePaths(realpathSync(folder.path), signal);
+  // Async stats: a large folder must not block the server while it is read.
+  const files: Array<{ path: string; stats: Stats }> = [];
+  for (const item of paths) {
+    if (item.isDirectory) continue;
+    signal?.throwIfAborted();
+    const stats = await stat(item.absolutePath).catch(() => null);
+    if (stats) files.push({ path: item.path, stats });
+  }
+  files.sort((a, b) => b.stats.mtimeMs - a.stats.mtimeMs || a.path.localeCompare(b.path));
+  return {
+    folderId,
+    path: "",
+    entries: files.slice(0, limit).map(({ path, stats }) => ({
+      folderId, path, isDirectory: false,
+      size: stats.size, updatedAt: stats.mtime.toISOString(),
+      previewable: stats.size <= MAX_TEXT_VIEW_BYTES,
+    })),
+    truncated: files.length > limit,
+  };
 }
 
 export function readWorkingFolderTextFile(

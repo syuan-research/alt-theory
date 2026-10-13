@@ -937,6 +937,19 @@ const catalog: Record<string, string> = {
   "Unless you tick the box, the files are kept and stay in Conversation files.": "不勾選則保留檔案，保留的檔案可在「對話檔案」裡找到。",
   "…and {count} more": "……另有 {count} 個",
   "Conversation list": "對話列表",
+  "By folder": "按資料夾",
+  "Recently changed": "最近修改",
+  "By agent": "按代理",
+  "Name": "名稱",
+  "This conversation": "本對話",
+  "Running agents": "運行中的代理",
+  "{count} agents": "{count} 個代理",
+  "All agents": "全部代理",
+  "Lists files agents wrote with their edit and write tools. Files made by commands show under Files.": "只列代理用編輯、寫入工具改的檔案；命令產生的檔案在「檔案」裡。",
+  "Recently modified": "最近修改",
+  "Showing the 200 most recently modified files.": "只顯示最近修改的 200 個檔案。",
+  "Recent activity": "最近活動",
+  "Creation order": "建立順序",
 };
 
 export default catalog;

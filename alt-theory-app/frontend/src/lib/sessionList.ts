@@ -248,7 +248,7 @@ export function canTakeMainline(
 export function purposeIcon(session: SessionSummary): string {
   switch (session.forkedFrom?.purpose) {
     case "subagent":
-      return "ph-robot";
+      return "ph-arrow-elbow-down-right";
     case "side":
       return "ph-arrows-split";
     case "ab-arm":
@@ -355,6 +355,27 @@ export function relatedRowsFor(
     if (kind !== "fork" || scope === "family") add(s, kind);
   }
   return rows;
+}
+
+export type RelatedSort = "activity" | "created" | "name";
+
+/**
+ * Order of the kind rows (issue 2026-10-12): last activity first, creation
+ * order (the saN / brN marker order), or name. The ancestor chain keeps
+ * root → parent order.
+ */
+export function sortRelatedRows(
+  rows: RelatedRow[],
+  sort: RelatedSort,
+  titleOf: (s: SessionSummary) => string,
+): RelatedRow[] {
+  const time = (value: string | null | undefined) => Date.parse(value ?? "") || 0;
+  const compare =
+    sort === "created" ? (a: RelatedRow, b: RelatedRow) => time(a.createdAt) - time(b.createdAt)
+      : sort === "name" ? (a: RelatedRow, b: RelatedRow) => titleOf(a.session).localeCompare(titleOf(b.session))
+        : (a: RelatedRow, b: RelatedRow) =>
+            time(b.session.updatedAt ?? b.createdAt) - time(a.session.updatedAt ?? a.createdAt);
+  return [...rows.filter((row) => row.kind === null), ...rows.filter((row) => row.kind !== null).sort(compare)];
 }
 
 /**

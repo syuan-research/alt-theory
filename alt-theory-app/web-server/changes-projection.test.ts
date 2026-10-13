@@ -72,6 +72,20 @@ test("most-recently-touched file comes first", () => {
   );
 });
 
+test("a change keeps the time of its last write, the latest across a family", () => {
+  const { files } = projectChangesFromEntries([
+    { timestamp: "2026-10-13T01:00:00.000Z", ...toolCallEntry("write", { path: "a.md", content: "a" }) },
+    { timestamp: "2026-10-13T02:00:00.000Z", ...toolCallEntry("edit", { path: "a.md", oldText: "a", newText: "b" }) },
+  ]);
+  assert.equal(files[0].touchedAt, "2026-10-13T02:00:00.000Z");
+  const merged = mergeSessionChanges([
+    { sessionId: "child", files: [{ ...files[0], touchedAt: "2026-10-13T05:00:00.000Z" }] },
+    { sessionId: "parent", files },
+  ], workspaceRoot("/tmp/project"));
+  assert.equal(merged[0].touchedAt, "2026-10-13T05:00:00.000Z");
+  assert.deepEqual(merged[0].sessionIds, ["child", "parent"]);
+});
+
 test("failed or pending writes are not reported as file changes", () => {
   const { files } = projectChangesFromEntries([
     toolCallEntry("write", { path: "failed.md", content: "no" }, "failed"),

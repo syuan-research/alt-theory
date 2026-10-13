@@ -290,6 +290,19 @@ surfaces remain designation-gated and absent for everyone else.
     `CHANGE_GROUP_DEPTH_CAP`). Every group is titled by the deepest common
     ancestor of its files; rows show paths relative to that title, and a group
     that absorbed deeper folders says so in one muted line.
+  - Changes counts only successful `edit` / `write` / `create` / `multiedit`
+    tool calls on each member's current branch; files made by commands do
+    not appear (a muted line under the list says so). Each change carries
+    `touchedAt` (its last write's entry time, latest across the family) and
+    `sessionIds` (who wrote it). The server's order is merge order; the
+    panel orders client-side (`lib/changeList.ts`, issue 2026-10-12): by
+    folder (default; groups as above, newest change first inside each),
+    recently changed (flat), by agent (one section per writer, most recently
+    active first) or name, and filters by agent (all, this conversation,
+    running members, or picked members). Rows name their writers when more
+    than one member wrote. The list re-reads when the center's run settles,
+    when any family member's list activity or `updatedAt` moves, and every
+    10 s while a member runs.
   - Changes and Files share one folder chrome (Owner 2026-09-24): an
     always-visible filter and Expand all / Collapse all on top, and one folder
     header — folder name plus its role (Main / Companion / Global folder,
@@ -314,6 +327,14 @@ surfaces remain designation-gated and absent for everyone else.
     `lib/fileDrafts.ts` (unsaved file edits); and `lib/find.ts` (which column
     Ctrl+F serves). None of these persists across a restart; composer drafts
     are the conversation's own (see Conversation drafts).
+  - Changes, Files and Related put their sort (and filter) cards on one
+    row (`FolderList.tsx` `MenuButton`, choices in the context-menu shell).
+    Files orders by name (the trees) or recently modified: each working
+    folder's 200 newest files flat (`GET …/files?root=working&recent=1`,
+    `workspace-files.ts` `recentWorkingFiles`), the filter narrowing those.
+    Related sorts its kind rows by recent activity (`updatedAt`, default),
+    creation order (the saN / brN marker order) or name, with a Running
+    filter; the ancestor chain stays first and a search ranks by relevance.
   - Files has one inline filter above the existing tree. It keeps matches and
     their ancestors in that tree, expands those ancestors while filtering, and
     restores the prior expansion when cleared. Selecting a matching folder

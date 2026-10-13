@@ -1,13 +1,15 @@
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import { t } from "@/i18n";
 import { hasNativeBridge, revealPath } from "@/lib/native";
+import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 
 /**
  * Shared chrome for the right pane's folder lists, Changes and Files (owner
  * 2026-09-24): one always-visible filter plus Expand all / Collapse all on
  * top, and one folder header — name + quiet role on the first line (click
  * folds the folder), the full path on the second (click reveals it in the
- * file manager).
+ * file manager). `controls` (sort / filter menus) sit on the left of the
+ * Expand / Collapse row — the same row shape in Changes, Files and Related.
  */
 export function ListTools({
   filterRef,
@@ -19,6 +21,7 @@ export function ListTools({
   placeholder,
   onExpandAll,
   onCollapseAll,
+  controls,
 }: {
   filterRef: RefObject<HTMLDivElement | null>;
   query: string;
@@ -30,6 +33,7 @@ export function ListTools({
   /** Omitted when there is nothing to fold. */
   onExpandAll?: () => void;
   onCollapseAll?: () => void;
+  controls?: ReactNode;
 }) {
   return (
     <>
@@ -52,16 +56,22 @@ export function ListTools({
         {onBack ? <button type="button" className="files-search-action" aria-label={t("Back to search results")} data-tip={t("Back to search results")} onClick={onBack}><i className="ph ph-arrow-left" aria-hidden="true" /></button> : null}
         {query ? <button type="button" className="files-search-action" aria-label={t("Clear")} data-tip={t("Clear")} onClick={() => onClear ? onClear() : onQuery("")}><i className="ph ph-x" aria-hidden="true" /></button> : null}
       </div>
-      {onExpandAll && onCollapseAll ? (
+      {controls || (onExpandAll && onCollapseAll) ? (
         <div className="files-tree-toolbar">
-          <button className="flat" onClick={onExpandAll}>
-            <i className="ph ph-arrows-out-line-vertical" aria-hidden="true" />
-            {t("Expand all")}
-          </button>
-          <button className="flat" onClick={onCollapseAll}>
-            <i className="ph ph-arrows-in-line-vertical" aria-hidden="true" />
-            {t("Collapse all")}
-          </button>
+          {controls}
+          <span className="fspacer" />
+          {onExpandAll && onCollapseAll ? (
+            <>
+              <button className="flat" onClick={onExpandAll}>
+                <i className="ph ph-arrows-out-line-vertical" aria-hidden="true" />
+                {t("Expand all")}
+              </button>
+              <button className="flat" onClick={onCollapseAll}>
+                <i className="ph ph-arrows-in-line-vertical" aria-hidden="true" />
+                {t("Collapse all")}
+              </button>
+            </>
+          ) : null}
         </div>
       ) : null}
     </>
@@ -123,5 +133,49 @@ export function FolderHead({
         <div className="folder-head-path" data-tip={path}>{path}</div>
       )}
     </div>
+  );
+}
+
+/** One choice of a list menu; `on` draws the check. */
+export interface MenuChoice {
+  label: string;
+  on: boolean;
+  separator?: boolean;
+  onSelect: () => void;
+}
+
+/**
+ * A sort or filter control of the right pane's lists: a small card that
+ * opens its choices under itself. `active` marks a filter that hides rows.
+ */
+export function MenuButton({ icon, label, active = false, choices }: {
+  icon: string;
+  label: string;
+  active?: boolean;
+  choices: MenuChoice[];
+}) {
+  const menu = useContextMenu();
+  const items: ContextMenuItem[] = choices.map((choice) => ({
+    label: choice.label,
+    icon: choice.on ? "ph-check" : "menu-blank",
+    separator: choice.separator,
+    onSelect: choice.onSelect,
+  }));
+  return (
+    <>
+      <button
+        type="button"
+        className={`fcard${active ? " on" : ""}`}
+        aria-haspopup="menu"
+        onClick={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect();
+          menu.openAt(rect.left, rect.bottom + 4, items, event.currentTarget);
+        }}
+      >
+        <i className={`ph ${icon}`} aria-hidden="true" />
+        {label}
+      </button>
+      {menu.element}
+    </>
   );
 }
