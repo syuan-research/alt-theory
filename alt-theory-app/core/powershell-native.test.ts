@@ -48,6 +48,14 @@ Set-Content -Path "$HOME\notes.txt" -Value x
     assert.equal((await parse("Write-Output 'unterminated"))?.ok, false);
   });
 
+  test(`native AST (${executable}): splatted parameters are unknown; quoted @p is a literal`, async () => {
+    const reading = await createNativePowerShellParser(executable)("Remove-Item @p; Remove-Item '@p'");
+    assert.ok(reading?.ok);
+    const commands = powerShellInvocations(reading, [tmpdir()], toolPath)
+      .flatMap((fact) => "invocation" in fact ? [fact.invocation] : []);
+    assert.deepEqual(commands.map((command) => command.args), [["-r", null], ["-r", "@p"]]);
+  });
+
   test(`native AST (${executable}): parsing never executes input; conditional cd keeps both folders`, async (t) => {
     const root = mkdtempSync(join(tmpdir(), "alt-native-"));
     t.after(() => rmSync(root, { recursive: true, force: true }));

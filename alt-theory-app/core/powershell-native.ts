@@ -22,6 +22,7 @@ function Read-Value($node) {
     return @{ kind = 'value'; text = $null; expandable = $node.Value }
   }
   if ($node -is [Management.Automation.Language.VariableExpressionAst]) {
+    if ($node.Splatted) { return @{ kind = 'value'; text = $null } }
     return @{ kind = 'value'; text = $null; expandable = $node.Extent.Text }
   }
   return @{ kind = 'value'; text = $null }

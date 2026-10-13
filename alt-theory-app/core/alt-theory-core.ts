@@ -229,7 +229,7 @@ export interface AltTheoryConfig extends SessionDirectories {
   dataDir?: string;
   /** The user's command-prefix allowlist (app settings), read live. */
   readCommandAllowlist?: () => string[];
-  /** Reads code a command hands to PowerShell (Windows: the native parser); the light reader when absent. */
+  /** Overrides PowerShell parsing; defaults to native on Windows, light elsewhere. */
   parsePowerShell?: SecurityExtensionOptions["parsePowerShell"];
   /** The system temp folder's spellings; default: the OS temp folder (and /tmp outside Windows). */
   tempDirs?: string[];

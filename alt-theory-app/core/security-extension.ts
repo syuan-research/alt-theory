@@ -139,7 +139,7 @@ export interface SecurityExtensionOptions {
     request: ReviewRequest,
     context: { toolCallId: string; priorDenials: number; signal?: AbortSignal },
   ) => Promise<ReviewVerdict>;
-  /** Reads code a command hands to PowerShell; the light reader when absent. */
+  /** Overrides PowerShell parsing; defaults to native on Windows, light elsewhere. */
   parsePowerShell?: PowerShellParser;
   /** Unanswered approvals in a row; the caller's, so other approval dialogs count too. */
   approvalTimeouts?: ApprovalTimeouts;
