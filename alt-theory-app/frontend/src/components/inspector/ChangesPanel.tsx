@@ -274,14 +274,17 @@ export function ChangesPanel() {
                     }}
                   >
                     <i className="ph ph-file-text" />
-                    <span className="s-title" data-tip={file.touchedAt ? `${file.resolvedPath} · ${fmtTime(file.touchedAt)}` : file.resolvedPath}>
-                      {file.displayPath}
+                    {/* The name wraps in full; who wrote it sits on its own line under it. */}
+                    <span className="change-name" data-tip={file.touchedAt ? `${file.resolvedPath} · ${fmtTime(file.touchedAt)}` : file.resolvedPath}>
+                      <span className="s-title">{file.displayPath}</span>
+                      {showAuthors && !agentId ? (
+                        <span className="change-authors">
+                          {file.sessionIds.map((id) => (
+                            <span key={id} className={`change-author${id === sessionId ? " own" : ""}`}>{nameOf(id)}</span>
+                          ))}
+                        </span>
+                      ) : null}
                     </span>
-                    {showAuthors && !agentId
-                      ? file.sessionIds.map((id) => (
-                          <span key={id} className={`change-author${id === sessionId ? " own" : ""}`}>{nameOf(id)}</span>
-                        ))
-                      : null}
                     <span className="delta">
                       {file.added ? `+${file.added}` : ""}
                       {file.added && file.removed ? " " : ""}
