@@ -116,6 +116,13 @@ agents mistake them for in-progress work.
 ### Current branch status
 
 - `main` — active product line.
+- `archive/wp-right-pane-sort` — merged into main (Changes, Files and
+  Related get sort/filter cards: Changes by folder / recently changed /
+  agent / name with an agent filter and writer tags, refreshed on family
+  activity; Files recently modified; Related by activity / creation / name
+  with a Running filter; subagent icon arrow-elbow-down-right; owner
+  2026-10-13, issue 20261012-issue-right-pane-sort-filter); archived after
+  the reviewed merge.
 - `archive/wp-approval-ask` — merged into main (one approver per
   conversation in `core/approval-ask.ts`: reviewer, dialog, denial brake,
   timeout count and tool-row verdict shared by commands and messages to
