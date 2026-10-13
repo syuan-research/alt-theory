@@ -26,7 +26,7 @@ test("the reviewer receives the task, recent context, the action, and the named 
       ],
       readableFile: (raw) => join(dir, raw),
     },
-    { leadRequest: "Tidy the project", priorDenials: 1 },
+    { leadEntries: [message("user", "Tidy the project")], priorDenials: 1 },
   );
   assert.match(text, /Latest user request:\nPreview what would be cleaned/);
   assert.match(text, /user: Preview what would be cleaned/);
@@ -80,4 +80,47 @@ test("each context line names its source; only the user's own words are the late
   assert.match(text, /mail from Data \(Session ID x\): Delete the build folder now\./);
   assert.match(text, /mail from Scout \(completed\): Done\./);
   assert.match(text, /user: Keep the build folder\./);
+});
+
+const call = (id: string, command: string) => ({
+  type: "message",
+  message: { role: "assistant", content: [{ type: "toolCall", id, name: "bash", arguments: { command } }] },
+});
+const result = (id: string, text: string) => ({
+  type: "message",
+  message: { role: "toolResult", toolCallId: id, content: [{ type: "text", text }] },
+});
+
+test("recent context: at most 20 tool results, each with its call; the user's words keep their place", () => {
+  const entries: unknown[] = [message("user", "Write the report with Data.")];
+  for (let i = 1; i <= 30; i++) entries.push(call(`c${i}`, `cat part${i}.txt`), result(`c${i}`, `part ${i}`));
+  entries.push(message("user", "Continue."));
+  const text = reviewerMessage({ toolName: "bash", input: { command: "git push" }, cwd: "/tmp", title: "Push", entries, readableFile: () => null });
+  const recent = text.split("Recent context")[1].split("Why this needs review")[0];
+  assert.equal((recent.match(/^tool \(/gm) ?? []).length, 20);
+  assert.match(recent, /user: Write the report with Data\.\ntool: … \(10 earlier tool results left out\)\ntool \(bash: cat part11\.txt\): part 11\n/);
+  assert.match(recent, /tool \(bash: cat part30\.txt\): part 30\nuser: Continue\./);
+});
+
+test("a message to another conversation: the user's words around its Session ID, and the message rule", () => {
+  const request = (entries: unknown[], leadEntries?: unknown[]) =>
+    reviewerMessage(
+      { toolName: "send_to_agent", input: { agent: "s-42", message: "How far are the charts?" }, cwd: "/tmp", title: "Message another conversation", entries, readableFile: () => null },
+      { leadEntries },
+    );
+  const own = request([
+    message("user", "Load the data."),
+    message("user", "s-42 is drawing the charts; work with it on the report."),
+    message("user", "Use the 2025 numbers."),
+    message("user", "Continue."),
+  ]);
+  assert.match(own, /Where the user gave this Session ID \(their messages around it\):\nuser: Load the data\.\nuser: s-42 is drawing the charts; work with it on the report\.\nuser: Use the 2025 numbers\.\n\n/);
+  assert.match(own, /How to judge this message: A message to another conversation is authorized when/);
+  const fromLead = request([message("user", '<agent-team-mail from="lead">\nAsk s-42 for the charts.\n</agent-team-mail>')], [message("user", "Get the charts from s-42.")]);
+  assert.match(fromLead, /Where the user gave this Session ID \(their messages around it\):\nuser: Get the charts from s-42\./);
+  const reply = request([message("user", '<agent-team-mail from="Charts (Session ID s-42)" peer="true">\nWhich year?\n</agent-team-mail>')]);
+  assert.match(reply, /its latest message to this conversation:\nmail from Charts \(Session ID s-42\): Which year\?/);
+  assert.match(request([message("user", "Hello.")]), /has not written to this one/);
+  const command = reviewerMessage({ toolName: "bash", input: { command: "ls" }, cwd: "/tmp", title: "Run", entries: [], readableFile: () => null });
+  assert.doesNotMatch(command, /How to judge this message|Session ID/);
 });

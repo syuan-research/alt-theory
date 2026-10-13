@@ -451,13 +451,25 @@ Smart approval (2026-09-26) is stored in the session header like Full Access
 `smart_approval_changed`),
 local only, dormant under Read-only, and switched immediately in both
 directions — the reviewer only answers where the user would otherwise be
-asked. For each reviewed action the security extension calls the session
-service's reviewer once with everything attached up front
-(`core/approval-reviewer.ts`): the latest user request, the last 40 user
-messages and tool results (assistant prose left out), for a subagent its
-root conversation's latest user request, the pending action, and the
+asked. One approver per conversation (`core/approval-ask.ts`, 2026-10-13)
+puts every reviewed action to the reviewer and, failing that, to the user's
+dialog: the security extension's commands and file writes, and
+session-service's messages to other conversations. It owns the in-memory
+allow cache, the denial brake, the timeout count, and the verdict for the
+tool row; each caller keeps when to ask, what a grant means, and its
+dialog options. The reviewer is called once with everything attached up
+front (`core/approval-reviewer.ts`): the latest user request (the whole
+branch, compaction included), the last 40 user messages, mail and tool
+results — at most 20 of them tool results, each named by the call that
+produced it, a gap marked — with assistant prose left out, for a subagent
+its root conversation's latest user request, the pending action, and the
 contents of up to three script files the command names that lie inside the
-readable roots. The prompt treats all of it as untrusted evidence that only
+readable roots. For a message to another conversation it also gets the
+user's messages around where they gave that Session ID (the latest message
+naming it, with the user messages just before and after; the lead's for a
+subagent), else that conversation's latest mail, and the rule for such
+messages: authorized when the user opened the contact (or it wrote first)
+and the message serves the purpose the user gave it. The prompt treats all of it as untrusted evidence that only
 user messages can authorize, and asks for strict JSON `allow | deny` with a
 reason.
 
@@ -470,8 +482,9 @@ reason.
   rides on the tool result's `details.altApproval`, so the tool row shows
   "Smart approval: allowed · reason"; the model never sees it.
 - **Deny** — the call is blocked with the reason, which the agent reads as
-  the tool result. The third denial in a row within one run adds an
-  instruction to stop working around it and ask the user.
+  the tool result. The third denial in a row within one run — commands and
+  messages alike — adds an instruction to stop working around it and ask
+  the user.
 - **Unavailable** — every model failed, timed out (60 s each), or answered
   unreadably: the action goes to the user's dialog, headed with the reason.
 

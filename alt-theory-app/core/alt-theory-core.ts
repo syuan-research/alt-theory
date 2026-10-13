@@ -30,6 +30,7 @@ import { appendFileSync, existsSync, readFileSync, realpathSync } from "fs";
 import { tmpdir } from "os";
 import { mkdir, writeFile } from "fs/promises";
 import { dirname, join, resolve, sep } from "path";
+import { createApprover } from "./approval-ask.js";
 import {
   createSecurityExtension,
   type SecurityAuditEntry,
@@ -541,13 +542,16 @@ async function createAltTheorySessionWithManager(
   // Full wins when both are stored; read-only keeps both dormant.
   const isSmartApprovalEffective = () =>
     runtimeState.smartApproval !== false && !runtimeState.fullAccess && !mediatesReadOnly();
-  // Unanswered approvals in a row: the security extension's and the
-  // messages-between-conversations dialog's alike (plan §11).
-  const approvalTimeouts = { count: 0 };
   // Session-scoped audit sink, shared by the security extension and the
   // approvals of messages to other conversations (session-service).
   const recordAudit = (entry: SecurityAuditEntry) =>
     appendFileSync(join(resolvedRecordsDir, "security-audit.jsonl"), `${JSON.stringify(entry)}\n`);
+  // One approver for every approval of this conversation: commands and
+  // files (security extension) and messages to other conversations.
+  const approver = createApprover({
+    reviewAction: config.reviewAction,
+    audit: (entry) => recordAudit({ timestamp: new Date().toISOString(), ...entry }),
+  });
   // Writable/readable roots are computed by the one root-policy module,
   // evaluated per call: the Alt writable roots plus the workspace (primary +
   // the project's companion folders, both read live from the folder policy).
@@ -685,9 +689,8 @@ async function createAltTheorySessionWithManager(
         getCommandAllowlist: config.readCommandAllowlist,
         isSmartApproval: isSmartApprovalEffective,
         isStrictSmartApproval: () => runtimeState.smartApproval === "strict",
-        reviewAction: config.reviewAction,
+        approver,
         parsePowerShell: config.parsePowerShell,
-        approvalTimeouts,
       }),
     ],
     noContextFiles: resourceDiscovery !== "dev-debug",
@@ -995,12 +998,8 @@ async function createAltTheorySessionWithManager(
     setSmartApproval: (value: SmartApprovalSetting): void => {
       runtimeState.smartApproval = value;
     },
-    /** An approval went unanswered: how many in a row, this one included. */
-    approvalTimedOut: (): number => ++approvalTimeouts.count,
-    /** The user answered an approval: the count starts over. */
-    approvalAnswered: (): void => {
-      approvalTimeouts.count = 0;
-    },
+    /** Reviewer and dialog for this conversation's approvals (approval-ask.ts). */
+    approver,
     getWorkspace: () => ({
       primaryDir: cwd,
     }),

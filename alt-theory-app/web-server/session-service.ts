@@ -17,8 +17,6 @@ import {
 import {
   APPROVAL_ALLOW_ONCE,
   APPROVAL_DENY,
-  APPROVAL_TIMEOUT_MS,
-  approvalTimeoutText,
   type SecurityAuditEntry,
 } from "../core/security-extension.js";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
@@ -135,7 +133,8 @@ import {
 } from "../frontend/src/lib/transcriptWindow.js";
 import { TRANSCRIPT_PAGE_MAX, TRANSCRIPT_TAIL_ROWS } from "./limits.js";
 import { continueAgentTurnAfterModelSwitch } from "../core/model-switch.js";
-import { AGENT_MAIL_TAG, parseAgentMailFrame } from "../core/agent-mail-frame.js";
+import { AGENT_MAIL_TAG } from "../core/agent-mail-frame.js";
+import type { Approver } from "../core/approval-ask.js";
 import {
   appendAgentMail,
   formatEnvelopeForContext,
@@ -403,8 +402,8 @@ interface ManagedSession {
   setFullAccess: (enabled: boolean) => void;
   getSmartApproval: () => SmartApprovalSetting;
   setSmartApproval: (value: SmartApprovalSetting) => void;
-  approvalTimedOut: () => number;
-  approvalAnswered: () => void;
+  /** Reviewer and dialog for this conversation's approvals (core/approval-ask.ts). */
+  approver: Approver;
   /** Full Access in force (dormant under read-only). */
   isFullAccessEffective: () => boolean;
   /** Smart approval in force (not under Full or read-only). */
@@ -3621,15 +3620,16 @@ export class SessionService implements AgentTeamBridge {
       reviewer ? [reviewer.model, ...reviewer.fallbackModels] : [],
       "low",
     );
+    const message = reviewerMessage(request, {
+      leadEntries: this.leadEntries(managed),
+      priorDenials: context.priorDenials,
+    });
     const result = await this.completeDownChain(
       managed,
       steps,
       {
         systemPrompt: REVIEWER_SYSTEM_PROMPT,
-        message: reviewerMessage(request, {
-          leadRequest: this.leadUserRequest(managed),
-          priorDenials: context.priorDenials,
-        }),
+        message,
         timeoutMs: 60_000,
         signal: context.signal,
         task: t("Smart approval"),
@@ -3637,15 +3637,15 @@ export class SessionService implements AgentTeamBridge {
       parseReviewReply,
     );
     if ("failure" in result) return { outcome: "unavailable", reason: result.failure };
-    return { ...result.value, model: result.step.label };
+    return { ...result.value, model: result.step.label, reviewChars: message.length };
   }
 
   /**
-   * A subagent's root conversation's latest user request (Codex worker-thread
-   * practice). Each hop follows whom the subagent reports to, so a task from
-   * a branch is reviewed against the branch's request.
+   * A subagent's root conversation's entries, where the user's own words are
+   * (Codex worker-thread practice). Each hop follows whom the subagent
+   * reports to, so a task from a branch is reviewed against the branch.
    */
-  private leadUserRequest(managed: ManagedSession): string | null {
+  private leadEntries(managed: ManagedSession): unknown[] | null {
     let lead = managed;
     for (let depth = 0; depth < 8; depth++) {
       const leadId = this.subagentReplyTarget(lead);
@@ -3655,17 +3655,7 @@ export class SessionService implements AgentTeamBridge {
       lead = next;
     }
     if (lead === managed) return null;
-    const entries = lead.session.sessionManager.getBranch();
-    for (const entry of [...entries].reverse()) {
-      const message = (entry as { type?: string; message?: { role?: string; content?: unknown } }).message;
-      if ((entry as { type?: string }).type !== "message" || message?.role !== "user") continue;
-      const text = contentToText(message.content).trim();
-      // The user's own words: framed mail is an agent's or a notice.
-      const mail = parseAgentMailFrame(text);
-      if (mail && mail.fromLabel !== "user") continue;
-      if (text) return mail ? mail.body : text;
-    }
-    return null;
+    return lead.session.sessionManager.getBranch();
   }
 
   private resolveSubagentModelReference(
@@ -3892,8 +3882,9 @@ export class SessionService implements AgentTeamBridge {
     // conversation.
     const peer = !this.subagentChildren(needle).some((child) => child.sessionId === fromId);
     if (peer) {
+      // A refusal is the tool's error, like a blocked command's.
       const refused = await this.approvePeerMessage(from, target, label, message, signal, toolCallId);
-      if (refused) return refused;
+      if (refused) throw new Error(refused);
     }
     // The approval may have taken minutes: the target's runtime may have been
     // released or replaced meanwhile, so look it up again.
@@ -3972,42 +3963,53 @@ export class SessionService implements AgentTeamBridge {
     const allowMessages = () =>
       from.addGrant(`mail:${targetId}@${new Date().toISOString()}`, `mail:${targetId}@`);
     let title = `Message another conversation: ${label} (${targetId})\n${clip(message, 600)}`;
-    if (from.isSmartApprovalEffective()) {
-      const verdict = await this.reviewAction(
-        fromId,
-        {
-          toolName: "send_to_agent",
-          input: { agent: targetId, message },
-          cwd: from.getWorkspace().primaryDir,
-          title,
-          entries: from.session.sessionManager.getBranch(),
-          readableFile: () => null,
-        },
-        { toolCallId, priorDenials: 0, signal },
-      );
-      if (verdict.outcome !== "unavailable") {
-        audit(
-          verdict.outcome === "allow" ? "reviewer-allowed" : "reviewer-denied",
-          `${verdict.model}: ${verdict.reason}`,
-        );
-      }
+    if (from.isSmartApprovalEffective() && from.approver.canReview) {
+      // A reviewer allow grants the allowance, as the user's own would:
+      // within it the replies never ask either side (owner 2026-10-13).
+      const verdict = await from.approver.review({
+        rule: "peer_message",
+        toolCallId,
+        signal,
+        toolName: "send_to_agent",
+        input: { agent: targetId, message },
+        cwd: from.getWorkspace().primaryDir,
+        title,
+        entries: from.session.sessionManager.getBranch(),
+        readableFile: () => null,
+      });
       if (verdict.outcome === "allow") {
         allowMessages();
         return null;
       }
-      if (verdict.outcome === "deny") {
-        return `Smart approval denied this message: ${verdict.reason}`;
-      }
+      if (verdict.outcome === "deny") return verdict.text;
       title = `Smart approval unavailable: ${verdict.reason}\n${title}`;
     }
-    const options = readOnly
-      ? [APPROVAL_ALLOW_ONCE, APPROVAL_DENY]
-      : [PEER_ALLOW_MESSAGES, PEER_ALLOW_ALWAYS, APPROVAL_DENY];
-    const choice = await from.approvalBridge.uiContext.select(title, options, {
+    const ended = await from.approver.ask(
+      (dialogTitle, choices, dialog) => from.approvalBridge.uiContext.select(dialogTitle, choices, dialog),
+      title,
+      readOnly ? [APPROVAL_ALLOW_ONCE, APPROVAL_DENY] : [PEER_ALLOW_MESSAGES, PEER_ALLOW_ALWAYS, APPROVAL_DENY],
       signal,
-      timeout: APPROVAL_TIMEOUT_MS,
-    });
-    if (choice !== undefined) from.approvalAnswered();
+    );
+    if ("stopped" in ended) return "The message was not sent: the run was stopped.";
+    if ("timedOut" in ended) {
+      audit("blocked", "approval timed out");
+      if (spent) {
+        // The allowance ran out and nobody answered: the other side should
+        // not wait for a reply that cannot come (owner 2026-10-12).
+        this.deliverEnvelope(targetId, {
+          at: new Date().toISOString(),
+          from: fromId,
+          to: targetId,
+          kind: "lifecycle",
+          event: "undelivered",
+          body: `${this.sessionAlias(fromId) ?? fromId} (Session ID ${fromId}) could not send you a message: its allowed messages to you are used up, and the user did not answer the approval in time.`,
+        });
+      }
+      return `The message was not sent: ${ended.timedOut}${
+        spent ? ` ${label} was told that your allowed messages are used up.` : ""
+      }`;
+    }
+    const choice = ended.answered;
     if (choice === APPROVAL_ALLOW_ONCE) {
       audit("approved-once", "one message");
       return null;
@@ -4022,30 +4024,8 @@ export class SessionService implements AgentTeamBridge {
       audit("approved-session", "always");
       return null;
     }
-    if (choice === APPROVAL_DENY) {
-      audit("blocked", "declined by the user");
-      return "The user declined this message; it was not sent.";
-    }
-    if (signal?.aborted) return "The message was not sent: the run was stopped.";
-    audit("blocked", "approval timed out");
-    // A dialog cancelled because the runtime was replaced also lands here
-    // and reads as a timeout (owner 2026-10-12, plan §11).
-    const timeouts = from.approvalTimedOut();
-    if (spent) {
-      // The allowance ran out and nobody answered: the other side should
-      // not wait for a reply that cannot come (owner 2026-10-12).
-      this.deliverEnvelope(targetId, {
-        at: new Date().toISOString(),
-        from: fromId,
-        to: targetId,
-        kind: "lifecycle",
-        event: "undelivered",
-        body: `${this.sessionAlias(fromId) ?? fromId} (Session ID ${fromId}) could not send you a message: its allowed messages to you are used up, and the user did not answer the approval in time.`,
-      });
-    }
-    return `The message was not sent: ${approvalTimeoutText(timeouts)}${
-      spent ? ` ${label} was told that your allowed messages are used up.` : ""
-    }`;
+    audit("blocked", "declined by the user");
+    return "The user declined this message; it was not sent.";
   }
 
   private async messageSubagent(
@@ -4921,8 +4901,7 @@ export class SessionService implements AgentTeamBridge {
     setFullAccess: (enabled: boolean) => void;
     getSmartApproval: () => SmartApprovalSetting;
     setSmartApproval: (value: SmartApprovalSetting) => void;
-    approvalTimedOut: () => number;
-    approvalAnswered: () => void;
+    approver: Approver;
     isFullAccessEffective: () => boolean;
     isSmartApprovalEffective: () => boolean;
     mediatesReadOnly: () => boolean;

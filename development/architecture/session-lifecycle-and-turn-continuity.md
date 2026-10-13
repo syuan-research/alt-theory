@@ -365,7 +365,7 @@ sender; the user's own words are never framed. The transcript shows a framed
 text as a line naming its sender, not as a user bubble, and smart approval's
 reviewer labels each context line by source (`user`, `mail from …`, `tool`)
 and takes the latest user request only from the user's own words
-(`core/approval-reviewer.ts`; `leadUserRequest` likewise).
+(`core/approval-reviewer.ts`, for a subagent from its lead's entries).
 
 Which subagents a conversation can address, and where a subagent reports,
 are two separate derivations (`session-service.ts`):
@@ -381,8 +381,8 @@ are two separate derivations (`session-service.ts`):
   child's own subagents, are skipped), else to the spawner. A task from a
   non-spawner is labelled `lead <alias>` in the child's context. The same
   target keeps a waiting lead loaded (`reclaimIdleRuntimes`) and supplies
-  the user request that smart approval reviews a subagent against
-  (`leadUserRequest`).
+  the lead entries that smart approval reviews a subagent against
+  (`leadEntries`).
 
 Mail between other conversations (owner 2026-10-12) uses the same tool and
 inbox. `send_to_agent` (`sendToAgent`) takes a subagent's name or Session ID,
@@ -398,7 +398,10 @@ for another conversation. One rule decides how it travels:
   user is asked: allow 5 messages each way, always allow, deny. Read-only
   (including a pending switch) honours no grant, the other side's included,
   never asks the reviewer, and offers allow once / deny with no grant.
-  Every decision is written to the conversation's `security-audit.jsonl`
+  The reviewer and the dialog are the conversation's approver
+  (`core/approval-ask.ts`), shared with its commands: a refusal is the
+  tool's error, a reviewer denial counts toward the denial brake, and the
+  verdict shows on the tool row. Every decision is written to the conversation's `security-audit.jsonl`
   (rule `peer_message`); `send_to_agent` runs one call at a time so two
   sends in one turn cannot both spend the last message. Grants are kept with the approving
   conversation's "Allow for this conversation" grants

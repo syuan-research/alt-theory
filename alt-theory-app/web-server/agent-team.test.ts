@@ -1205,7 +1205,8 @@ async function sendAnswering(
 ): Promise<{ reply: string; asked: string[] | null }> {
   const bridge = approvalsOf(service, from).approvalBridge;
   let asked: string[] | null = null;
-  const sending = service.sendToAgent(from, to, body);
+  // A refusal is the tool's error: its text is the reply the agent reads.
+  const sending = service.sendToAgent(from, to, body).catch((error: Error) => error.message);
   const answering = (async () => {
     for (let i = 0; i < 80 && asked === null; i++) {
       const pending = bridge.listPending()[0];
@@ -1315,6 +1316,40 @@ test("a read-only sender gets one message at a time and keeps no grant", async (
   }
 });
 
+test("smart approval's reviewer answers a message to another conversation: an allow grants the allowance, a deny is the tool's error and counts toward the brake", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  try {
+    const { a, b, idle } = await twoConversations(service);
+    (managedOf(service, a) as unknown as { setSmartApproval(on: boolean): void }).setSmartApproval(true);
+    let verdict: { outcome: "allow" | "deny"; reason: string; model: string } = { outcome: "allow", reason: "part of the report", model: "stub" };
+    let reviewed = 0;
+    (service as unknown as { reviewAction: () => Promise<unknown> }).reviewAction = async () => {
+      reviewed++;
+      return verdict;
+    };
+    const approver = (managedOf(service, a) as unknown as { approver: { takeRecord(id: string): { outcome: string } | undefined } }).approver;
+    assert.match(await service.sendToAgent(a, b, "charts?", undefined, "call-1"), /Delivered/);
+    await idle();
+    assert.equal(approver.takeRecord("call-1")?.outcome, "allow", "the row shows the verdict");
+    assert.ok(approvalsOf(service, a).getGrants().some((key) => key.startsWith(`mail:${b}@`)));
+    assert.match(await service.sendToAgent(a, b, "and the table?"), /Delivered/);
+    assert.equal(reviewed, 1, "within the allowance the reviewer is not asked again");
+    await idle();
+
+    const c = (await service.createSession(SELECTORS)).sessionId;
+    stubEchoPrompt(managedOf(service, c), "c here");
+    verdict = { outcome: "deny", reason: "not part of the task", model: "stub" };
+    await assert.rejects(service.sendToAgent(a, c, "one", undefined, "call-2"), /^Error: Smart approval denied this action: not part of the task$/);
+    assert.equal(approver.takeRecord("call-2")?.outcome, "deny");
+    await assert.rejects(service.sendToAgent(a, c, "two"), /denied this action: not part of the task$/);
+    await assert.rejects(service.sendToAgent(a, c, "three"), /Several actions in a row were denied/);
+    assert.equal(peerMail(service, c, a).length, 0);
+  } finally {
+    await service.disposeAll();
+  }
+});
+
 test("an unanswered approval after the allowance ran out tells the other side", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
@@ -1326,10 +1361,12 @@ test("an unanswered approval after the allowance ran out tells the other side", 
       await sendAnswering(service, a, b, `m${i}`, "Deny");
       await idle();
     }
-    // Stand-in for the 5-minute timeout: the dialog resolves with no answer.
-    approvalsOf(service, a).approvalBridge.uiContext.select = async () => undefined;
-    const reply = await service.sendToAgent(a, b, "m6");
-    assert.match(reply, /timed out/);
+    // Stand-in for the 5-minute timeout: the dialog ends unanswered, as the bridge reports it.
+    approvalsOf(service, a).approvalBridge.uiContext.select = async (_title, _options, dialog) => {
+      (dialog as { onResolution?: (ending: string) => void }).onResolution?.("timeout");
+      return undefined;
+    };
+    await assert.rejects(service.sendToAgent(a, b, "m6"), /timed out/);
     await idle();
     const notice = readAgentMail(managedOf(service, b).manifest.recordsDir).at(-1)!;
     assert.equal(notice.event, "undelivered");

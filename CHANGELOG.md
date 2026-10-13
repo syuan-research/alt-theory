@@ -134,6 +134,10 @@ detail lives in commit history and `development/`.
   conversation is told that the message could not be sent.
 - A subagent's task now shows as a line from its lead, like every later
   message between conversations, instead of as a message you wrote.
+- Under smart approval the reviewer lets a message through when you gave
+  the agent that conversation's Session ID and the message serves what you
+  gave it for (asking progress, handing over results, sharing the work); a
+  message it lets through allows 5 each way, as yours would.
 - Under Full access nothing is asked; under Read-only you approve one
   message at a time. Switching a conversation to Read-only also clears what
   it allowed, as with its other "allow in this conversation" approvals.
