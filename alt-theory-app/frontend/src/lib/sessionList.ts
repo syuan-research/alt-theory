@@ -250,11 +250,11 @@ export function purposeIcon(session: SessionSummary): string {
     case "subagent":
       return "ph-arrow-elbow-down-right";
     case "side":
-      return "ph-arrows-split";
+      return "ph-chat-circle-dots";
     case "ab-arm":
       return "ph-git-fork";
     default:
-      return "ph-git-branch";
+      return "ph-arrows-split";
   }
 }
 

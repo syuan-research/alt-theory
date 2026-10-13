@@ -37,7 +37,7 @@ import { downloadMarkdown, markdownFileName, sessionTranscriptToMarkdown } from 
 import { useFindTarget } from "@/lib/find";
 
 const RAIL_META: Record<RailKey, { title: string; icon: string; adv?: boolean }> = {
-  chats: { title: t("Related conversations"), icon: "ph-arrows-split" },
+  chats: { title: t("Related conversations"), icon: "ph-chats" },
   changes: { title: t("Changes"), icon: "ph-pencil-simple-line" },
   workspace: { title: t("Files"), icon: "ph-folder" },
   records: { title: t("Records"), icon: "ph-scroll", adv: true },

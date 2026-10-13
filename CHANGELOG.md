@@ -122,7 +122,9 @@ detail lives in commit history and `development/`.
   newest files, including files made by commands.
 - **Related conversations can be sorted** by recent activity, creation order
   or name, and filtered to the running ones.
-- Subagents have a new icon.
+- New icons: branches take the split arrow, side conversations (BTW) a chat
+  bubble, subagents a down-right arrow, and the Related conversations button
+  two chat bubbles.
 - The researcher view's Runtime tab is gone; Records and Provenance stay.
 
 ### Conversation list

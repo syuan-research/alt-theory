@@ -1514,7 +1514,7 @@ function SessionNode({
               )
             ) : session.delisted ? (
               <i
-                className="ph ph-git-branch s-fork"
+                className="ph ph-arrows-split s-fork"
                 aria-hidden
                 data-tip={t("Former main conversation — demoted when a branch was promoted")}
               />
