@@ -1,3 +1,4 @@
+import { copyMarks } from "./session-marks.js";
 import { cpSync, existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, } from "fs";
 import { randomUUID } from "crypto";
 import type {
@@ -2247,6 +2248,7 @@ export class SessionService implements AgentTeamBridge {
         modelOverride: sourceHeader?.modelOverride ?? null,
         smartApproval: inheritsSmartApproval(previous, previous.getAltMode()),
       });
+      copyMarks(previous.manifest.recordsDir, forkDirs.recordsDir);
       appendConfigEvent(result.manifest.recordsDir, {
         sessionId: result.manifest.sessionId,
         branchId: result.branchId,

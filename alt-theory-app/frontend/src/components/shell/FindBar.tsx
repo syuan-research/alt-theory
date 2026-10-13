@@ -21,11 +21,15 @@ function paint(ranges: Range[], current: number): void {
   if (ranges.length) {
     const all = new Highlight();
     for (const range of ranges) all.add(range);
+    all.priority = 1; // above reader marks (lib/marks.ts)
     CSS.highlights.set("find", all);
   } else CSS.highlights.delete("find");
   const range = ranges[current];
-  if (range) CSS.highlights.set("find-current", new Highlight(range));
-  else CSS.highlights.delete("find-current");
+  if (range) {
+    const one = new Highlight(range);
+    one.priority = 2;
+    CSS.highlights.set("find-current", one);
+  } else CSS.highlights.delete("find-current");
 }
 
 /**

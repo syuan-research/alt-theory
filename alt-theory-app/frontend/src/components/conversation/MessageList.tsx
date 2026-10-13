@@ -25,6 +25,7 @@ import { useEarlierRows } from "@/hooks/useEarlierRows";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 import { fileMenuItems } from "@/lib/fileMenu";
 import { useFindTarget } from "@/lib/find";
+import { useMarks } from "@/components/conversation/useMarks";
 
 export function MessageList() {
   const main = useMainView();
@@ -38,6 +39,9 @@ export function MessageList() {
   } = useStickToBottom([messages, streamParts]);
   const earlier = useEarlierRows(containerRef, messages, conv);
   useFindTarget(containerRef, earlier.findSpec);
+  const marks = useMarks(containerRef, conv.sessionId, (reason) =>
+    conv.notify({ kind: "text", text: reason instanceof Error ? reason.message : String(reason), icon: "warning" }),
+  );
   const railRef = useRef<HTMLDivElement>(null);
   const [scrubbing, setScrubbing] = useState(false);
   /** The user row under the pointer while dragging the rail: its preview shows at `y`. */
@@ -144,6 +148,7 @@ export function MessageList() {
         onScroll(event);
         earlier.onScroll();
       }}
+      onContextMenu={marks.onContextMenu}
     >
       {conv.sessionId && !conv.selectors.soulSlug ? (
         <SysLine>
@@ -172,6 +177,7 @@ export function MessageList() {
       />
       <StreamPartsView parts={streamParts} />
       <TurnChangesCard />
+      {marks.menu}
     </div>
     {userRows.length > 1 ? (
       <div
@@ -509,10 +515,12 @@ function ThinkingBlock({
   text,
   defaultOpen,
   complete,
+  markRow,
 }: {
   text: string;
   defaultOpen: boolean;
   complete?: boolean;
+  markRow?: string;
 }) {
   return (
     <CollapseAnywhereDetails
@@ -526,7 +534,7 @@ function ThinkingBlock({
         </>
       }
     >
-      <MarkdownBody className="think-body" text={text} renderMermaid={false} streaming={!complete} />
+      <MarkdownBody className="think-body" text={text} renderMermaid={false} streaming={!complete} markRow={markRow} />
     </CollapseAnywhereDetails>
   );
 }
@@ -559,6 +567,8 @@ export function TranscriptEntry({
 }) {
   const shell = useShell();
   const { thinkingExpanded } = shell;
+  // Only rows the server has saved take marks (not a pending or steered one).
+  const markRow = message.entryId ? message.rowId : undefined;
 
   if (message.role === "user") {
     const replacementEdit = actions?.isReplacementEdit(message.entryId ?? null) ?? false;
@@ -589,9 +599,10 @@ export function TranscriptEntry({
             text={message.thinking}
             defaultOpen={thinkingExpanded}
             complete
+            markRow={markRow && `${markRow}#thinking`}
           />
         ) : null}
-        <AssistantBubble text={message.text} />
+        <AssistantBubble text={message.text} markRow={markRow} />
         {stopLine ? <div className="reply-stop" data-find-skip="">{stopLine}</div> : null}
       </>
     );
@@ -731,7 +742,7 @@ function UserBubble({
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
           />
-        ) : <MarkdownBody text={trimmed} />}
+        ) : <MarkdownBody text={trimmed} markRow={entryId && rowId ? rowId : undefined} />}
       </div>
       {editing ? (
         <div className="inline-edit-actions">
@@ -810,9 +821,11 @@ function UserBubble({
 export function AssistantBubble({
   text,
   streaming,
+  markRow,
 }: {
   text: string;
   streaming?: boolean;
+  markRow?: string;
 }) {
   // v0.5 streams raw text (no trim) so trailing newlines do not thrash layout.
   const raw = text || "";
@@ -828,6 +841,7 @@ export function AssistantBubble({
           text={body}
           renderMermaid={!streaming}
           streaming={Boolean(streaming)}
+          markRow={markRow}
         />
       </div>
       {!streaming ? (

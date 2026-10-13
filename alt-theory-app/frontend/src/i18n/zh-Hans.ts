@@ -5,6 +5,14 @@
  * wording here AND noting it in the glossary so regeneration keeps it.
  */
 const catalog: Record<string, string> = {
+  "Highlight": "高亮",
+  "Yellow": "黄",
+  "Green": "绿",
+  "Orange": "橙",
+  "Blue": "蓝",
+  "Underline": "下划线",
+  "Strikethrough": "删除线",
+  "Remove mark": "移除标注",
   "· added by you": "· 由你添加",
   "(no output)": "（无输出）",
   "{chosen} — model uses {level}": "{chosen}—模型使用{level}",

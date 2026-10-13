@@ -56,6 +56,7 @@ export function MarkdownBody({
   sessionId,
   baseFile,
   baseFolderPath,
+  markRow,
 }: {
   text: string;
   className?: string;
@@ -64,6 +65,8 @@ export function MarkdownBody({
   sessionId?: string | null;
   baseFile?: FileRef;
   baseFolderPath?: string | null;
+  /** Transcript row id: this text takes reader marks (lib/marks.ts). */
+  markRow?: string;
 }) {
   const conversation = useConversationContext();
   const links = useContentLinks(sessionId === undefined ? conversation.sessionId : sessionId, baseFile, baseFolderPath);
@@ -227,6 +230,7 @@ export function MarkdownBody({
   return (<>
     <div
       className={cn("markdown-body", className)}
+      data-mark-row={markRow}
       onClick={onClick}
       onAuxClick={onAuxClick}
       onContextMenu={onContextMenu}

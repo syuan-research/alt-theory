@@ -4,6 +4,14 @@
  * hand-edit policy as zh-Hans.ts.
  */
 const catalog: Record<string, string> = {
+  "Highlight": "高亮",
+  "Yellow": "黃",
+  "Green": "綠",
+  "Orange": "橙",
+  "Blue": "藍",
+  "Underline": "底線",
+  "Strikethrough": "刪除線",
+  "Remove mark": "移除標註",
   "· added by you": "· 由你添加",
   "(no output)": "（無輸出）",
   "{chosen} — model uses {level}": "{chosen}—模型使用{level}",

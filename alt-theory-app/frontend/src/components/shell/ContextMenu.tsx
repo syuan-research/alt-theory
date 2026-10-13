@@ -7,6 +7,8 @@ export interface ContextMenuItem {
   danger?: boolean;
   separator?: boolean;
   onSelect: () => void;
+  /** Drawn as one row of color dots instead of a labeled button (`label` names the group). */
+  swatches?: { color: string; label: string; current?: boolean; onSelect: () => void }[];
 }
 
 interface MenuState {
@@ -71,7 +73,25 @@ function ContextMenu({ x, y, items, anchor, onClose }: MenuState & { onClose: ()
     >
       {items.map((item, index) => (
         <div key={`${item.label}-${index}`} className={item.separator ? "context-menu-separated" : undefined}>
-          <button
+          {item.swatches ? (
+            <div className="context-menu-swatches" role="group" aria-label={item.label}>
+              {item.swatches.map((swatch) => (
+                <button
+                  key={swatch.label}
+                  type="button"
+                  role="menuitem"
+                  aria-label={swatch.label}
+                  data-tip={swatch.label}
+                  className={swatch.current ? "on" : undefined}
+                  style={{ background: swatch.color }}
+                  onClick={() => {
+                    onClose();
+                    swatch.onSelect();
+                  }}
+                />
+              ))}
+            </div>
+          ) : <button
             type="button"
             role="menuitem"
             className={item.danger ? "danger" : undefined}
@@ -82,7 +102,7 @@ function ContextMenu({ x, y, items, anchor, onClose }: MenuState & { onClose: ()
           >
             {item.icon ? <i className={`ph ${item.icon}`} aria-hidden="true" /> : null}
             <span>{item.label}</span>
-          </button>
+          </button>}
         </div>
       ))}
     </div>,

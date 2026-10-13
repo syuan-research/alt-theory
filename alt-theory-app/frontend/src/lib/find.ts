@@ -67,7 +67,7 @@ const SKIP = "button, textarea, input, select, script, style, [data-find-skip]";
 /** A text run never continues across these (no "end of one para + next"). */
 const BLOCK = "p, li, pre, td, th, h1, h2, h3, h4, h5, h6, blockquote, summary, dt, dd, tr, div";
 
-function collectText(host: HTMLElement): { nodes: (Text | null)[]; texts: string[] } {
+export function collectText(host: HTMLElement): { nodes: (Text | null)[]; texts: string[] } {
   const nodes: (Text | null)[] = [];
   const texts: string[] = [];
   let lastBlock: Element | null = null;

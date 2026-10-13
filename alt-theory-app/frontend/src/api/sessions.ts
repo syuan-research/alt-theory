@@ -245,3 +245,27 @@ export async function retractQueuedText(
       : [],
   };
 }
+
+/** Reader marks (highlight / underline / strikethrough) on a conversation's text. */
+export interface TextMark {
+  row: string;
+  kind: "hl-1" | "hl-2" | "hl-3" | "hl-4" | "under" | "strike";
+  quote: string;
+  prefix: string;
+  suffix: string;
+}
+
+export async function fetchMarks(sessionId: string): Promise<TextMark[]> {
+  const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/marks`);
+  if (!res.ok) throw new Error(`Marks failed (${res.status})`);
+  return ((await res.json()) as { marks: TextMark[] }).marks;
+}
+
+export async function saveMarks(sessionId: string, marks: TextMark[]): Promise<void> {
+  const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/marks`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ marks }),
+  });
+  if (!res.ok) throw new Error(`Saving marks failed (${res.status})`);
+}

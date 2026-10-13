@@ -54,6 +54,11 @@
   --toggle-knob: #ffffff;
   --shadow-rest: 0 1px 2px rgba(0, 0, 0, 0.28), 0 4px 18px rgba(0, 0, 0, 0.4);
   --shadow-popup: 0 6px 22px rgba(0, 0, 0, 0.5);
+  --selection: #2e3d52;
+  --hl-1: #6a5520;
+  --hl-2: #4a4e24;
+  --hl-3: #6b3e1e;
+  --hl-4: #2c4d4a;
 
   color-scheme: dark;
 }
@@ -78,6 +83,19 @@
   --space-column: 24px;
   --space-page: 40px;
 }
+
+/* Text selection, and the reader-mark colors (owner 2026-10-13: yellow,
+   green, orange, blue; light stays low-saturation, dark goes one step
+   stronger so the marks still read on the dark canvas). The selection
+   becomes a light step of the brand color once there is one. */
+:root {
+  --selection: #dce8f7;
+  --hl-1: #ebd9a8;
+  --hl-2: #d3ddc0;
+  --hl-3: #edcdbb;
+  --hl-4: #ccd7de;
+}
+::selection { background: var(--selection); }
 
 /* Short aliases so the ported prototype CSS below reads verbatim. */
 :root {
@@ -1162,8 +1180,16 @@
   .find-bar button:disabled { opacity: 0.4; cursor: default; }
   .find-bar:has(.find-note) { flex-wrap: wrap; }
   .find-bar .find-note { flex-basis: 100%; padding: 0 var(--space-hair); color: var(--text-3); font-size: var(--fs-micro); }
-  ::highlight(find) { background-color: color-mix(in srgb, var(--color-warning) 28%, transparent); }
-  ::highlight(find-current) { background-color: color-mix(in srgb, var(--color-warning) 70%, transparent); color: var(--ink); }
+  /* Opaque (mixed with the canvas) and painted above reader marks, so a hit
+     inside a mark shows the search color, not a blend (owner 2026-10-13). */
+  ::highlight(find) { background-color: color-mix(in srgb, var(--color-warning) 50%, var(--canvas)); }
+  ::highlight(find-current) { background-color: color-mix(in srgb, var(--color-warning) 85%, var(--canvas)); color: var(--ink); }
+  ::highlight(hl-1) { background-color: var(--hl-1); }
+  ::highlight(hl-2) { background-color: var(--hl-2); }
+  ::highlight(hl-3) { background-color: var(--hl-3); }
+  ::highlight(hl-4) { background-color: var(--hl-4); }
+  ::highlight(under) { text-decoration: underline 1.5px var(--text-2); text-underline-offset: 3px; }
+  ::highlight(strike) { text-decoration: line-through var(--text-2); color: var(--text-3); }
   .fsearch input, .inline-search input { width: 100%; min-width: 0; border: 0; border-bottom: 1px solid transparent; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: var(--fs-primary); padding: var(--space-hair) var(--space-hair); }
   .fsearch input:focus, .inline-search input:focus { border-bottom-color: var(--hairline); }
   .sect-head { display: flex; align-items: center; gap: var(--space-tight); width: 100%; border: 0; background: none; padding: var(--space-tight) var(--space-hair) var(--space-hair); font: inherit; font-size: var(--fs-micro); cursor: pointer; text-align: left; }
@@ -1420,6 +1446,9 @@
   .context-menu button { display: flex; align-items: center; gap: var(--space-tight); width: 100%; padding: var(--space-tight) var(--space-control); border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-soft); text-align: left; cursor: pointer; }
   .context-menu button:hover, .context-menu button:focus-visible { background: var(--hover); outline: none; }
   .context-menu button.danger { color: var(--danger); }
+  .context-menu-swatches { display: flex; gap: var(--space-tight); padding: var(--space-hair) var(--space-control); }
+  .context-menu .context-menu-swatches button { width: 20px; height: 20px; padding: 0; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent); }
+  .context-menu .context-menu-swatches button:hover, .context-menu .context-menu-swatches button:focus-visible, .context-menu .context-menu-swatches button.on { outline: 2px solid var(--ink); outline-offset: 1px; }
   .context-menu-separated { margin-top: var(--space-hair); padding-top: var(--space-hair); border-top: 1px solid var(--hairline); }
   .starter-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-tight) var(--space-block); }
   .starter-grid button { padding: var(--space-tight) var(--space-hair); border: 0; background: none; color: var(--text-2); text-align: left; font-size: var(--fs-primary); line-height: 1.35; cursor: pointer; }

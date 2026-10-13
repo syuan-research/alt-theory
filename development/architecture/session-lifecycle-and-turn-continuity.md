@@ -82,6 +82,13 @@ The materialized session has two related authorities:
 - Alt Theory's `records/` files are thin control and projection records: the
   assembly manifest, session header, metrics, events, and append-only run
   records. They do not duplicate the conversation body.
+- The user's reader marks (highlight / underline / strikethrough on message
+  text) live in `records/marks.json`, rewritten whole on each change and
+  never sent to the model. Each mark anchors to a transcript row id plus the
+  quoted text and a little surrounding context (`web-server/session-marks.ts`).
+  A fork copies the file (entry ids are kept, so the marks still resolve).
+  The client paints marks with the CSS Custom Highlight API in every
+  conversation pane (`frontend/src/lib/marks.ts`), with Ctrl+F hits on top.
 
 `ManagedSession` keeps the live `AgentSession`, selectors and manifest-derived
 state, counters, a process-local mutation guard, recovery state, and the

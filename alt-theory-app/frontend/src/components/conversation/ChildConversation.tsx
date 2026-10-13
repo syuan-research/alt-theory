@@ -9,6 +9,7 @@ import { useConversation } from "@/hooks/useConversation";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
 import { useEarlierRows } from "@/hooks/useEarlierRows";
 import { useFindTarget } from "@/lib/find";
+import { useMarks } from "@/components/conversation/useMarks";
 import { runPhaseLabels } from "@/lib/runState";
 import { useAutosizeTextarea } from "@/lib/autosizeTextarea";
 import { canTakeMainline, isListMember } from "@/lib/sessionList";
@@ -92,6 +93,7 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
   const { containerRef: messagesRef, onScroll } = useStickToBottom([messages, parts]);
   const earlier = useEarlierRows(messagesRef, messages, conversation);
   useFindTarget(messagesRef, earlier.findSpec);
+  const marks = useMarks(messagesRef, sessionId, (reason) => reportError(reason));
 
   // The role lives above the editor; model and permission live in its toolbar.
   useEffect(() => {
@@ -219,6 +221,7 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
           onScroll(event);
           earlier.onScroll();
         }}
+        onContextMenu={marks.onContextMenu}
       >
         <SettledMessages
           messages={messages}
@@ -227,6 +230,7 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
           isRunning={running}
         />
         <StreamPartsView parts={parts} />
+        {marks.menu}
       </div>
 
       {approval ? (
