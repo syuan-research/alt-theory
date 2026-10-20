@@ -17,26 +17,72 @@ installation material defined below.
 
 ### Format
 
-- One `## vX.Y.Z-beta.N — YYYY-MM-DD` section per release, newest first.
-- One or two plain sentences under the heading stating what the release is for.
-  No marketing register, no atmospheric openers.
-- Organize the main changes under two to four `### Topic` headings named for the
-  user's purpose or work area (for example, Find and organize work, Help without
-  leaving the app, Approvals and continuity). Prefer a small number of coherent
-  themes over separate headings for every feature or implementation area.
-- Each topic normally has one or two bullets. Combine changes when they support
-  the same user outcome; do not turn commit history, individual fixes, or every
-  UI adjustment into separate release-note entries.
-- If a release contains a few worthwhile changes that do not form a theme, end
-  with `### Other new and fixed`. Keep it shorter than the main themes—normally
-  no more than two bullets—and omit details that do not matter to users.
-- Each bullet states the user-visible change first, then the mechanism or prior
-  behavior only when it helps. No restatement sentence after a complete list.
-- Single language per file. `CHANGELOG.md` is English. Translated copies
-  (when they exist) are separate files matched to the README languages, not
-  inline bilingual blocks.
-- Engineering detail, commit hashes, and internal names stay out. Link to
-  the relevant architecture doc or commit history instead.
+- One `## vX.Y.Z — YYYY-MM-DD` section per release, newest first.
+- One or two plain sentences under the heading stating what the release is
+  for. No marketing register, no atmospheric openers; the opener may state
+  the release's scale in plain terms (for example, "the biggest update
+  since v1.7", or that this is the first official release) and nothing
+  beyond that.
+- Organize the main changes under two to four `### Topic` headings named for
+  the user's purpose or work area (for example, Find and organize work, Help
+  without leaving the app, Approvals and continuity). Prefer a small number
+  of coherent themes over separate headings for every feature or
+  implementation area.
+- Each topic normally has one or two bullets. Combine changes when they
+  support the same user outcome; do not turn commit history, individual
+  fixes, or every UI adjustment into separate release-note entries. A
+  release explicitly regarded as a big release may carry more topic
+  headings and more bullets per topic.
+- If a release contains a few worthwhile changes that do not form a theme,
+  end with `### Other new and fixed`. Removals and behavior simplifications
+  end under `### Removed and reworked`. Keep both shorter than the main
+  themes—normally no more than two bullets each—and omit details that do not
+  matter to users.
+- Each bullet states the user-visible change first, at a level a
+  non-technical reader understands — adjust the specification level or use
+  a relatable name until it does. The mechanism or prior behavior follows
+  only when it helps. No restatement sentence after a complete list.
+- Write complete, natural sentences: noun-leaning phrasing ("adds X", "X now
+  does Y") rather than verb-narrated chains ("no longer disappears and
+  comes back"), and never telegraph fragments or label-headed stacks of noun
+  phrases.
+- A release note does not invent usage scenarios. A worked example may
+  appear only for a new feature or a major change, and only when the purpose
+  is obvious from the feature itself or the docs state the use; this
+  allowance yields to the conciseness rules above — when the example
+  competes with them, drop it.
+- Single language per file. `CHANGELOG.md` is English; the Chinese
+  counterparts are separate files (next subsection). Translated copies are
+  separate files matched to the README languages, not inline bilingual
+  blocks.
+- Engineering detail, commit hashes, internal names, and numbers the reader
+  cannot act on (memory figures, timing budgets, internal counts) stay out.
+  Behavior a reader would take for granted also stays out: state a change
+  only if the reader would notice or care. Link to the relevant architecture
+  doc or commit history instead.
+
+### Chinese changelogs
+
+- `CHANGELOG.zh-Hans.md` and `CHANGELOG.zh-Hant-HK.md` mirror `CHANGELOG.md`:
+  one file per language, and each release appends one section — never one
+  file per release. Their headers point back at the English file; the
+  English file's header points at both.
+- Translate from the English section of that release; match terms to the UI
+  catalogs (`alt-theory-app/frontend/src/i18n/`) and the i18n glossary.
+  Chinese sections exist from v1.8.0 on; earlier releases stay English-only.
+- The GitHub Release page links the Chinese changelogs **pinned to this
+  release's tag** (`…/blob/vX.Y.Z/CHANGELOG.zh-Hans.md`), so every release
+  page keeps showing its own content permanently; READMEs link the live
+  files on the default branch.
+
+### Review
+
+- Sending the release note to a review subagent is the main agent's
+  obligation. The reviewer's checklist and the process rules (first round
+  7–15 findings; the writing agent may reject at most one quarter, each
+  with a reason) live in
+  [`release-note-review.md`](release-note-review.md). Hand that file to the
+  reviewer verbatim — never paraphrase it into the prompt.
 
 ### Tag-page (GitHub Release) body
 
@@ -48,20 +94,21 @@ uploads its files; it is not expected to repair the Release body.
 
 不完整语言是一种耻辱，是codex的bs。
 
-The tag-page body starts with this short installation note, retained in English
-and Simplified Chinese:
+The tag-page body starts with this short installation note, retained in
+English and Simplified Chinese:
 
 > ## Important note
 >
-> This app is under beta preview and we are still working on simplifying the installation process.
+> We are still working on simplifying the installation process.
 >
 > We highly recommend reading `README-How-to-Install-安装指南` in the downloaded ZIP.
 >
 > macOS 应用安装目前流程较长，我们会在后续提供更简单的安装途径，请您谅解。压缩包内 `README-How-to-Install-安装指南` 有完整安装使用流程。
 
 Follow it with the platform instructions, then paste that version's
-`CHANGELOG.md` section verbatim. Do not add screenshots, internal verification,
-or another installation preamble.
+`CHANGELOG.md` section verbatim, then one line linking this release's
+Chinese changelogs pinned to this tag (简体中文 · 繁體中文). Do not add
+screenshots, internal verification, or another installation preamble.
 
 Download-and-launch instructions use one standard block per platform. They
 name this release's bundle file and point at this release's assets (the tag
@@ -77,7 +124,7 @@ Windows: download and launch
    path (Windows enforces a maximum path length).
 3. Run `AltTheory.exe`.
 
-The Beta is not code-signed. Windows SmartScreen may show an
+The app is not code-signed. Windows SmartScreen may show an
 unidentified-app warning; choose **More info → Run anyway** only for the
 ZIP downloaded from this release. The release's `BUILD-INFO-win.txt`
 carries the SHA-256.
@@ -87,8 +134,8 @@ macOS: download and launch
 1. Download `AltTheory-{X.Y.Z}-mac.zip` and unpack the complete `AltTheory`
    folder in Downloads.
 2. Right-click `Fix-Open.command`, choose **Open**, then confirm **Open**.
-3. Open `AltTheory.app`. Go to **System Settings → Privacy & Security → Open
-   Anyway**, authenticate, and confirm **Open**.
+3. Open `AltTheory.app`. Go to **System Settings → Privacy & Security →
+   Open Anyway**, authenticate, and confirm **Open**.
 4. Use the app there or move it to Applications.
 
 Alternatively, run
@@ -114,26 +161,29 @@ of them:
    release if you prefer.
 
 `v1.4.1-beta.1` did not include the in-ZIP how-to files; ship them from
-the next release onward (Windows ZIP gets the `-win` file; macOS ZIP gets
-the `-mac` file plus `Fix-Open.command`).
+every release onward (Windows ZIP gets the `-win` file; macOS ZIP gets the
+`-mac` file plus `Fix-Open.command`).
 
 ## Tag and version flow
 
-1. Decide the version (`X.Y.Z-beta.N`) and the release date.
-2. Write the `CHANGELOG.md` section for it in the format above.
+1. Decide the version (`X.Y.Z`) and the release date.
+2. Write the `CHANGELOG.md` section for it in the format above, and the two
+   Chinese sections.
 3. Build and verify the bundles (Build, Archive and naming, Required
    verification).
-4. Tag `vX.Y.Z-beta.N` at the commit that matches the built source.
-5. Create the GitHub Release on that tag, mark it a prerelease while in Beta,
-   put the platform installation blocks and three-language guide pointer first,
-   paste the `CHANGELOG.md` section below them, and attach the bundles and their
-   `BUILD-INFO*.txt`.
+4. Tag `vX.Y.Z` at the commit that matches the built source.
+5. Create the GitHub Release on that tag, publish it as a full release
+   (not a prerelease), put the platform installation blocks and
+   three-language guide pointer first, paste the `CHANGELOG.md` section
+   below them with the tag-pinned Chinese changelog links, and attach the
+   bundles and their `BUILD-INFO*.txt`.
 6. The GitHub Release is the public release notes. `CHANGELOG.md` mirrors
    it so repo readers see the same text.
 
 The root `package.json` version, the in-app About version, the executable
-ProductVersion, and the tag must all carry the same `X.Y.Z-beta.N`. A Beta
-build also maps to a numeric `shortVersionWindows` (for example, 1.4.0.1).
+ProductVersion, and the tag must all carry the same `X.Y.Z`. The Windows
+numeric `shortVersionWindows` uses `X.Y.Z.0` — the fourth segment was the
+beta counter and is 0 while there is none (1.8.0 → `1.8.0.0`).
 
 ## Release boundary
 
@@ -164,10 +214,10 @@ evidence instead of restarting the test cycle.
 Before building:
 
 1. confirm the intended commit and a clean tracked worktree;
-2. confirm the root `package.json` version matches the intended tag and channel;
-   this version drives Electron metadata and the in-app About panel; prerelease
-   builds also give `shortVersionWindows` the numeric Windows mapping (for
-   example, Beta 1 uses `1.3.0.1`);
+2. confirm the root `package.json` version matches the intended tag; this
+   version drives Electron metadata and the in-app About panel;
+   `shortVersionWindows` carries the numeric Windows mapping (`X.Y.Z.0`;
+   for example, 1.8.0 → `1.8.0.0`);
 3. close any Alt Theory process running from that checkout;
 4. restore both lockfiles with `npx pnpm@10.34.5 install --frozen-lockfile`
    (root) and `npm --prefix alt-theory-app/frontend ci`;
@@ -242,10 +292,9 @@ Bundle filenames are uniform across platforms and releases:
 AltTheory-{X.Y.Z}-{platform}.zip
 ```
 
-- `{X.Y.Z}` is the release's major.minor.patch only. The beta channel
-  suffix (`-beta.N`) stays in the tag and `package.json` but is dropped
-  from the filename. So release `v1.4.0-beta.1` ships as
-  `AltTheory-1.4.0-win.zip` and `AltTheory-1.4.0-mac.zip`.
+- `{X.Y.Z}` is the release's major.minor.patch. There is no channel suffix in
+  the version (earlier beta tags carried `-beta.N` in the tag and
+  `package.json`; it was already dropped from filenames then).
 - `{platform}` is `win` or `mac`.
 - Both platforms use the same form. Do not vary the name by channel label
   (`b1`, `a6`), architecture (`arm64`, `x64`), date, or adjective. Those

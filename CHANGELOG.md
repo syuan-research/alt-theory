@@ -4,167 +4,52 @@ User-facing changes only, written for researchers, not developers. Started
 with v1.4.0-beta.1; earlier tags predate this file. Internal engineering
 detail lives in commit history and `development/`.
 
+中文版本：[CHANGELOG.zh-Hans.md](CHANGELOG.zh-Hans.md) ·
+[CHANGELOG.zh-Hant-HK.md](CHANGELOG.zh-Hant-HK.md)（从 v1.8.0 起提供；更早版本见本文件）
+
 ---
 
-## Unreleased
+## v1.8.0 — 2026-10-20
 
-### Permissions instead of Understand and Work
+This is the biggest update since v1.7 — and Alt Theory's first official release: a redesigned approval and safety system, conversations that can work together, and improvements to file management and long-conversation performance. This version has been in daily use for three weeks and has been stable.
 
-- Conversations no longer choose between Understand and Work. Every
-  conversation can think with you and work on your files; two separate
-  choices shape it instead: whether it uses a project, and its permission.
-- The shield next to the message box now has four permissions:
-  **Read-only** (Alt runs no commands and asks before every file it writes
-  or edits), **Ask for approval**, **Smart approval** (new, experimental),
-  and **Full access**.
-- Settings > General > "New conversations start with" picks the permission
-  every new conversation starts from (Ask for approval unless you change it;
-  choosing Full access asks you to confirm once).
-- Subagents, branches and side conversations start with the permission of
-  the conversation they came from, but never with Full access: under Full
-  access or smart approval they start with smart approval.
-- Conversations without a project are listed above your projects.
+### Permissions and approvals
 
-### Approvals
+- Every conversation has its own permission, chosen from four levels: Read-only (look but don't touch), Ask for approval (each action confirmed with you first), Smart approval (an approval model screens actions on your behalf), and Full access (no interruptions). Child conversations follow their parent's permission.
+- New: Smart approval. Actions that would normally ask for your confirmation are judged by an approval model instead; when it declines, the reason goes back to the agent so it can adjust its approach or turn to you. Which approval model to use — and which takes over when it can't — is set in Settings.
+- New conversations start with Smart approval by default. A stricter level, Strict approval, has the model also review every command beyond simple reads; it suits work like tidying up folders that involves changing or deleting files, and can be enabled under Settings' advanced options.
+- Ordinary work needs no confirmation: reading and writing files, running scripts, and data analysis proceed directly; far-reaching actions such as pushes, uploads, and software installs are the ones that ask, and confirming once covers the same thing from then on. Deletions and moves have an extra guard: your home folder, places like Desktop and Documents, whole disks, and the project folder itself cannot simply be deleted or moved.
+- The Understand/Work pair of modes is replaced by the permission system.
 
-- **Ask for approval asks about the actions that matter.** Commands,
-  scripts and file changes in your folders — and in the system's temporary
-  folder, where conversions often land — run straight away. Alt asks before
-  it pushes to a remote, uploads or publishes files, installs software on
-  your computer, reads or changes files outside your folders, or changes a
-  database file. "Allow for this conversation" covers what the question
-  names: that remote, that website, that installer, that folder. What a
-  script does inside is not checked.
-- Settings > General > "Commands that run without asking": pushes, uploads
-  and installs that start with one of these lines run without asking.
-- If nobody answers an approval within five minutes, Alt is told you may be
-  away rather than that you said no, and works on without it or waits.
-- **Smart approval** (experimental) asks a model instead of you. When it
-  refuses, Alt gets the reason and adjusts or asks you in the conversation.
-  If the model cannot answer, the question comes to you as usual. Choose the
-  model, with backups, in Settings > General; it starts with this
-  conversation's own model, and recommended models are listed with the date
-  the list was last updated. Each decision and its reason shows on the tool
-  line in the conversation. Settings > General > "All approval modes
-  (advanced)" adds **Strict smart approval**, where the model also checks
-  every command beyond simple reads.
-- **Brakes against accidents.** Under every permission, including Full
-  access, Alt will not delete or move your home folder, Desktop, Documents,
-  Downloads and similar folders, a whole disk, the project folder itself or
-  the whole temporary folder, and will not change system folders. Outside Full access, it also won't edit
-  a repository's `.git` folder directly, always asks before git commands that
-  throw away work (such as `git reset --hard` or a forced push), asks before
-  changing database files, and cannot write into Alt Theory's own records.
-- The approval box above the message box gives a long command room to be
-  read, with the buttons underneath.
-- Auto-naming can have backup models too; when a model fails and a backup
-  takes over, the conversation tells you.
+### Conversations working together
 
-### Layout
+- Two conversations can message each other: give one conversation's Session ID to the agent in another, and they can talk directly. The first contact needs your approval; your own subagents are exempt. You can keep dedicated agents — for example one that reads the literature, or one that reviews writing style — that both you and the main agent can consult by messaging, and reuse across stages or projects; agents exploring in parallel can also coordinate and follow up through them.
+- A branch keeps the subagents started before the fork point; you can keep assigning them work and collecting their results.
 
-- The middle column keeps a readable minimum width, and the buttons under
-  the message box no longer wrap onto two lines: in a narrow window the
-  permission and model names shrink to their icons.
+### Reading and annotation
 
-### Adding files
+- Select text in a conversation to annotate it and make the important parts easy to find again; highlighting, underlining, and strikethrough are supported.
 
-- The paperclip is always next to the message box. A file you add is copied
-  into the conversation's own folder, and Word, PDF, Excel and PowerPoint
-  files are converted to text so Alt can read them.
-- You can paste an image or a copied file straight into the message box.
-- In a Read-only conversation, dropping a file works like the paperclip;
-  otherwise a dropped file is linked where it is, as before.
-- The message box in the right-hand panel grows with what you type, like the
-  main one.
+### Conversations and the interface
 
-### Conversation status
+- Every conversation keeps its own draft: unsent text and attachments stay with the conversation, surviving switches and app restarts.
+- Reply display is steadier: a finished answer appears in one step at the end of a turn; when sending fails or the connection drops, your text and attachments return to the input box.
+- The right panel keeps its place while you switch conversations; the Files, Changes, and Related conversations lists can be sorted and filtered.
 
-- The end of a reply no longer flickers: the finished answer replaces the
-  streaming one in a single step, instead of the reply vanishing for a
-  moment and coming back.
-- Continue and the running state are more reliable. A message you send shows
-  a small clock until Alt has received it; if it was refused, or the
-  connection dropped before it arrived, the text and attached files come
-  back to the message box with a note instead of being lost.
-- Changing the role, knowledge, mode, or model now shows the same way in
-  every window of the conversation, including a switch waiting for the turn
-  to end.
+### Files
 
-### Drafts and Full Access follow the conversation
+- New Conversation files page: everything your conversations produced and attached, on one page — browse by conversation or by time, and delete from here.
+- Attachments are gathered into the conversation's own folder; Word, PDF, Excel, and PowerPoint files are converted to text you can question and search; images can be pasted straight in.
+- The file editor supports Ctrl+F full-text search, and files changed by an agent refresh automatically; programs and scripts an agent produces are shown, never run, when you click them.
 
-- Every conversation keeps its own unsent message and attached files. Switch
-  to another conversation, open Settings, or close a side conversation, and
-  the text is still there when you come back — also after restarting the
-  app, on the same computer.
-- The new-conversation screen keeps its text and every choice you made there
-  (folder, mode, model and effort, role, knowledge, sharing, Full Access)
-  until you send; the first message creates the conversation with exactly
-  those choices.
-- Text returned by Stop, or by a message that was refused or didn't arrive,
-  goes back to the conversation it came from, even if you have moved on.
-- Full Access now stays on for its conversation when you reopen it or
-  restart the app, until you turn it off. Branches, side conversations,
-  Helpers and subagents still start without it.
+### Performance
 
-### Right pane
+- Long conversations of several hundred turns scroll without stutter, and earlier content fills in as you scroll up; very long tool outputs are collapsed by default and open on demand.
+- The installer is about a quarter smaller than the previous release, and memory stays level even with many conversations left open for a long time.
 
-- A file or changed file open in the right pane stays that conversation's
-  file when you switch to another conversation in the middle; attaching it
-  adds it to its own conversation's message. A changed file opened from a
-  side conversation shows that conversation's change.
-- Deleting a conversation that is open in the right pane closes it there.
-- **Changes can be sorted and filtered.** Sort by folder (newest change
-  first in each folder), recently changed, by agent, or name; filter to one
-  conversation, the running agents, or the agents you pick. When several
-  agents changed files, each file says who changed it. The list now updates
-  while subagents work in the background.
-- **Files can be sorted by recently modified**, which lists each folder's
-  newest files, including files made by commands.
-- **Related conversations can be sorted** by recent activity, creation order
-  or name, and filtered to the running ones.
-- New icons: branches take the split arrow, side conversations (BTW) two
-  parallel lines, subagents a down-right arrow, and the Related conversations button
-  two chat bubbles.
-- The researcher view's Runtime tab is gone; Records and Provenance stay.
+### Removed and reworked
 
-### Conversation list
-
-- The list shows what every conversation is doing as it happens: a
-  conversation in the background starting, finishing, stopping on an error,
-  or waiting for your approval shows at once, without the list checking
-  every few seconds; it is complete again right after a reconnect.
-
-### Conversations can message each other
-
-- Copy a conversation's Session ID (from its menu) and give it to the agent
-  in another conversation: that agent can now send it a message. A
-  conversation and its own subagents still message each other freely; a
-  subagent shared by a branch can also message the branch.
-- Any other pair asks you first. You can allow 5 messages each way (replies
-  count), always allow messages between the two conversations, or deny.
-  When the 5 are used up you are asked again; if nobody answers, the other
-  conversation is told that the message could not be sent.
-- A subagent's task now shows as a line from its lead, like every later
-  message between conversations, instead of as a message you wrote.
-- Under smart approval the reviewer lets a message through when you gave
-  the agent that conversation's Session ID and the message serves what you
-  gave it for (asking progress, handing over results, sharing the work); a
-  message it lets through allows 5 each way, as yours would.
-- Under Full access nothing is asked; under Read-only you approve one
-  message at a time. Switching a conversation to Read-only also clears what
-  it allowed, as with its other "allow in this conversation" approvals.
-
-### Fixes
-
-- A compaction no longer disappears when the conversation is reopened
-  (after restarting Alt, or switching role, soul or mode) before the next
-  message. Before, the full earlier context quietly came back and every
-  later message sent all of it again. A conversation already hit by this
-  needs one more compaction.
-- A branch keeps the subagents its conversation had started before the
-  branch point: the agent in the branch can message and check them, and
-  when the branch gives one of them a task, the answer comes back to the
-  branch instead of waking the original conversation.
+- The Helper conversation type (asking for help now happens in an ordinary conversation), the research-participation setting, and the account sign-in screens are gone.
 
 ## v1.7.0-beta.1 — 2026-09-24
 

@@ -83,9 +83,9 @@ Subagents can communicate with both the main agent and the user. A promoted side
 
 Alt Theory is designed first for students and researchers in the social sciences: from a master's student framing a first question to a senior researcher deciding whether an AI tool belongs in a research plan. It also supports broader research-like knowledge work.
 
-No agent-tool experience is required. If you mainly want discussion and documented reflection, **Understand** keeps the agent's reach deliberately bounded while retaining a small writable space for conversation summaries and notes. For product and setup questions, use the **alt-theory-help** skill in an ordinary conversation, or open a prefilled draft from Help → Ask Alt; see [Help and troubleshooting](#help-and-troubleshooting).
+No agent-tool experience is required. If you mainly want discussion and documented reflection, set the conversation's permission to **Read-only**: the agent runs no commands and asks before every file it writes. For product and setup questions, use the **alt-theory-help** skill in an ordinary conversation, or open a prefilled draft from Help → Ask Alt; see [Help and troubleshooting](#help-and-troubleshooting).
 
-For research that needs live sources, files, analysis, or document production, the current conversation can use **Work** without discarding its earlier discussion. For example, Alt can run exploratory R or Python analysis, work with literature and documents, and produce tables, slides, or collaborator materials before returning to interpretation.
+For research that needs live sources, files, analysis, or document production, the same conversation can act directly: Alt can run exploratory R or Python analysis, work with literature and documents, and produce tables, slides, or collaborator materials before returning to interpretation. The permission next to the message box — Read-only, Ask for approval, Smart approval, or Full access — sets how much it may do without asking you.
 
 Professional agent users can bring an existing workspace and continue conversations imported from Codex, Claude Code, Grok Build, Pi Coding Agent, and OpenCode. See [Imports and cross-harness continuity](docs/en/system-guide/imports-and-continuity.md).
 
