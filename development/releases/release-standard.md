@@ -94,8 +94,10 @@ uploads its files; it is not expected to repair the Release body.
 
 不完整语言是一种耻辱，是codex的bs。
 
-The tag-page body starts with this short installation note, retained in
-English and Simplified Chinese:
+The tag-page body starts with one line linking this release's Chinese
+changelogs pinned to this tag (简体中文 · 繁體中文) — at the very top, where
+readers can see them without scrolling. Then comes this short installation
+note, retained in English and Simplified Chinese:
 
 > ## Important note
 >
@@ -106,8 +108,7 @@ English and Simplified Chinese:
 > macOS 应用安装目前流程较长，我们会在后续提供更简单的安装途径，请您谅解。压缩包内 `README-How-to-Install-安装指南` 有完整安装使用流程。
 
 Follow it with the platform instructions, then paste that version's
-`CHANGELOG.md` section verbatim, then one line linking this release's
-Chinese changelogs pinned to this tag (简体中文 · 繁體中文). Do not add
+`CHANGELOG.md` section verbatim. Do not add
 screenshots, internal verification, or another installation preamble.
 
 Download-and-launch instructions use one standard block per platform. They
@@ -173,10 +174,10 @@ every release onward (Windows ZIP gets the `-win` file; macOS ZIP gets the
    verification).
 4. Tag `vX.Y.Z` at the commit that matches the built source.
 5. Create the GitHub Release on that tag, publish it as a full release
-   (not a prerelease), put the platform installation blocks and
-   three-language guide pointer first, paste the `CHANGELOG.md` section
-   below them with the tag-pinned Chinese changelog links, and attach the
-   bundles and their `BUILD-INFO*.txt`.
+   (not a prerelease), put the tag-pinned Chinese changelog links first,
+   then the platform installation blocks and three-language guide pointer,
+   paste the `CHANGELOG.md` section below them, and attach the bundles and
+   their `BUILD-INFO*.txt`.
 6. The GitHub Release is the public release notes. `CHANGELOG.md` mirrors
    it so repo readers see the same text.
 
