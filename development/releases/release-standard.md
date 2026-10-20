@@ -182,8 +182,11 @@ every release onward (Windows ZIP gets the `-win` file; macOS ZIP gets the
 
 The root `package.json` version, the in-app About version, the executable
 ProductVersion, and the tag must all carry the same `X.Y.Z`. The Windows
-numeric `shortVersionWindows` uses `X.Y.Z.0` — the fourth segment was the
-beta counter and is 0 while there is none (1.8.0 → `1.8.0.0`).
+executable's four-segment FileVersion comes from `build.buildVersion` in
+`package.json` (electron-builder stamps it; set it per release). The
+fourth segment was the beta counter and is 0 while there is none
+(1.8.0 → `1.8.0.0`); the `shortVersionWindows` field records the same
+number and is kept in step with it.
 
 ## Release boundary
 
@@ -214,10 +217,10 @@ evidence instead of restarting the test cycle.
 Before building:
 
 1. confirm the intended commit and a clean tracked worktree;
-2. confirm the root `package.json` version matches the intended tag; this
-   version drives Electron metadata and the in-app About panel;
-   `shortVersionWindows` carries the numeric Windows mapping (`X.Y.Z.0`;
-   for example, 1.8.0 → `1.8.0.0`);
+2. confirm the root `package.json` version matches the intended tag, and
+   `build.buildVersion` matches it in the four-segment form; this version
+   drives Electron metadata and the in-app About panel
+   (`X.Y.Z.0`; for example, 1.8.0 → `1.8.0.0`);
 3. close any Alt Theory process running from that checkout;
 4. restore both lockfiles with `npx pnpm@10.34.5 install --frozen-lockfile`
    (root) and `npm --prefix alt-theory-app/frontend ci`;
