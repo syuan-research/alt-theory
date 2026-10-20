@@ -1,9 +1,5 @@
 # Alt Theory — Release Notes
 
-User-facing changes only, written for researchers, not developers. Started
-with v1.4.0-beta.1; earlier tags predate this file. Internal engineering
-detail lives in commit history and `development/`.
-
 中文版本：[CHANGELOG.zh-Hans.md](CHANGELOG.zh-Hans.md) ·
 [CHANGELOG.zh-Hant-HK.md](CHANGELOG.zh-Hant-HK.md)（从 v1.8.0 起提供；更早版本见本文件）
 

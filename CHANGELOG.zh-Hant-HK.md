@@ -1,6 +1,6 @@
 # Alt Theory — 版本說明
 
-只記錄面向使用者的變化，為研究者而寫，不為開發者。自 v1.8.0 起提供中文版本說明；更早版本見英文 [CHANGELOG.md](CHANGELOG.md)。
+更早版本見英文版：[CHANGELOG.md](CHANGELOG.md)
 
 ---
 
