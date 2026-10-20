@@ -31,7 +31,7 @@ test("app settings default policy: every discovered external skill; default perm
   const settings = readAppSettings(dataDir);
   const resolved = resolveExternalSkillPaths(settings, ["/x/skill-a", "/x/skill-b"]);
   assert.deepEqual(resolved, ["/x/skill-a", "/x/skill-b"]);
-  assert.deepEqual(defaultSessionPermission(settings), { mode: "work", fullAccess: false, smartApproval: false });
+  assert.deepEqual(defaultSessionPermission(settings), { mode: "work", fullAccess: false, smartApproval: true });
   settings.defaultPermission = "full";
   assert.deepEqual(defaultSessionPermission(settings), { mode: "work", fullAccess: true, smartApproval: false });
   settings.defaultPermission = "smart";

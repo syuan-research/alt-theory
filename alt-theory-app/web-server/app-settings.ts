@@ -408,7 +408,7 @@ export const PERMISSIONS: Permission[] = ["read-only", "ask", "smart", "full"];
 export function defaultSessionPermission(
   settings: AppSettings,
 ): { mode: AltMode; fullAccess: boolean; smartApproval: boolean } {
-  const permission = settings.defaultPermission ?? "ask";
+  const permission = settings.defaultPermission ?? "smart";
   return {
     mode: permission === "read-only" ? "read-only" : "work",
     fullAccess: permission === "full",

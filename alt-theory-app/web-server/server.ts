@@ -702,7 +702,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     res.json({ ok: true, ...settings.sessionListSort });
   });
   app.get("/api/settings/default-permission", (_req, res) => {
-    res.json({ permission: readAppSettings(dataDir).defaultPermission ?? "ask" });
+    res.json({ permission: readAppSettings(dataDir).defaultPermission ?? "smart" });
   });
   app.put("/api/settings/default-permission", (req, res) => {
     const permission = (req.body as { permission?: unknown }).permission as Permission;
