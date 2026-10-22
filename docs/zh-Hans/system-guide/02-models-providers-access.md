@@ -23,16 +23,19 @@ Alt Theory 不会自动读取 Pi 的提供方配置。迁移现有 Pi 设置是�
 
 | 入口 | 协议 / 端点 |
 |---|---|
-| OpenCode Go（OpenAI 兼容） | OpenAI chat completions：`https://opencode.ai/zen/go/v1` |
-| OpenCode Go（Anthropic 兼容） | Anthropic messages：`https://opencode.ai/zen/go` |
-| 小米 MiMo Token Plan（中国） | OpenAI 兼容：`https://token-plan-cn.xiaomimimo.com/v1` |
-| 小米 MiMo API（中国 / 全球） | OpenAI 兼容；粘贴 MiMo 对应区域的端点 |
+| DeepSeek 官方平台 | OpenAI chat completions：`https://api.deepseek.com`；`deepseek-flash`、`deepseek-v4-pro` |
+| OpenCode Go（Chat Completions） | `https://opencode.ai/inference/go/openai/v1` |
+| OpenCode Go（Responses） | `https://opencode.ai/inference/go/openai/v1` |
+| OpenCode Go（Anthropic 兼容） | Anthropic messages：`https://opencode.ai/inference/go/anthropic` |
+| OpenCode Go（Gemini） | Google Generative AI：`https://opencode.ai/inference/go/google/v1beta` |
 | Qwen 3.7 Max（百炼） | OpenAI responses：`https://dashscope.aliyuncs.com/compatible-mode/v1` |
 | OpenRouter | OpenAI 兼容：`https://openrouter.ai/api/v1` |
 | OpenAI API | OpenAI responses：`https://api.openai.com/v1` |
 | Anthropic API | Anthropic messages：`https://api.anthropic.com` |
 
-设置也支持自定义 OpenAI 兼容或 Anthropic 兼容端点。密钥可由 Alt Theory 保存，也可引用你填写的环境变量名；应用不会假定某个固定的提供方变量。
+OpenCode Go 的四个快捷配置共用一个密钥。按模型协议选择入口并获取模型列表，参见[官方当前路径](https://opencode.ai/v2/docs/console/go/)。
+
+设置也支持自定义 OpenAI、Anthropic 和 Gemini 兼容端点。密钥可由 Alt Theory 保存，也可引用你填写的环境变量名；应用不会假定某个固定的提供方变量。
 
 ### 磁盘上的文件
 

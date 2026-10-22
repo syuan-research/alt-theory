@@ -389,31 +389,49 @@ test("OpenCode Go Fetch keeps only models for the selected SDK family", async ()
   }
 });
 
-test("OpenCode Go Fetch uses bundled families without waiting for models.dev", async () => {
+test("OpenCode Go Fetch uses current protocols without waiting for models.dev", async () => {
   const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-sdk-family-"));
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () =>
-    new Response(
+  globalThis.fetch = async (url, init) => {
+    assert.equal(String(url), "https://opencode.ai/inference/go/v1/models");
+    assert.equal((init?.headers as Record<string, string>).Authorization, "Bearer test-key");
+    return new Response(
       JSON.stringify({
-        data: [{ id: "minimax-m3" }, { id: "kimi-k3" }, { id: "future-model" }],
+        data: [{ id: "minimax-m3" }, { id: "kimi-k3" }, { id: "qwen3.8-max" },
+          { id: "gpt-6-luna" }, { id: "gemini-4-argon-contributor" }, { id: "future-model" }],
       }),
       { status: 200 },
     );
+  };
   try {
     const anthropic = await fetchProviderModelsFromDraft(agentDir, {
       provider: "opencode-go-anthropic",
-      baseUrl: "https://opencode.ai/zen/go",
+      baseUrl: "https://opencode.ai/inference/go/anthropic",
       api: "anthropic-messages",
       apiKey: "test-key",
     });
     const openai = await fetchProviderModelsFromDraft(agentDir, {
       provider: "opencode-go-openai",
-      baseUrl: "https://opencode.ai/zen/go/v1",
+      baseUrl: "https://opencode.ai/inference/go/openai/v1",
       api: "openai-completions",
       apiKey: "test-key",
     });
-    assert.deepEqual(anthropic.map((model) => model.id), ["minimax-m3", "future-model"]);
+    const responses = await fetchProviderModelsFromDraft(agentDir, {
+      provider: "opencode-go-responses",
+      baseUrl: "https://opencode.ai/inference/go/openai/v1",
+      api: "openai-responses",
+      apiKey: "test-key",
+    });
+    const google = await fetchProviderModelsFromDraft(agentDir, {
+      provider: "opencode-go-google",
+      baseUrl: "https://opencode.ai/inference/go/google/v1beta",
+      api: "google-generative-ai",
+      apiKey: "test-key",
+    });
+    assert.deepEqual(anthropic.map((model) => model.id), ["minimax-m3", "qwen3.8-max", "future-model"]);
     assert.deepEqual(openai.map((model) => model.id), ["kimi-k3", "future-model"]);
+    assert.deepEqual(responses.map((model) => model.id), ["gpt-6-luna", "future-model"]);
+    assert.deepEqual(google.map((model) => model.id), ["gemini-4-argon-contributor", "future-model"]);
   } finally {
     globalThis.fetch = originalFetch;
   }

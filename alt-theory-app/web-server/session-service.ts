@@ -3584,6 +3584,10 @@ export class SessionService implements AgentTeamBridge {
             maxTokens: 4096,
             maxRetries: 0,
             timeoutMs: request.timeoutMs,
+            ...(/^https:\/\/opencode\.ai\//i.test(step.model.baseUrl) ? {
+              sessionId: managed.manifest.sessionId,
+              headers: { "x-opencode-session": managed.manifest.sessionId },
+            } : {}),
             ...(request.signal ? { signal: request.signal } : {}),
           },
         );

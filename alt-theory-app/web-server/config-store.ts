@@ -180,15 +180,16 @@ interface ModelsFile {
   >;
 }
 
-/** MiMo Token Plan CN Anthropic-compatible endpoint rejects SDK x-api-key auth; Bearer is required. */
-function anthropicBearerAuthRequired(
+/** OpenCode's gateway and MiMo's Anthropic endpoint use Bearer auth. */
+function bearerAuthRequired(
   api: string | undefined,
   baseUrl: string | undefined,
 ): boolean {
-  if (api !== "anthropic-messages" || !baseUrl) return false;
+  if (!baseUrl) return false;
   try {
     const host = new URL(baseUrl).hostname.toLowerCase();
-    return host === "token-plan-cn.xiaomimimo.com";
+    return host === "opencode.ai" ||
+      (api === "anthropic-messages" && host === "token-plan-cn.xiaomimimo.com");
   } catch {
     return false;
   }
@@ -528,7 +529,7 @@ function providerHasModels(block: { models?: ConfigModel[] }): boolean {
 
 function providerWarning(name: string): string | undefined {
   if (name === "opencode-go") {
-    return "This legacy OpenCode Go provider mixed OpenAI-compatible and Anthropic-compatible models. Recreate it as opencode-go-openai or opencode-go-anthropic.";
+    return "This legacy OpenCode Go provider mixed API protocols. Use the Chat Completions, Responses, Anthropic or Gemini quick setup matching each model.";
   }
   return undefined;
 }
@@ -584,6 +585,11 @@ function normalizeRuntimeBaseUrl(
 ): string | undefined {
   if (!baseUrl) return undefined;
   const trimmed = baseUrl.trim().replace(/\/+$/, "");
+  if (isOpenCodeGoBaseUrl(trimmed) && new URL(trimmed).pathname.startsWith("/zen/go")) {
+    const protocol = api === "anthropic-messages" ? "anthropic"
+      : api === "google-generative-ai" ? "google/v1beta" : "openai/v1";
+    return `https://opencode.ai/inference/go/${protocol}`;
+  }
   if (api === "anthropic-messages") {
     return trimmed.replace(/\/v1$/i, "");
   }
@@ -592,6 +598,9 @@ function normalizeRuntimeBaseUrl(
 
 function modelListUrls(provider: string, api: ApiType | undefined, baseUrl: string): string[] {
   const trimmed = baseUrl.trim().replace(/\/+$/, "");
+  if (isOpenCodeGoBaseUrl(trimmed)) {
+    return ["https://opencode.ai/inference/go/v1/models"];
+  }
   if (provider === "openai-codex") {
     return [`${trimmed}/codex/models?client_version=1.0.0`];
   }
@@ -607,7 +616,7 @@ function isOpenCodeGoBaseUrl(baseUrl: string): boolean {
     const url = new URL(baseUrl);
     return (
       url.hostname === "opencode.ai" &&
-      url.pathname.replace(/\/+$/, "").replace(/\/v1$/i, "") === "/zen/go"
+      /^\/(?:zen\/go(?:\/v1)?|inference\/go(?:\/(?:openai\/v1|anthropic(?:\/v1)?|google\/v1beta|v1))?)\/?$/.test(url.pathname)
     );
   } catch {
     return false;
@@ -635,7 +644,7 @@ function sanitizeCustomProviderAuth(
       changed = true;
     }
     if (
-      anthropicBearerAuthRequired(block.api, block.baseUrl) &&
+      bearerAuthRequired(block.api, block.baseUrl) &&
       block.authHeader !== true
     ) {
       block.authHeader = true;
@@ -731,31 +740,39 @@ export async function fetchProviderModelsFromDraftResult(
   return { models, unclassifiedModelIds };
 }
 
-function savedOpenCodeGoFamily(
+function savedOpenCodeGoApi(
   providers: NonNullable<ModelsFile["providers"]>,
   modelId: string,
-): "openai" | "anthropic" | undefined {
-  const inOpenAi = providers["opencode-go-openai"]?.models?.some(
-    (model) => model.id === modelId,
-  );
-  const inAnthropic = providers["opencode-go-anthropic"]?.models?.some(
-    (model) => model.id === modelId,
-  );
-  if (inOpenAi && !inAnthropic) return "openai";
-  if (inAnthropic && !inOpenAi) return "anthropic";
-  return undefined;
+): ApiType | undefined {
+  const apis = new Set(Object.values(providers)
+    .filter((provider) => provider.baseUrl && isOpenCodeGoBaseUrl(provider.baseUrl) &&
+      provider.models?.some((model) => model.id === modelId))
+    .map((provider) => provider.api)
+    .filter((api): api is ApiType => API_TYPES.has(api ?? "")));
+  return apis.size === 1 ? [...apis][0] : undefined;
 }
 
-function bundledOpenCodeGoFamily(
+// Official Go routes checked 2026-10-22; these differ from Pi 0.87.1's catalog.
+const OPENCODE_GO_API_OVERRIDES: Record<string, ApiType> = {
+  "gpt-6-luna": "openai-responses",
+  "claude-haiku-5-5": "anthropic-messages",
+  "qwen3.8-max": "anthropic-messages",
+  "qwen3.7-plus": "anthropic-messages",
+  "gemini-4-argon-contributor": "google-generative-ai",
+  "minimax-m3.1-flash-free": "openai-completions",
+  "longcat-2.5-preview-free": "openai-completions",
+  "step-5-preview": "openai-completions",
+  "beam-free": "openai-completions",
+};
+
+function bundledOpenCodeGoApi(
   modelId: string,
-): "openai" | "anthropic" | undefined {
+): ApiType | undefined {
+  if (OPENCODE_GO_API_OVERRIDES[modelId]) return OPENCODE_GO_API_OVERRIDES[modelId];
   const model = builtinModelList("opencode-go").find(
     (candidate) => candidate.id === modelId,
   );
-  if (model?.api === "anthropic-messages") return "anthropic";
-  if (model?.api === "openai-completions" || model?.api === "openai-responses") {
-    return "openai";
-  }
+  if (model && API_TYPES.has(model.api)) return model.api as ApiType;
   return undefined;
 }
 
@@ -782,7 +799,7 @@ async function fetchModelsFromEndpoint(
     Accept: "application/json",
   };
   if (apiKey) {
-    if (input.api === "anthropic-messages") {
+    if (input.api === "anthropic-messages" && !bearerAuthRequired(input.api, input.baseUrl)) {
       headers["x-api-key"] = apiKey;
       headers["anthropic-version"] = "2023-06-01";
     } else {
@@ -851,34 +868,34 @@ async function fetchModelsFromEndpoint(
       continue;
     }
     if (!splitOpenCodeGo) return candidates;
-    const expectedFamily =
-      input.api === "anthropic-messages" ? "anthropic" : "openai";
+    const expectedApi = input.api ?? "openai-completions";
     const savedProviders = readModelsFile(agentDir).providers ?? {};
-    const classified = candidates.map((model) => ({
-      model,
-      family:
-        savedOpenCodeGoFamily(savedProviders, model.id) ??
-        catalogSdkFamily(agentDir, input.provider, input.baseUrl, model.id) ??
-        bundledOpenCodeGoFamily(model.id),
-    }));
+    const classified = candidates.map((model) => {
+      const family = catalogSdkFamily(agentDir, "opencode-go", input.baseUrl, model.id);
+      return {
+        model,
+        api: bundledOpenCodeGoApi(model.id) ?? savedOpenCodeGoApi(savedProviders, model.id) ??
+          (family === "anthropic" ? "anthropic-messages" : family === "openai" ? "openai-completions" : undefined),
+      };
+    });
     input.onUnclassified?.(
-      classified.filter(({ family }) => !family).map(({ model }) => model.id),
+      classified.filter(({ api }) => !api).map(({ model }) => model.id),
     );
     const selected = classified
-      .filter(({ family }) => !family || family === expectedFamily)
+      .filter(({ api }) => !api || api === expectedApi)
       .map(({ model }) => model);
     return selected.map((model) => ({
       ...model,
       ...catalogModelMetadata(
         agentDir,
-        input.provider,
+        "opencode-go",
         input.baseUrl,
         model.id,
       ),
     }));
   }
   if (
-    anthropicBearerAuthRequired(input.api, input.baseUrl) &&
+    bearerAuthRequired(input.api, input.baseUrl) && !splitOpenCodeGo &&
     errors.every((entry) => entry.includes("HTTP 404"))
   ) {
     throw new ConfigValidationError(
@@ -1326,7 +1343,7 @@ export async function upsertProvider(
   if (input.options && Object.keys(input.options).length > 0) {
     providerBlock.options = input.options;
   }
-  if (anthropicBearerAuthRequired(input.api, runtimeBaseUrl)) {
+  if (bearerAuthRequired(input.api, runtimeBaseUrl)) {
     providerBlock.authHeader = true;
   }
 
@@ -1590,10 +1607,14 @@ export async function testProviderConnectionFromDraft(
     "Content-Type": "application/json",
     Accept: "application/json",
   };
+  if (isOpenCodeGoBaseUrl(input.baseUrl)) {
+    headers["x-opencode-session"] = "alt-theory-connection-test";
+    headers["User-Agent"] = "AltTheory";
+  }
   if (apiKey) {
     if (
       input.api === "anthropic-messages" &&
-      !anthropicBearerAuthRequired(input.api, input.baseUrl)
+      !bearerAuthRequired(input.api, input.baseUrl)
     ) {
       headers["x-api-key"] = apiKey;
       headers["anthropic-version"] = "2023-06-01";
@@ -1614,6 +1635,14 @@ export async function testProviderConnectionFromDraft(
         model: input.modelId,
         max_tokens: 16,
         messages: [{ role: "user", content: "ping" }],
+      },
+    });
+  } else if (input.api === "google-generative-ai") {
+    probes.push({
+      url: `${base}/models/${encodeURIComponent(input.modelId)}:generateContent`,
+      body: {
+        contents: [{ role: "user", parts: [{ text: "ping" }] }],
+        generationConfig: { maxOutputTokens: 16 },
       },
     });
   } else {

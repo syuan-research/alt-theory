@@ -38,17 +38,21 @@ an existing Pi setup across is a one-time, guided copy; see
 
 | Entry | Protocol / endpoint |
 |---|---|
-| OpenCode Go (OpenAI-compatible) | OpenAI chat completions at `https://opencode.ai/zen/go/v1` |
-| OpenCode Go (Anthropic-compatible) | Anthropic messages at `https://opencode.ai/zen/go` |
-| Xiaomi MiMo Token Plan (China) | OpenAI-compatible at `https://token-plan-cn.xiaomimimo.com/v1` |
-| Xiaomi MiMo API (China / global) | OpenAI-compatible; paste the regional endpoint from MiMo |
+| DeepSeek Platform | OpenAI chat completions at `https://api.deepseek.com`; `deepseek-flash` and `deepseek-v4-pro` |
+| OpenCode Go (Chat Completions) | `https://opencode.ai/inference/go/openai/v1` |
+| OpenCode Go (Responses) | `https://opencode.ai/inference/go/openai/v1` |
+| OpenCode Go (Anthropic-compatible) | Anthropic messages at `https://opencode.ai/inference/go/anthropic` |
+| OpenCode Go (Gemini) | Google Generative AI at `https://opencode.ai/inference/go/google/v1beta` |
 | Qwen 3.7 Max (Bailian) | OpenAI responses at `https://dashscope.aliyuncs.com/compatible-mode/v1` |
 | OpenRouter | OpenAI-compatible at `https://openrouter.ai/api/v1` |
 | OpenAI API | OpenAI responses at `https://api.openai.com/v1` |
 | Anthropic API | Anthropic messages at `https://api.anthropic.com` |
 
-Settings also supports any custom OpenAI-compatible or Anthropic-compatible
-endpoint. A key can be stored by Alt Theory or referenced by the environment
+OpenCode Go uses one key across its four quick setups. Fetch the model list
+in the setup matching the model's protocol; see the [current official routes](https://opencode.ai/v2/docs/console/go/).
+
+Settings also supports custom OpenAI-, Anthropic-, and Gemini-compatible
+endpoints. A key can be stored by Alt Theory or referenced by the environment
 variable name you enter; the app does not assume one provider-specific
 variable.
 

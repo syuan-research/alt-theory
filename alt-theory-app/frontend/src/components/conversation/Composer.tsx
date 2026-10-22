@@ -41,8 +41,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   );
   const [moreHelpStarters, setMoreHelpStarters] = useState(false);
   const [helpQuestionArmed, setHelpQuestionArmed] = useState(false);
-  // One-line hint in the tips slot when the card area switches (owner
-  // 2026-08-05): each direction gets its own line, cleared after a beat.
+  // Briefly explain Steer when its cards open.
   const [cardHint, setCardHint] = useState<string | null>(null);
   const cardHintTimer = useRef<number | null>(null);
   const togglePresetOpen = () => {
@@ -52,7 +51,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     setCardHint(
       next
         ? t("Steer is for this moment: press a way of working and it rides your next few messages.")
-        : t("Role and knowledge shape the whole conversation — they stay with it from the start."),
+        : null,
     );
     if (cardHintTimer.current) window.clearTimeout(cardHintTimer.current);
     cardHintTimer.current = window.setTimeout(() => setCardHint(null), 10000);

@@ -148,10 +148,15 @@ The endpoint and authentication details depend on the provider/API definition:
 - the OpenAI Codex OAuth route uses its Codex model endpoint and may send the
   account id extracted from the credential token;
 - OAuth-backed xAI and Codex discovery uses the provider's Pi/built-in route;
-- OpenCode Go's shared endpoint is split into OpenAI- and
-  Anthropic-compatible views using saved classification, the local catalogue,
-  and bundled metadata. A returned model that cannot be classified is retained
-  and reported as unclassified rather than treated as absent.
+- OpenCode Go uses `https://opencode.ai/inference/go/v1/models`, split into
+  Chat Completions, Responses, Anthropic Messages, and Google Generative AI
+  views. Dated official-route corrections take precedence over bundled Pi
+  metadata, saved classification, and the local catalogue. A returned model
+  that cannot be classified is retained and reported as unclassified.
+- Go's protocol-specific inference routes use Bearer authentication. The core
+  Pi header hook and the shared auxiliary-completion path send the conversation
+  ID as `x-opencode-session`, including for custom provider names. Legacy
+  `/zen/go` base URLs are normalized when saving provider configuration.
 
 The implementation retries a failed request once, bounds each request, and
 reports endpoint/JSON/model-list failures as configuration errors. Provider

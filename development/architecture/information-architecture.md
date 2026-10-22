@@ -484,10 +484,10 @@ The Models surface uses a master-detail structure:
 - Directly under Add provider: a low-key entry to the chatbot/agent model
   configuration guide (docs: configure-models-with-chatbot).
 - With no providers configured, the add flow is open by default.
-- Fetch never waits for models.dev. OpenCode Go uses the local metadata cache,
-  matching model metadata from other cached providers, and finally bundled Pi
-  protocol metadata to split its shared endpoint into OpenAI- and
-  Anthropic-compatible lists. A model returned by the selected provider endpoint
+- Fetch never waits for models.dev. OpenCode Go splits its shared model endpoint
+  into Chat Completions, Responses, Anthropic Messages, and Gemini lists using
+  current route corrections, bundled Pi metadata, saved classification, and the
+  local catalogue. A model returned by the selected provider endpoint
   is still offered when those metadata sources do not know it; missing metadata
   is reported, not treated as evidence that the provider model does not exist.
 

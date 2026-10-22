@@ -30,13 +30,13 @@ import { useShell } from "@/context/ShellContext";
 
 const PROVIDER_PRESETS = [
   {
-    label: t("Xiaomi MiMo Token Plan (CN)"),
-    name: "xiaomi-mimo-token-plan-cn",
+    label: t("DeepSeek Platform"),
+    name: "deepseek-official",
     api: "openai-completions" as ApiType,
-    baseUrl: "https://token-plan-cn.xiaomimimo.com/v1",
+    baseUrl: "https://api.deepseek.com",
     models: [
       {
-        id: "mimo-v2.5-pro",
+        id: "deepseek-flash",
         reasoning: true,
         compat: {
           thinkingFormat: "deepseek",
@@ -44,7 +44,7 @@ const PROVIDER_PRESETS = [
         },
       },
       {
-        id: "mimo-v2.5",
+        id: "deepseek-v4-pro",
         reasoning: true,
         compat: {
           thinkingFormat: "deepseek",
@@ -52,85 +52,48 @@ const PROVIDER_PRESETS = [
         },
       },
     ],
-    description:
-      t("Xiaomi MiMo Token Plan China endpoint. Use this only for keys issued for that product."),
+    description: undefined,
+    keyUrl: "https://platform.deepseek.com/api_keys",
     recommended: true,
-    manualModels: true,
   },
   {
-    label: t("Xiaomi MiMo API (CN)"),
-    name: "xiaomi-mimo-api-cn",
-    api: "openai-completions" as ApiType,
-    baseUrl: "",
-    models: [
-      {
-        id: "mimo-v2.5-pro",
-        reasoning: true,
-        compat: {
-          thinkingFormat: "deepseek",
-          requiresReasoningContentOnAssistantMessages: true,
-        },
-      },
-      {
-        id: "mimo-v2.5",
-        reasoning: true,
-        compat: {
-          thinkingFormat: "deepseek",
-          requiresReasoningContentOnAssistantMessages: true,
-        },
-      },
-    ],
-    description:
-      t("Normal Xiaomi MiMo API, China region. Paste the Base URL from the MiMo console/docs; do not reuse the Token Plan endpoint."),
-    recommended: true,
-    manualModels: true,
-  },
-  {
-    label: t("Xiaomi MiMo API (Global)"),
-    name: "xiaomi-mimo-api-global",
-    api: "openai-completions" as ApiType,
-    baseUrl: "",
-    models: [
-      {
-        id: "mimo-v2.5-pro",
-        reasoning: true,
-        compat: {
-          thinkingFormat: "deepseek",
-          requiresReasoningContentOnAssistantMessages: true,
-        },
-      },
-      {
-        id: "mimo-v2.5",
-        reasoning: true,
-        compat: {
-          thinkingFormat: "deepseek",
-          requiresReasoningContentOnAssistantMessages: true,
-        },
-      },
-    ],
-    description:
-      t("Normal Xiaomi MiMo API, global region. Paste the regional Base URL from the MiMo console/docs."),
-    recommended: true,
-    manualModels: true,
-  },
-  {
-    label: t("OpenCode Go (OpenAI-compatible)"),
+    label: t("OpenCode Go (Chat Completions)"),
     name: "opencode-go-openai",
     api: "openai-completions" as ApiType,
-    baseUrl: "https://opencode.ai/zen/go/v1",
+    baseUrl: "https://opencode.ai/inference/go/openai/v1",
     models: [],
-    description:
-      t("OpenCode Go models served through /v1/chat/completions, including MiMo, DeepSeek, Kimi, and GLM."),
+    description: undefined,
+    keyUrl: "https://opencode.ai/console/",
     recommended: true,
   },
   {
     label: t("OpenCode Go (Anthropic-compatible)"),
     name: "opencode-go-anthropic",
     api: "anthropic-messages" as ApiType,
-    baseUrl: "https://opencode.ai/zen/go",
+    baseUrl: "https://opencode.ai/inference/go/anthropic",
     models: [],
-    description:
-      t("OpenCode Go models served through /v1/messages, including Qwen 3.7 and MiniMax."),
+    description: undefined,
+    keyUrl: "https://opencode.ai/console/",
+    recommended: true,
+  },
+  {
+    label: t("OpenCode Go (Responses)"),
+    name: "opencode-go-responses",
+    api: "openai-responses" as ApiType,
+    baseUrl: "https://opencode.ai/inference/go/openai/v1",
+    models: [],
+    description: undefined,
+    keyUrl: "https://opencode.ai/console/",
+    recommended: true,
+  },
+  {
+    label: t("OpenCode Go (Gemini)"),
+    name: "opencode-go-google",
+    api: "google-generative-ai" as ApiType,
+    baseUrl: "https://opencode.ai/inference/go/google/v1beta",
+    models: [],
+    description: undefined,
+    keyUrl: "https://opencode.ai/console/",
     recommended: true,
   },
   {
@@ -148,9 +111,7 @@ const PROVIDER_PRESETS = [
 type ProviderPreset = (typeof PROVIDER_PRESETS)[number];
 
 const MANUAL_MODEL_PROVIDER_NAMES = new Set(
-  PROVIDER_PRESETS.filter((preset) => preset.manualModels).map(
-    (preset) => preset.name
-  )
+  ["xiaomi-mimo-token-plan-cn", "xiaomi-mimo-api-cn", "xiaomi-mimo-api-global"],
 );
 
 function manualModelListHint(providerName: string): string | null {
@@ -797,7 +758,6 @@ export function ModelConfigPage({
       ) : status ? (
         <div
           className="active-model-summary"
-          data-tip={t("New conversations start with the default model. Editing a provider's model list does not change it.")}
         >
           <span>
             {status.activeUsable ? (
@@ -914,9 +874,6 @@ export function ModelConfigPage({
                 </div>
               ))}
             </div>
-            <p className="mt-4 text-[length:var(--fs-secondary)] text-text-muted">
-              {t("Takes about a minute.")}
-            </p>
           </div>
         ) : null}
         </>
@@ -1019,19 +976,17 @@ export function ModelConfigPage({
                 >
                   <span>
                     <strong>{t("Configure a custom provider")}</strong>
-                    <small>
-                      {t("For providers not covered by the quick setups below.")}
-                    </small>
                   </span>
                   <i className="ph ph-caret-right" aria-hidden />
                 </button>
+                <div className="provider-add-divider" />
                 <p className="provider-section-label">
                   {t("Connect quickly with an API key (quick setup)")}
                   <i
                     className="ph ph-info quick-setup-note"
                     aria-hidden
                     data-tip={t(
-                      "Quick setups reflect our current recommendations. Most open-weight models released after August 2026 were designed for autonomous, long-horizon tasks: their thinking is verbose, they prefer polished phrasing over exploring the problem space, and they lean toward acting without authorization. We therefore keep the earlier MiMo v2.5 Pro setups, plus OpenCode Go and OpenRouter for wider model choice. GPT-family models are equally suited to discussion — connect with a ChatGPT subscription via OAuth.",
+                      "October 2026: for everyday use, we recommend ChatGPT Sol 6.1 or later at Low or Medium effort. OpenCode Go and OpenRouter offer more model choices.",
                     )}
                   />
                 </p>
@@ -1048,7 +1003,7 @@ export function ModelConfigPage({
                     >
                       <span>
                         <strong>{preset.label}</strong>
-                        <small>{preset.description}</small>
+                        {preset.description ? <small>{preset.description}</small> : null}
                       </span>
                       <i className="ph ph-caret-right" aria-hidden />
                     </button>
@@ -1098,14 +1053,6 @@ export function ModelConfigPage({
               ) : null}
             </div>
 
-            {editingName && status?.activeProvider === editingName ? (
-              <p className="provider-default-note">
-                {t("Default for new conversations:")}{" "}
-                <strong>{status.activeModel}</strong>
-                {" — "}
-                {t("change it from the Default control at the top of Models.")}
-              </p>
-            ) : null}
 
             <div className="mt-4 space-y-4">
               {editingOAuth ? (
@@ -1132,7 +1079,7 @@ export function ModelConfigPage({
                   >
                     <TextInput value={name} onChange={(event) => setName(event.target.value)} disabled={Boolean(editingName)} autoComplete="off" />
                   </FieldFrame>
-                  <FieldFrame label={t("Base URL")} hint={t("Required for custom / local / proxy providers.")}>
+                  <FieldFrame label={t("Base URL")}>
                     <TextInput value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} autoComplete="off" />
                   </FieldFrame>
                   <FieldFrame label={t("API type")}>
@@ -1162,9 +1109,6 @@ export function ModelConfigPage({
               <div className="space-y-3">
                 <div>
                   <p className="text-[length:var(--fs-title)] font-semibold text-ink">{t("Models")}</p>
-                  <HintText className="mt-0.5">
-                    {t("Correct model limits and the effort choices shown in the composer.")}
-                  </HintText>
                 </div>
                 {/* Actions sit under the Models heading, above the list.
                     Fetch leads: asking the provider what it offers is the
@@ -1374,9 +1318,6 @@ export function ModelConfigPage({
                 <summary className="cursor-pointer text-[length:var(--fs-secondary)] font-semibold text-ink">
                   {t("Advanced options")}
                 </summary>
-                <p className="pt-1 text-[length:var(--fs-secondary)] text-text-secondary">
-                  {t("Extra provider settings passed through to Pi. Most setups don't need these.")}
-                </p>
                 {optionRows.map((row, index) => (
                   <div key={index} className="grid grid-cols-[2fr_1fr_auto] gap-2">
                     <TextInput

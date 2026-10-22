@@ -61,6 +61,36 @@ installation material defined below.
   only if the reader would notice or care. Link to the relevant architecture
   doc or commit history instead.
 
+### Temporary brevity reference — 2026-10-22 through 2026-11-05
+
+For a comparable small release during this period, the draft below sets the
+acceptable upper bound for length and detail. The owner judged it acceptably
+concise, not ideal; shorter is welcome. Use it to calibrate how much to say,
+not as a required template or a reason to fill every section. After 2026-11-05,
+this dated reference expires; the general rules above still apply.
+
+```markdown
+## v1.8.1 — 2026-10-22
+
+This small update improves everyday use and fixes a few issues.
+
+### Conversations
+
+- You can branch or edit a message while a response is running.
+- Messages can be edited and retried in the side panel. Retrying replaces the answer in the same conversation.
+- Failure messages remain visible when you return to a conversation and clear after successful recovery.
+
+### Skills and model setup
+
+- Selecting a skill leaves your message ready to edit before sending. The conversation shows which skill was used, with its instructions available to expand.
+- Settings lets you add your own skill folders, search for a default model and choose its thinking effort.
+
+### Other new and fixed
+
+- Related conversations can be sorted and filtered from the strip above an open side conversation.
+- Keyboard focus, diagrams and mind maps use the same blue color family as text selection.
+```
+
 ### Chinese changelogs
 
 - `CHANGELOG.zh-Hans.md` and `CHANGELOG.zh-Hant-HK.md` mirror `CHANGELOG.md`:

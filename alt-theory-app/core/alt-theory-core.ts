@@ -653,6 +653,14 @@ async function createAltTheorySessionWithManager(
     noExtensions: true,
     extensionFactories: [
       ...(config.extensionFactories ?? []),
+      // Custom provider names bypass Pi's built-in OpenCode header wrapper.
+      (pi) => {
+        pi.on("before_provider_headers", (event, context) => {
+          if (/^https:\/\/opencode\.ai\//i.test(context.model?.baseUrl ?? "")) {
+            event.headers["x-opencode-session"] = sessionId;
+          }
+        });
+      },
       createModelRemindersExtension(
         () => runtimeState.runtimeMode === "alt-theory",
         config.modelHooks !== false,

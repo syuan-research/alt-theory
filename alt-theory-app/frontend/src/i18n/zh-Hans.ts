@@ -5,6 +5,12 @@
  * wording here AND noting it in the glossary so regeneration keeps it.
  */
 const catalog: Record<string, string> = {
+  "Skills provide reusable ways of working.": "技能提供可复用的工作方法。",
+  "DeepSeek Platform": "DeepSeek 官方平台",
+  "OpenCode Go (Chat Completions)": "OpenCode Go（Chat Completions）",
+  "OpenCode Go (Responses)": "OpenCode Go（Responses）",
+  "OpenCode Go (Gemini)": "OpenCode Go（Gemini）",
+  "October 2026: for everyday use, we recommend ChatGPT Sol 6.1 or later at Low or Medium effort. OpenCode Go and OpenRouter offer more model choices.": "2026 年 10 月，日常使用推荐 ChatGPT 6.1 及以上 Sol 的 Low、Medium；OpenCode Go 和 OpenRouter 提供更多模型选择。",
   "Sort and filter": "排序与筛选",
   "Open in main area": "在主区域打开",
   "Skill folders": "技能文件夹",

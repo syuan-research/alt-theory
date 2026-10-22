@@ -718,11 +718,6 @@ function AgentsPanel() {
         <div className="row2">
           <div>
             <h4>{t("Default subagent")}</h4>
-            <p>
-              {t(
-                "The subagent used when a conversation doesn't specify one — built-in or custom. Name another subagent in the conversation to override it.",
-              )}
-            </p>
           </div>
           <MenuSelect
             ariaLabel={t("Default subagent")}
@@ -1189,7 +1184,6 @@ function ViewSizeCard() {
       <div className="row2">
         <div>
           <h4>{t("View size")}</h4>
-          <p>{t("Zoom the whole app. Remembered after a restart.")}</p>
         </div>
         <div className="zval">
           {stop !== 2 ? (
@@ -1240,7 +1234,6 @@ function GeneralPanel() {
         <div className="row2">
           <div>
             <h4>{t("Dark appearance")}</h4>
-            <p>{t("Use a dark color theme for the app.")}</p>
           </div>
           <button
             className={`toggle${shell.darkMode ? " on" : ""}`}
@@ -1254,7 +1247,6 @@ function GeneralPanel() {
         <div className="row2">
           <div>
             <h4>{t("Expand thinking")}</h4>
-            <p>{t("Open thinking blocks by default instead of collapsed.")}</p>
           </div>
           <button
             className={`toggle${shell.thinkingExpanded ? " on" : ""}`}
@@ -1772,7 +1764,7 @@ function SkillsPanel() {
     <div className="set-panel">
       <h2>{t("Skills")}</h2>
       <p className="sub">
-        {t("Skills are instruction files that carry a way of working. Alt Theory ships its own; you can also add your own.")}
+        {t("Skills provide reusable ways of working.")}
       </p>
       <SkillPrecedenceCard />
       <div className="set-card">
@@ -1816,9 +1808,6 @@ function SkillPrecedenceCard() {
       <div className="row2">
         <div>
           <h4>{t("When two skills overlap")}</h4>
-          <p>
-            {t("Which one wins when a bundled skill and one of yours fit the same job.")}
-          </p>
         </div>
         <MenuSelect
           ariaLabel={t("Skill precedence")}
@@ -1913,9 +1902,6 @@ function RoleKbPanel() {
   return (
     <div className="set-panel">
       <h2>{t("Role & Knowledge")}</h2>
-      <p className="sub">
-        {t("What Alt speaks as, and what it draws on. New conversations start with no role and the bundled knowledge set until you pick otherwise above the composer. Adding here never changes the bundled files.")}
-      </p>
       {notice ? <p className="sub">{notice}</p> : null}
       <div className="set-card">
         <div className="row2">
@@ -2063,9 +2049,6 @@ function FeaturesPanel() {
   return (
     <div className="set-panel">
       <h2>{t("Help center")}</h2>
-      <p className="sub">
-        {t("A practical guide to conversations, modes, context, and getting unstuck.")}
-      </p>
       <button
         className="add-btn help-ask"
         onClick={() => {
@@ -2076,12 +2059,6 @@ function FeaturesPanel() {
         <i className="ph ph-chats-circle" />
         {t("Ask Alt")}
       </button>
-      <div className="set-card">
-        <h4>{t("Think through research questions with you")}</h4>
-        <p>
-          {t("Alt separates what it found from what it inferred, marks uncertainty instead of papering over it, and moves in steps you can steer — built for research design, framing, and interpretation, where being agreeably wrong is worse than being slower. Leave a conversation without a project when you want to think from the question itself rather than from a project's files.")}
-        </p>
-      </div>
       <div className="set-card">
         <h4>{t("Do concrete work on your materials")}</h4>
         <p>
@@ -2110,12 +2087,6 @@ function FeaturesPanel() {
         <h4>{t("Keep side paths without losing the main conversation")}</h4>
         <p>
           {t("Branch starts another direction from the current conversation. BTW opens a smaller related conversation. For questions about Alt or setup, use the help skill in an ordinary conversation.")}
-        </p>
-      </div>
-      <div className="set-card">
-        <h4>{t("Choose what each conversation can use")}</h4>
-        <p>
-          {t("The controls above the composer choose role, knowledge, model, and main folder for that conversation. Commands and skills, permission, and file attachment are the buttons beside it, keeping options close without putting every option on screen.")}
         </p>
       </div>
       <div className="set-card help-tip-catalog">
@@ -2255,7 +2226,6 @@ function WorkingFoldersPanel() {
   return (
     <div className="set-panel">
       <h2>{t("Projects and global folders")}</h2>
-      <p className="sub">{t("Which folders Alt can open, and which ones it may change.")}</p>
       {notice ? <p className="sub">{notice}</p> : null}
 
       <div className="set-card">

@@ -4,6 +4,12 @@
  * hand-edit policy as zh-Hans.ts.
  */
 const catalog: Record<string, string> = {
+  "Skills provide reusable ways of working.": "技能提供可重用的工作方法。",
+  "DeepSeek Platform": "DeepSeek 官方平台",
+  "OpenCode Go (Chat Completions)": "OpenCode Go（Chat Completions）",
+  "OpenCode Go (Responses)": "OpenCode Go（Responses）",
+  "OpenCode Go (Gemini)": "OpenCode Go（Gemini）",
+  "October 2026: for everyday use, we recommend ChatGPT Sol 6.1 or later at Low or Medium effort. OpenCode Go and OpenRouter offer more model choices.": "2026 年 10 月，日常使用推薦 ChatGPT 6.1 及以上 Sol 的 Low、Medium；OpenCode Go 和 OpenRouter 提供更多模型選擇。",
   "Sort and filter": "排序與篩選",
   "Open in main area": "在主區域開啟",
   "Skill folders": "技能資料夾",
