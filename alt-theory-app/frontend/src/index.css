@@ -1014,7 +1014,7 @@
   .send:disabled { opacity: 0.45; cursor: default; }
 
   /* menus */
-  .menu { display: none; position: absolute; bottom: 36px; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-md); box-shadow: var(--shadow-popup); padding: var(--space-tight); z-index: 50; min-width: 230px; max-height: 340px; overflow-y: auto; }
+  .menu { display: none; position: absolute; bottom: 36px; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-md); box-shadow: var(--shadow-popup); padding: var(--space-tight); z-index: 50; min-width: 230px; max-height: 340px; overflow-y: auto; overscroll-behavior: contain; }
   .menu.on { display: block; }
   /* .mi rows are real <button>s where menus are keyboard-operable; this reset
      strips the UA button chrome so they render exactly like the old divs. */
