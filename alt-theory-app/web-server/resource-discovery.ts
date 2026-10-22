@@ -10,7 +10,7 @@
 import { existsSync } from "fs";
 import { homedir } from "os";
 import { dirname, join, resolve } from "path";
-import { loadSkillsFromDir } from "@earendil-works/pi-coding-agent";
+import { loadSkills, loadSkillsFromDir, SettingsManager } from "@earendil-works/pi-coding-agent";
 
 export type SkillSource = "alt-theory" | "pi-user" | "agents-global";
 
@@ -56,6 +56,16 @@ export function discoverSkillResources(options: {
       diagnostics.push({ message: diagnostic.message, path: diagnostic.path });
     }
   }
+  const extra = loadSkills({
+    cwd: process.cwd(), agentDir: options.agentDir, includeDefaults: false,
+    skillPaths: SettingsManager.create(process.cwd(), options.agentDir).getSkillPaths(),
+  });
+  for (const skill of extra.skills) {
+    if (seenPaths.has(skill.filePath)) continue;
+    seenPaths.add(skill.filePath);
+    skills.push({ name: skill.name, description: skill.description, path: skill.filePath, source: "pi-user" });
+  }
+  diagnostics.push(...extra.diagnostics.map(({ message, path }) => ({ message, path })));
   skills.sort(
     (a, b) => a.source.localeCompare(b.source) || a.name.localeCompare(b.name)
   );

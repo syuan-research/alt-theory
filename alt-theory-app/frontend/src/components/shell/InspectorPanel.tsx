@@ -227,6 +227,7 @@ function RelatedConversations() {
   const shell = useShell();
   const menu = useContextMenu();
   const activeChildId = shell.openConversationId;
+  const [controlsOpen, setControlsOpen] = useState(false);
 
   // Filter state outlives the pane (proto E; pane memory per conversation).
   const memoryKey = `${conv.sessionId}:related`;
@@ -397,17 +398,11 @@ function RelatedConversations() {
     return () => el.removeEventListener("wheel", onWheel);
   }, [visible.length, activeChildId]);
 
-  // One row of small buttons, then the conversation itself: switching between
-  // related conversations should not cost a round trip through a list.
-  // The switcher keeps creation order: an activity order would move its
-  // buttons under the pointer whenever a member starts or ends a run.
-  const switchRows = sort === "activity" && !query.trim()
-    ? sortRelatedRows(visible, "created", titleOf)
-    : visible;
   const switcher =
-    switchRows.length > 0 ? (
+    visible.length > 0 || activeChildId ? (
+      <div className="child-switch-row">
       <div className="child-switch" ref={switchRef}>
-        {switchRows.map((row) => (
+        {visible.map((row) => (
           <button
             key={row.session.sessionId}
             className={row.session.sessionId === activeChildId ? "on" : ""}
@@ -428,23 +423,15 @@ function RelatedConversations() {
           </button>
         ))}
       </div>
+      {activeChildId ? <button type="button" className="flat" aria-label={t("Sort and filter")}
+        data-tip={t("Sort and filter")} aria-expanded={controlsOpen}
+        onClick={() => setControlsOpen((open) => !open)}>
+        <i className={`ph ph-caret-${controlsOpen ? "up" : "down"}`} aria-hidden="true" />
+      </button> : null}
+      </div>
     ) : null;
 
-  if (activeChildId) {
-    return (
-      <>
-        {switcher}
-        <ChildConversation
-          key={activeChildId}
-          sessionId={activeChildId}
-          onClose={shell.closeTarget}
-        />
-        {menu.element}
-      </>
-    );
-  }
-
-  if (rows.length === 0) {
+  if (rows.length === 0 && !activeChildId) {
     return (
       <div className="rp-empty">
         <div>{t("No related conversations.")}</div>
@@ -513,19 +500,21 @@ function RelatedConversations() {
 
   return (
     <div
+      className={activeChildId ? "related-open" : undefined}
       onKeyDown={(event) => {
-        // Escape closes the search from anywhere in the list — the filter
-        // cards above take the click focus, so the input's own handler is
-        // not enough.
-        if (!searchOpen || event.key !== "Escape" || event.nativeEvent.isComposing) return;
+        if (event.defaultPrevented || event.key !== "Escape" || event.nativeEvent.isComposing) return;
         const target = event.target instanceof HTMLElement ? event.target : null;
+        if (target?.closest(".child-conv")) return;
         if (target?.closest("input, textarea, select") && !target.closest(".fsearch")) return;
+        if (!searchOpen && !(activeChildId && controlsOpen && target?.closest(".child-switch-row, .frow, .fsearch"))) return;
         event.preventDefault();
         event.stopPropagation();
-        closeSearch();
+        if (searchOpen) closeSearch();
+        else setControlsOpen(false);
       }}
     >
       {switcher}
+      {!activeChildId || controlsOpen ? <>
       <div className="frow" ref={filterRowRef}>
         <MenuButton
           icon="ph-sort-ascending"
@@ -604,6 +593,8 @@ function RelatedConversations() {
           />
         </div>
       ) : null}
+      </> : null}
+      {activeChildId ? <ChildConversation key={activeChildId} sessionId={activeChildId} onClose={shell.closeTarget} /> : <>
       {chain.map(item)}
       {presentKinds
         .filter((kind) => kinds.has(kind))
@@ -625,6 +616,7 @@ function RelatedConversations() {
       {visible.length === 0 ? (
         <div className="rp-empty">{t("No matching related conversations.")}</div>
       ) : null}
+      </>}
       {menu.element}
     </div>
   );

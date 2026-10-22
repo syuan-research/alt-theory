@@ -55,6 +55,7 @@
   --shadow-rest: 0 1px 2px rgba(0, 0, 0, 0.28), 0 4px 18px rgba(0, 0, 0, 0.4);
   --shadow-popup: 0 6px 22px rgba(0, 0, 0, 0.5);
   --selection: #2e3d52;
+  --focus-ring: #86a9d3;
   --hl-1: #6a5520;
   --hl-2: #4a4e24;
   --hl-3: #6b3e1e;
@@ -90,12 +91,15 @@
    becomes a light step of the brand color once there is one. */
 :root {
   --selection: #dce8f7;
+  --focus-ring: #6b8db5;
   --hl-1: #ebd9a8;
   --hl-2: #d3ddc0;
   --hl-3: #edcdbb;
   --hl-4: #ccd7de;
 }
 ::selection { background: var(--selection); }
+:focus-visible { outline-color: var(--focus-ring); }
+:root { accent-color: var(--focus-ring); }
 
 /* Short aliases so the ported prototype CSS below reads verbatim. */
 :root {
@@ -949,6 +953,8 @@
   .attachment-chip { display: inline-flex; align-items: center; gap: var(--space-tight); max-width: min(260px, 100%); padding: var(--space-hair) var(--space-tight); background: var(--selected); border: 1px solid var(--hairline); border-radius: var(--r-sm); color: var(--ink); font-size: var(--fs-secondary); }
   .attachment-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .attachment-chip button { display: inline-flex; flex: 0 0 auto; padding: 0; border: 0; background: transparent; color: var(--text-2); cursor: pointer; }
+  .default-model-picker { position: relative; }
+  .default-model-picker .model-picker { left: auto; right: 0; bottom: auto; top: 100%; width: min(360px, calc(100vw - 32px)); max-height: min(480px, 65vh); }
   .queued-prompts { display: flex; flex-direction: column; gap: var(--space-hair); margin: 0 var(--space-hair) var(--space-tight); }
   .queued-prompt { display: flex; align-items: center; gap: var(--space-tight); min-width: 0; padding: var(--space-tight) var(--space-tight); background: var(--card); border: 1px solid var(--hairline); border-radius: var(--r-sm); color: var(--text-2); font-size: var(--fs-secondary); }
   .queued-prompt-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
@@ -1358,6 +1364,9 @@
   .child-switch button .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--ink); flex: 0 0 auto; }
 
   .child-conv { height: 100%; min-height: 0; display: flex; flex-direction: column; background: var(--canvas); }
+  .related-open { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+  .child-switch-row { display: flex; align-items: center; min-width: 0; flex-shrink: 0; }
+  .child-switch-row > .child-switch { flex: 1 !important; min-width: 0; }
   .rpanel .body:has(.local-page) { display: flex; flex-direction: column; overflow: hidden; }
   .local-page { display: flex; flex-direction: column; flex: 1; min-height: 0; }
   .local-page-actions { padding-bottom: var(--space-tight); }

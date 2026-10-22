@@ -15,21 +15,21 @@ import { useAutosizeTextarea } from "@/lib/autosizeTextarea";
 import { canTakeMainline, isListMember } from "@/lib/sessionList";
 import { t } from "@/i18n";
 import { ApprovalDock } from "@/components/conversation/ApprovalDock";
-import { SettledMessages, StreamPartsView } from "@/components/conversation/MessageList";
+import { SettledMessages, StreamPartsView, useTranscriptActions } from "@/components/conversation/MessageList";
+import { updateDraft } from "@/lib/draft";
 import { ModelChip } from "@/components/conversation/ModelChip";
 import { PermissionChip } from "@/components/conversation/PermissionChip";
 import { useComposerRow } from "@/components/conversation/useComposerRow";
 import { QueuedCards } from "@/components/conversation/QueuedCards";
 import { ContinueButton, hasRunNotes, NoticeLine, RunStatusSlot } from "@/components/conversation/RunNotes";
-import { SlashPalette, useSlashCommands, useSlashPalette } from "@/components/conversation/SlashPalette";
+import { SlashPalette, SkillDraftChip, useSlashCommands, useSlashPalette } from "@/components/conversation/SlashPalette";
 import { PendingMark } from "@/components/ui/PendingMark";
 
 /**
  * A conversation other than the one in the center: a branch shown beside it for
  * comparison, a BTW side chat, or a subagent. Same conversation module,
  * same bubbles and shared composer pieces as the main conversation — only the
- * width and the header line differ. Per-message branching stays with the
- * center conversation; open this one from the list if you want to branch off it.
+ * width and the header line differ. Message actions use this pane's conversation.
  */
 export function ChildConversation({
   sessionId,
@@ -46,6 +46,10 @@ export function ChildConversation({
     onMessage: (message: ServerMessage) => {
       switch (message.type) {
         case "branch_created":
+          {
+            const seed = conversation.requests.find((request) => request.status === "sent" && request.seed)?.seed;
+            if (seed) updateDraft(message.payload.sessionId, (draft) => ({ ...draft, text: seed.text }));
+          }
           shell.openTarget({ kind: "conversation", sessionId: message.payload.sessionId }, { size: "half" });
           void app.refreshSessions();
           break;
@@ -73,6 +77,7 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
   const app = useApp();
   const main = useMainView();
   const conversation = useConversationContext();
+  const actions = useTranscriptActions();
   const parts = useTurnParts();
   // This child's own draft (lib/draft): closing and reopening keeps it.
   const draft = conversation.draftText;
@@ -152,7 +157,8 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
     // Nothing goes out before this conversation is open (or re-opened after
     // a reconnect): the socket would be on its draft and create a new one.
     if (!conversation.sessionReady) return;
-    const text = draft.trim();
+    if (palette.runImmediate()) return;
+    const text = palette.prompt.trim();
     // Files handed back to this draft (Stop) go out with the text.
     const attachments = [...conversation.stagedWorkspacePaths];
     // While a turn runs the text joins Pi's steer queue (card 11): delivered
@@ -183,8 +189,8 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
   return (
     <div className="child-conv panel">
       <div className="child-head">
-        <button className="flat" onClick={onClose} data-tip={t("Close")}>
-          <i className="ph ph-arrow-left" aria-hidden="true" />
+        <button className="flat" onClick={() => { if (main.openCatalogSession(sessionId)) onClose(); }} data-tip={t("Open in main area")} aria-label={t("Open in main area")}>
+          <i className="ph ph-arrows-out-simple" aria-hidden="true" />
         </button>
         <span className="child-what">{childBlurb(purpose)}</span>
         {mainlineAction ? (
@@ -228,6 +234,7 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
           latestUserIndex={latestUserIndex}
           latestAssistantIndex={latestAssistantIndex}
           isRunning={running}
+          actions={actions}
         />
         <StreamPartsView parts={parts} />
         {marks.menu}
@@ -266,6 +273,7 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
         </div>
       </div>
       <SlashPalette palette={palette} className="slash-palette child-slash-palette" />
+      <SkillDraftChip palette={palette} />
       {hasRunNotes(conversation) ? (
         <div className="composer-notes">
           <RunStatusSlot />
@@ -277,14 +285,15 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
         <textarea
           ref={textareaRef}
           rows={1}
-          value={draft}
+          value={palette.text}
           disabled={!conversation.sessionReady}
           placeholder={conversation.sessionReady ? t("Reply here") : t("Connecting…")}
           onChange={(event) => {
-            setDraft(event.target.value);
+            palette.setText(event.target.value);
             palette.reset();
           }}
           onKeyDown={(event) => {
+            if (event.nativeEvent.isComposing) return;
             if (event.key === "Escape") {
               event.preventDefault();
               if (menu) setMenu(null);

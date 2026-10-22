@@ -189,7 +189,7 @@ independent).
 Where a status fact lives (v1.5.1):
 
 - **What the conversation is doing** has one source, `RunState`. Every
-  message about phase, context usage, or the last failure derives from it;
+  message about phase or context usage derives from it;
   no handler builds a done or idle signal by hand. Pi's `agent_end` fires
   before Pi's own post-turn compaction check and any queued continuation,
   so it only does bookkeeping; `run_completed` (with the snapshot) and
@@ -313,6 +313,12 @@ an error-level notice — carries the one envelope from `core/failure.ts`:
 first (typed abort, busy) and from producer text only inside that module.
 Interruption is still
 never inferred from text (`core/failure.test.ts`).
+
+Terminal run and manual-compaction failures are retained in the session header's
+`lastFailure` and included in snapshots, so reopening restores the reason. A
+successful run/compaction clears it; beginning recovery only hides the previous
+reason while work is in progress. Run failures and refused-request notices have
+no automatic timeout. Informational notices retain their existing lifetime.
 
 ## Managed child-session lifecycle
 
@@ -474,6 +480,10 @@ and continuation cases).
 `retry_latest` rewinds the current latest user turn and runs its stored
 model-facing prompt again from the start. It supersedes the prior attempt and
 does not create a visible child (`session-service.ts`, `retryLatestFromStart`).
+When the conversation is running, the service stops it and awaits settlement
+before retrying. It selects the latest user entry from Pi's active history and
+uses `reviseAt`, which also handles inherited fork/import messages. Forking only
+copies the selected source history and does not require its source to be idle.
 
 `continue_latest` is available only for a latest run whose outcome is
 `failed` or `interrupted`. It keeps the existing user entry, adopts the failed

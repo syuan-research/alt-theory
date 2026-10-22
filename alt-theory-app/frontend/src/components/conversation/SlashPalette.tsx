@@ -30,26 +30,26 @@ export function useSlashCommands({
   const main = useMainView();
   const conversation = useConversationContext();
   return useMemo(() => {
-    const idle = () => Boolean(conversation.sessionId) && !conversation.isRunning;
+    const liveSession = () => Boolean(conversation.sessionId);
     return [
       ...(live
         ? [
             {
               name: "branch",
               description: t("Branch this conversation into a new direction"),
-              run: () => void (idle() && conversation.fork("fork")),
+              run: () => void (liveSession() && conversation.fork("fork")),
               immediate: true,
             },
             {
               name: "btw",
               description: t("Start a side conversation without adding it to the list"),
-              run: () => void (idle() && conversation.fork("side")),
+              run: () => void (liveSession() && conversation.fork("side")),
               immediate: true,
             },
             {
               name: "compact",
               description: t("Compact this conversation to free context space"),
-              run: () => void (idle() && conversation.compact()),
+              run: () => void (liveSession() && !conversation.isRunning && conversation.compact()),
               immediate: true,
             },
           ]
@@ -76,17 +76,20 @@ export function useSlashPalette({
   draft,
   commands,
   setDraft,
-  onArm,
 }: {
   draft: string;
   commands: SlashCommand[];
   setDraft: (text: string) => void;
-  /** Put `/name ` in the box, waiting for the user's request. */
-  onArm?: (name: string) => void;
 }) {
   const [index, setIndex] = useState(0);
   const [dismissed, setDismissed] = useState(false);
-  const query = draft.startsWith("/") && !draft.startsWith("//") ? draft.slice(1) : null;
+  const [browsing, setBrowsing] = useState(false);
+  const invocation = draft.match(/^\/skill:([^\s]+)(?:\s([\s\S]*))?$/);
+  const skill = invocation ? commands.find((command) => !command.immediate && command.name === invocation[1]) : undefined;
+  const text = skill ? invocation?.[2] ?? "" : draft;
+  const typedCommand = draft.match(/^\/([^\s]+)(?:\s([\s\S]*))?$/);
+  const exactCommand = typedCommand ? commands.find((command) => command.name === typedCommand[1]) : undefined;
+  const query = browsing ? "" : !skill && draft.startsWith("/") && !draft.startsWith("//") ? draft.slice(1) : null;
   const matches = useMemo(() => {
     if (query === null) return [];
     const token = query.split(/\s+/, 1)[0].toLowerCase();
@@ -96,28 +99,40 @@ export function useSlashPalette({
   useEffect(() => setIndex(0), [matches.length]);
 
   const run = (command: SlashCommand) => {
-    const args = query?.split(/\s+/).slice(1).join(" ") ?? "";
-    if (!command.immediate && !args.trim()) {
-      if (onArm) onArm(command.name);
-      else setDraft(`/${command.name} `);
+    const args = browsing ? text : draft.match(/^\/\S+\s?([\s\S]*)$/)?.[1] ?? "";
+    setBrowsing(false);
+    if (!command.immediate) {
+      setDraft(`/skill:${command.name} ${args}`);
+      setDismissed(true);
       return;
     }
-    setDraft("");
+    if (!browsing) setDraft("");
     command.run(args);
   };
 
   return {
     open,
+    skill,
+    text,
+    prompt: exactCommand && !exactCommand.immediate ? `/skill:${exactCommand.name} ${typedCommand?.[2] ?? ""}` : draft,
+    runImmediate: () => {
+      if (!exactCommand?.immediate) return false;
+      run(exactCommand);
+      return true;
+    },
+    setText: (value: string) => setDraft(skill ? `/skill:${skill.name} ${value}` : value),
+    removeSkill: () => setDraft(text),
+    browse: () => { setBrowsing(true); setDismissed(false); },
     matches,
     index,
     setIndex,
     run,
     /** The editor changed: a dismissed palette may show again. */
-    reset: () => setDismissed(false),
-    dismiss: () => setDismissed(true),
+    reset: () => { setDismissed(false); setBrowsing(false); },
+    dismiss: () => { setDismissed(true); setBrowsing(false); },
     /** Arrow keys move, Enter runs (unless `canRun` is false). True = handled. */
     onKeyDown(event: KeyboardEvent, canRun = true): boolean {
-      if (!open) return false;
+      if (event.nativeEvent.isComposing || !open) return false;
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
         const step = event.key === "ArrowDown" ? 1 : -1;
@@ -132,6 +147,15 @@ export function useSlashPalette({
       return false;
     },
   };
+}
+
+export function SkillDraftChip({ palette }: { palette: ReturnType<typeof useSlashPalette> }) {
+  if (!palette.skill) return null;
+  return <div className="staged-attachments"><span className="attachment-chip">
+    <i className="ph ph-cube" aria-hidden="true" />
+    <span>{palette.skill.name}</span>
+    <button type="button" aria-label={t("Remove")} onClick={palette.removeSkill}><i className="ph ph-x" /></button>
+  </span></div>;
 }
 
 export function SlashPalette({
@@ -149,6 +173,7 @@ export function SlashPalette({
           key={command.name}
           className={`slash-item${index === palette.index ? " on" : ""}`}
           onMouseEnter={() => palette.setIndex(index)}
+          onMouseDown={(event) => event.preventDefault()}
           onClick={() => palette.run(command)}
         >
           <span className="cmd">/{command.name}</span>

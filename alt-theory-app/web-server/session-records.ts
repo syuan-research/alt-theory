@@ -7,6 +7,7 @@ import {
   type AssemblyManifest,
 } from "../core/alt-theory-core.js";
 import { writeJsonAtomic } from "../core/data-dir.js";
+import type { Failure } from "../core/failure.js";
 
 export const V4_SCHEMA_VERSION = 1;
 
@@ -66,6 +67,7 @@ const LEGACY_VISIBILITY: Record<string, SessionVisibility> = {
 };
 
 export interface V4SessionHeader extends RecordEnvelope {
+  lastFailure?: Failure | null;
   recordType: "session";
   sessionId: string;
   createdAt: string;

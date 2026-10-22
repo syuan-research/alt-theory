@@ -144,7 +144,7 @@ test("SessionService creates managed sessions with v0.4 foundation records", asy
   try {
     assert.match(
       snapshot.sessionId,
-      /^\d{8}-\d{6}__role-conceptual-theory-c__soul-latest__test-model$/,
+      /^\d{8}-\d{6}__role-conceptual-theory-c__soul-latest$/,
     );
     assert.equal(snapshot.rolePresetSlug, "role-conceptual-theory-companion");
     assert.equal(snapshot.soulSlug, "soul-latest");
@@ -2022,11 +2022,8 @@ test("SessionService rejects concurrent same-session prompt mutations with sessi
       (error) =>
         error instanceof SessionBusyError && error.code === "session_busy",
     );
-    await assert.rejects(
-      () => service.forkSession(snapshot.sessionId, "side"),
-      (error) =>
-        error instanceof SessionBusyError && error.code === "session_busy",
-    );
+    const forked = await service.forkSession(snapshot.sessionId, "side");
+    assert.notEqual(forked.sessionId, snapshot.sessionId);
     assert.ok(resolvePrompt);
     resolvePrompt();
     await run.completion;
@@ -2178,20 +2175,20 @@ test("SessionService returns to idle when compaction fails", async () => {
   }
 });
 
-test("live transcript projection hides internal skill commands", () => {
+test("live transcript projection preserves editable skill commands", () => {
   assert.equal(
     displayUserTextFromPrompt("/skill:conversation-summary Focus on decisions"),
-    "Focus on decisions",
+    "/skill:conversation-summary Focus on decisions",
   );
   assert.equal(
     displayUserTextFromPrompt("/skill:conversation-summary"),
-    null,
+    "/skill:conversation-summary",
   );
   assert.equal(
     displayUserTextFromPrompt(
       '<skill name="conversation-summary">expanded body</skill> Focus on decisions',
     ),
-    "Focus on decisions",
+    "/skill:conversation-summary Focus on decisions",
   );
   assert.equal(displayUserTextFromPrompt("ordinary question"), "ordinary question");
 });
@@ -3487,7 +3484,7 @@ test("SessionService retries the latest message from the start in the same sessi
 
   try {
     await service.runPrompt(created.sessionId, "same question").completion;
-    const retried = service.retryLatestFromStart(created.sessionId);
+    const retried = await service.retryLatestFromStart(created.sessionId);
     await retryStarted;
     const visibleUsers = retryTranscripts
       .at(-1)

@@ -208,6 +208,7 @@ export interface SessionServiceConfig {
 }
 
 interface RuntimeModelConfig {
+  thinkingLevel?: ThinkingLevel;
   modelProvider?: string;
   modelId?: string;
   modelsPath?: string;
@@ -610,7 +611,7 @@ export class SessionService implements AgentTeamBridge {
       ...(override
         ? { modelProvider: override.provider, modelId: override.modelId }
         : {}),
-      thinkingLevel: override?.thinkingLevel ?? this.config.thinkingLevel,
+      thinkingLevel: override ? override.thinkingLevel : base.thinkingLevel ?? this.config.thinkingLevel,
     };
   }
 
@@ -804,6 +805,11 @@ export class SessionService implements AgentTeamBridge {
     this.emit(managed, { type: "session_updated", payload: this.snapshot(managed) });
   }
 
+  private recordFailure(managed: ManagedSession, failure: Failure | null): void {
+    const header = readV4SessionHeader(managed.manifest.recordsDir);
+    if (header) writeSessionHeader(managed.manifest.recordsDir, { ...header, lastFailure: failure });
+  }
+
   /**
    * Run end, both run paths: settle (idle), then the outcome. `run_completed`
    * goes out only here, after Pi's post-turn work (compaction check, queued
@@ -817,6 +823,7 @@ export class SessionService implements AgentTeamBridge {
     outcome: RunOutcomeEvent,
     userEntryId: string | null,
   ): Promise<void> {
+    if (outcome !== null) this.recordFailure(managed, outcome === "completed" ? null : outcome.failure);
     const settled = await this.settle(managed);
     // Stop (and interrupt-and-send) settle on their own first, which may
     // already have replaced the instance; the outcome goes out through
@@ -1681,30 +1688,16 @@ export class SessionService implements AgentTeamBridge {
   }
 
   /** Run the latest user message again from its start, without a visible child. */
-  retryLatestFromStart(sessionId: string): RunHandle {
-    const managed = this.requireSession(sessionId);
-    this.assertIdle(managed);
-    const runs = latestRunSnapshots(managed.manifest.recordsDir).filter(
-      (run) =>
-        run.branchId === managed.branchId &&
-        run.userEntryId &&
-        run.status !== "deleted" &&
-        run.status !== "superseded",
-    );
-    const latest = runs.at(-1) as (RunRecord & { userEntryId: string }) | undefined;
-    if (!latest) throw new Error("No latest user turn is available to retry");
-    const latestUserEntry = managed.session.sessionManager
-      .getBranch()
-      .filter(
-        (entry) =>
-          entry.type === "message" &&
-          (entry.message as { role?: string }).role === "user",
-      )
-      .at(-1);
-    if (latestUserEntry?.id !== latest.userEntryId) {
-      throw new Error("Only the current latest user turn can be retried");
+  async retryLatestFromStart(sessionId: string): Promise<RunHandle> {
+    const previous = this.requireSession(sessionId);
+    if (!previous.runState.isIdle()) {
+      await this.abort(sessionId, "retry_latest", "user_abort");
+      await previous.runSettlement;
     }
-    const entry = managed.session.sessionManager.getEntry(latest.userEntryId) as
+    const managed = this.requireSession(sessionId);
+    const entryId = this.latestUserEntryId(sessionId);
+    if (!entryId) throw new Error("No latest user turn is available to retry");
+    const entry = managed.session.sessionManager.getEntry(entryId) as
       | { type?: string; message?: { role?: string; content?: unknown } }
       | undefined;
     if (entry?.type !== "message" || entry.message?.role !== "user") {
@@ -1729,7 +1722,13 @@ export class SessionService implements AgentTeamBridge {
     // `invokeSkill` also enters Pi through runPromptWithLineage(`/skill:…`).
     // Passing the reconstructed command here therefore re-runs the same skill
     // extension after reviseFromRun rewinds the old attempt.
-    return this.reviseFromRun(managed, latest, text);
+    return this.reviseAt(sessionId, entryId, text);
+  }
+
+  latestUserEntryId(sessionId: string): string | null {
+    return this.requireSession(sessionId).session.sessionManager.getBranch()
+      .filter((entry) => entry.type === "message" && (entry.message as { role?: string }).role === "user")
+      .at(-1)?.id ?? null;
   }
 
   private latestContinuableRun(
@@ -2081,7 +2080,6 @@ export class SessionService implements AgentTeamBridge {
       throw new Error(`Unsupported conversation purpose: ${purpose}`);
     }
     const previous = this.requireSession(sessionId);
-    this.assertIdle(previous);
     // The sub-session substrate (M5): a fork inherits the parent by default, but
     // an A/B arm (or any child that must differ) can override any assembly layer
     // — role, KB domain, soul, instruction — while keeping the parent's
@@ -2137,11 +2135,9 @@ export class SessionService implements AgentTeamBridge {
     ) {
       throw new Error("Fork point must be in the current Pi conversation");
     }
-    const runtimeModelConfig = this.resolveRuntimeModelConfig();
     const forkSessionId = allocateReadableSessionId(this.config.dataDir, {
       rolePresetSlug: childSelectors.rolePresetSlug,
       soulSlug: childSelectors.soulSlug,
-      modelId: runtimeModelConfig.modelId,
     });
     const forkDirs = createSessionDirs(this.config.dataDir, forkSessionId);
     // Build the child's session file by COPYING the parent's persisted path —
@@ -2894,8 +2890,10 @@ export class SessionService implements AgentTeamBridge {
       // the shared path; publish again so a stubbed compact() (tests) and any
       // projection ordering race cannot leave the UI without the marker.
       this.publishCompactionBoundary(managed);
+      this.recordFailure(managed, null);
       return this.snapshot(managed);
     } catch (error) {
+      this.recordFailure(managed, describeFailure(error, "compact"));
       if (
         leafBeforeCompact &&
         managed.session.sessionManager.getEntry(leafBeforeCompact)
@@ -3382,8 +3380,7 @@ export class SessionService implements AgentTeamBridge {
                 modelId: metadata.modelOverride.modelId,
               }
             : {}),
-          thinkingLevel:
-            metadata.modelOverride?.thinkingLevel ?? this.config.thinkingLevel,
+          thinkingLevel: runtimeModelConfig.thinkingLevel ?? this.config.thinkingLevel,
         },
         altMode:
           metadata.mode ??
@@ -4991,8 +4988,9 @@ export class SessionService implements AgentTeamBridge {
     // object modelArgsFor already used). Reopen still reads the on-disk header.
     this.applyThinking(
       managed,
-      (modelOverride ?? header?.modelOverride)?.thinkingLevel ??
-        this.config.thinkingLevel,
+      (modelOverride ?? header?.modelOverride)
+        ? (modelOverride ?? header?.modelOverride)?.thinkingLevel
+        : this.resolveRuntimeModelConfig().thinkingLevel ?? this.config.thinkingLevel,
     );
     managed.internalUnsubscribe = managed.session.subscribe((event) =>
       this.handleAgentEvent(managed, event),
@@ -5440,6 +5438,7 @@ export class SessionService implements AgentTeamBridge {
       resumeWarnings: managed.resumeWarnings,
       messageCount: managed.counters.messageCount,
       recovery: this.latestRecoveryState(managed),
+      lastFailure: header?.lastFailure ?? null,
       ...overrides,
     };
   }
@@ -5583,11 +5582,9 @@ export function retryPromptFromStoredUserContent(content: string): string {
   return `/skill:${skill[1]}${args ? ` ${args}` : ""}`;
 }
 
-/** User-facing text for an in-flight prompt; internal skill commands stay hidden. */
+/** Keep the invocation editable while Pi expands its body for the model. */
 export function displayUserTextFromPrompt(prompt: string): string | null {
-  const skill = prompt.trim().match(/^\/skill:[^\s]+(?:\s+([\s\S]*))?$/);
-  const text = skill ? (skill[1] ?? "") : stripSkillWrapper(prompt);
-  return text.trim() || null;
+  return retryPromptFromStoredUserContent(prompt).trim() || null;
 }
 
 function clip(text: string, maxChars: number): string {

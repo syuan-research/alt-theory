@@ -4,6 +4,7 @@
 import {
   SessionManager,
   generateDiffString,
+  parseSkillBlock,
 } from "@earendil-works/pi-coding-agent";
 import {
   existsSync,
@@ -2305,7 +2306,11 @@ export function buildTranscriptFromEntries(
     const role = normalizeRole(value.message.role);
     const timestamp = normalizeTimestamp(value.message.timestamp ?? value.timestamp);
     if (role === "user") {
-      const text = stripSkillWrapper(extractText(value.message.content)).trim();
+      const raw = extractText(value.message.content).trim();
+      const skill = parseSkillBlock(raw);
+      const text = skill
+        ? `/skill:${skill.name}${skill.userMessage ? ` ${skill.userMessage}` : ""}`
+        : stripSkillWrapper(raw).trim();
       // Agent-team envelopes travel as tagged user-role fragments (steered
       // or wake turns); render them as addressed system lines, not as words
       // the user typed.
@@ -2321,7 +2326,9 @@ export function buildTranscriptFromEntries(
         });
         return;
       }
-      if (text) transcript.push({ role: "user", text, timestamp, entryId: value.id ?? null });
+      if (text) transcript.push({ role: "user", text, timestamp, entryId: value.id ?? null,
+        ...(skill ? { skill: { name: skill.name, content: skill.content } } : {}),
+      });
       return;
     }
     if (role === "assistant") {

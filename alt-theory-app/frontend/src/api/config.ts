@@ -188,6 +188,7 @@ export async function getDataFolder(): Promise<{ dataDir: string }> {
 }
 
 export interface AssetDirs {
+  extraSkillDirs: string[];
   userRolePresetsDir: string;
   extraRolePresetDirs: string[];
   extraKbDirs: string[];
@@ -233,7 +234,8 @@ export async function getAssetDirs(): Promise<AssetDirs> {
 export async function saveAssetDirs(dirs: {
   roleDirs?: string[];
   kbDirs?: string[];
-}): Promise<{ ok: true; extraRolePresetDirs: string[]; extraKbDirs: string[] }> {
+  skillDirs?: string[];
+}): Promise<{ ok: true; extraRolePresetDirs: string[]; extraKbDirs: string[]; extraSkillDirs: string[] }> {
   return fetchJson("/api/settings/asset-dirs", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -389,12 +391,13 @@ export async function deleteConfigProvider(
 
 export async function setActiveModel(
   provider: string,
-  model: string
+  model: string,
+  thinkingLevel?: import("./types").ThinkingLevel,
 ): Promise<ConfigStatus> {
   return fetchJson<ConfigStatus>("/api/config/active", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ provider, model }),
+    body: JSON.stringify({ provider, model, thinkingLevel }),
   });
 }
 export async function testConnectionFromDraft(input: {

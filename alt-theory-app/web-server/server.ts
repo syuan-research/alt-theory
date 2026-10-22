@@ -124,7 +124,7 @@ import {
   withholdsFromResearch,
   type SessionVisibility,
 } from "./session-records.js";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, SettingsManager } from "@earendil-works/pi-coding-agent";
 import {
   cancelProviderAuth,
   getProviderAuthFlow,
@@ -532,10 +532,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       userRolePresetsDir,
       extraRolePresetDirs: settings.extraRolePresetDirs ?? [],
       extraKbDirs: settings.extraKbDirs ?? [],
+      extraSkillDirs: SettingsManager.create(process.cwd(), getAgentDir()).getSkillPaths(),
     });
   });
-  app.put("/api/settings/asset-dirs", (req, res) => {
-    const body = req.body as { roleDirs?: unknown; kbDirs?: unknown };
+  app.put("/api/settings/asset-dirs", async (req, res) => {
+    const body = req.body as { roleDirs?: unknown; kbDirs?: unknown; skillDirs?: unknown };
     const clean = (value: unknown): string[] | null =>
       Array.isArray(value)
         ? value
@@ -545,6 +546,21 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         : null;
     const roleDirs = clean(body.roleDirs);
     const kbDirs = clean(body.kbDirs);
+    if (body.skillDirs !== undefined) {
+      if (!Array.isArray(body.skillDirs) || body.skillDirs.some((value) => typeof value !== "string")) {
+        res.status(400).json({ error: "Invalid skill folders" });
+        return;
+      }
+      const manager = SettingsManager.create(process.cwd(), getAgentDir());
+      const previous = manager.getSkillPaths();
+      const paths = [...new Set((body.skillDirs as string[]).map((path) => previous.includes(path) ? path : resolve(path)))];
+      if (paths.some((path) => !previous.includes(path) && !statSync(path, { throwIfNoEntry: false })?.isDirectory())) {
+        res.status(400).json({ error: "Skill folder does not exist" });
+        return;
+      }
+      manager.setSkillPaths(paths);
+      await manager.flush();
+    }
     const current = readAppSettings(dataDir);
     writeAppSettings(dataDir, {
       ...current,
@@ -557,6 +573,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       ok: true,
       extraRolePresetDirs: saved.extraRolePresetDirs ?? [],
       extraKbDirs: saved.extraKbDirs ?? [],
+      extraSkillDirs: SettingsManager.create(process.cwd(), getAgentDir()).getSkillPaths(),
     });
   });
   // Working folders page (v1.5.1): projects (id, name, main folder,
@@ -1000,13 +1017,17 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     }
   });
   app.put("/api/config/active", async (req, res) => {
-    const body = req.body as { provider?: unknown; model?: unknown };
+    const body = req.body as { provider?: unknown; model?: unknown; thinkingLevel?: unknown };
     if (typeof body.provider !== "string" || typeof body.model !== "string") {
       res.status(400).json({ error: "provider and model are required" });
       return;
     }
     try {
-      await setActive(agentConfigDir(), body.provider, body.model);
+      if (body.thinkingLevel !== undefined && !THINKING_LEVELS.includes(body.thinkingLevel as ThinkingLevel)) {
+        res.status(400).json({ error: "Invalid thinking level" });
+        return;
+      }
+      await setActive(agentConfigDir(), body.provider, body.model, body.thinkingLevel as ThinkingLevel | undefined);
       res.json(await getVerifiedConfigStatus(agentConfigDir()));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -2333,7 +2354,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     if (!runtime.modelProvider || !runtime.modelId) return undefined;
     return resolveThinkingLevel(
       thinkingLevelsForModel(agentConfigDir(), runtime.modelProvider, runtime.modelId) ?? [],
-      modelOverride?.thinkingLevel,
+      modelOverride ? modelOverride.thinkingLevel : runtime.thinkingLevel,
     );
   }
 
@@ -2799,10 +2820,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               const sourceSessionId = attachedSessionId;
               const targetEntryId =
                 msg.payload.entryId ??
-                sessionService
-                  .getTranscript(sourceSessionId)
-                  .filter((message) => message.role === "user")
-                  .at(-1)?.entryId;
+                sessionService.latestUserEntryId(sourceSessionId);
               if (!targetEntryId) {
                 throw new Error("No user prompt is available to edit");
               }
@@ -2835,9 +2853,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             }
             try {
               const sourceSessionId = attachedSessionId;
+              const targetEntryId = msg.payload.entryId ?? sessionService.latestUserEntryId(sourceSessionId);
+              if (!targetEntryId) throw new Error("No user prompt is available to edit");
               const forked = await sessionService.prepareRevisionBranch(
                 sourceSessionId,
-                msg.payload.entryId,
+                targetEntryId,
               );
               if (closed) break;
               send({
@@ -2855,7 +2875,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               break;
             }
             try {
-              sessionService.retryLatestFromStart(attachedSessionId);
+              await sessionService.retryLatestFromStart(attachedSessionId);
             } catch (error) {
               fail(error);
             }

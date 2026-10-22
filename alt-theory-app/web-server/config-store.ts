@@ -39,6 +39,7 @@ import { dirname, join, resolve } from "path";
 import { ensureLocalModeDefaults } from "./local-mode-paths.js";
 import { writeJsonAtomic } from "../core/data-dir.js";
 import { PROVIDER_AUTH_IDS } from "./provider-auth.js";
+import { resolveThinkingLevel } from "./thinking-level.js";
 import {
   catalogModelMetadata,
   catalogSdkFamily,
@@ -137,6 +138,7 @@ export interface ProviderView {
 }
 
 export interface ConfigStatus {
+  activeThinkingLevel?: ThinkingLevel;
   agentDir: string;
   anyUsable: boolean;
   activeUsable: boolean;
@@ -153,6 +155,7 @@ export interface FetchModelsResult {
 }
 
 export interface RuntimeModelConfig {
+  thinkingLevel?: ThinkingLevel;
   modelProvider?: string;
   modelId?: string;
   modelsPath?: string;
@@ -362,9 +365,13 @@ async function writeActive(
   agentDir: string,
   provider: string,
   model: string,
+  thinkingLevel?: ThinkingLevel,
 ): Promise<void> {
   const manager = SettingsManager.create(process.cwd(), agentDir);
   manager.setDefaultModelAndProvider(provider, model);
+  if (thinkingLevel !== undefined || manager.getDefaultThinkingLevel() !== undefined) {
+    manager.setDefaultThinkingLevel(resolveThinkingLevel(thinkingLevelsForModel(agentDir, provider, model) ?? [], thinkingLevel).level);
+  }
   await manager.flush();
 }
 
@@ -907,6 +914,9 @@ export function getRuntimeModelConfig(agentDir: string): RuntimeModelConfig {
     modelId: active.model,
     modelsPath: modelsJsonPath(agentDir),
     authPath: authJsonPath(agentDir),
+    ...(SettingsManager.create(process.cwd(), agentDir).getDefaultThinkingLevel() !== undefined
+      ? { thinkingLevel: SettingsManager.create(process.cwd(), agentDir).getDefaultThinkingLevel() }
+      : {}),
   };
 }
 
@@ -952,6 +962,10 @@ export function getConfigStatus(agentDir: string): ConfigStatus {
     activeIssue,
     activeProvider: active.provider,
     activeModel: active.model,
+    ...(active.provider && active.model ? { activeThinkingLevel: resolveThinkingLevel(
+      thinkingLevelsForModel(agentDir, active.provider, active.model) ?? [],
+      SettingsManager.create(process.cwd(), agentDir).getDefaultThinkingLevel(),
+    ).level } : {}),
   };
 }
 
@@ -1467,6 +1481,7 @@ export async function setActive(
   agentDir: string,
   provider: string,
   model: string,
+  thinkingLevel?: ThinkingLevel,
 ): Promise<void> {
   assertValidProviderName(provider);
   const models = readModelsFile(agentDir);
@@ -1487,7 +1502,7 @@ export async function setActive(
       `Provider '${provider}' needs a saved API key or env-var key before it can be active`,
     );
   }
-  await writeActive(agentDir, provider, model);
+  await writeActive(agentDir, provider, model, thinkingLevel);
 }
 
 /**

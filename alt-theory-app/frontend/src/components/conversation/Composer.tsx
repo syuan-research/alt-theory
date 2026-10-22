@@ -11,7 +11,7 @@ import { ContextRing } from "@/components/conversation/ContextRing";
 import { QueuedCards } from "@/components/conversation/QueuedCards";
 import { ContinueButton, hasRunNotes, NoticeLine, RunStatusSlot } from "@/components/conversation/RunNotes";
 import { RunTips } from "@/components/conversation/RunTips";
-import { SlashPalette, useSlashCommands, useSlashPalette } from "@/components/conversation/SlashPalette";
+import { SlashPalette, SkillDraftChip, useSlashCommands, useSlashPalette } from "@/components/conversation/SlashPalette";
 import { DEFAULT_KB_DOMAIN, KB_OFF_VALUE } from "@/lib/constants";
 import { hasNativeBridge, pathsFromDroppedFiles } from "@/lib/native";
 import { stageAttachmentFile } from "@/api/session-files";
@@ -87,13 +87,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
 
   const slashCommands = useSlashCommands({ live: variant === "live" });
 
-  /** Put `/name ` in the box, focused, waiting for the user's actual request. */
-  const armCommand = (name: string) => {
-    setDraft(`/${name} `);
-    setMenu(null);
-    window.setTimeout(() => textareaRef.current?.focus(), 0);
-  };
-  const palette = useSlashPalette({ draft, commands: slashCommands, setDraft, onArm: armCommand });
+  const palette = useSlashPalette({ draft, commands: slashCommands, setDraft });
 
   // Text handed back — Stop's unsent queue (card 11), a refused or lost
   // send — is already in this conversation's draft; the editor takes focus.
@@ -138,7 +132,8 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
    * press goes as the actual /skill: invoke (owner 2026-08-04).
    */
   const sendDraft = (): boolean => {
-    const typed = draft.trim();
+    if (palette.runImmediate()) return true;
+    const typed = palette.prompt.trim();
     const attachments = [...conv.stagedWorkspacePaths];
     if (!typed && attachments.length === 0) return false;
     const pending = app.pendingPreset(conv.sessionId);
@@ -146,13 +141,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     // B4: the announcement must never be silently discarded while the
     // button still claims to be active).
     const text = pending?.texts.length ? [...pending.texts, typed].filter(Boolean).join("\n\n") : typed;
-    // ponytail: a message sent during a run can't ride the /skill: invoke
-    // path, and invoke_skill carries no attachments — both degrade to the
-    // wrapper text, which names the skill.
-    const sent =
-      pending?.invoke && attachments.length === 0 && !conv.isRunning
-        ? conv.invokeSkill(pending.invoke, text, typed)
-        : conv.prompt(text, attachments, typed);
+    const sent = conv.prompt(pending?.invoke ? `/skill:${pending.invoke} ${text}` : text, attachments, typed);
     if (sent) app.presetSent(conv.sessionId);
     return sent;
   };
@@ -302,6 +291,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
           </div>
         ) : null}
 
+        <SkillDraftChip palette={palette} />
         {conv.stagedWorkspacePaths.length > 0 ? (
           <div className="staged-attachments" aria-label={t("Attached files")}>
             {conv.stagedWorkspacePaths.map((path) => (
@@ -620,14 +610,15 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               e.preventDefault();
               attachCopies(files);
             }}
-            value={draft}
+            value={palette.text}
             onChange={(e) => {
-              setDraft(e.target.value);
+              palette.setText(e.target.value);
               palette.reset();
             }}
             placeholder={!interactive ? t("Connecting…") : t("Message Alt. Type / for commands.")}
             disabled={!interactive}
             onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing) return;
               if (e.key === "Escape") {
                 e.preventDefault();
                 if (menu) setMenu(null);
@@ -635,7 +626,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 else if (conv.isRunning) conv.abort();
                 return;
               }
-              if (palette.onKeyDown(e, !conv.isRunning)) return;
+              if (palette.onKeyDown(e)) return;
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 handleSubmit();
@@ -653,7 +644,8 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               onClick={(e) => {
                 e.stopPropagation();
                 setMenu(null);
-                setDraft("/");
+                palette.browse();
+                textareaRef.current?.focus();
               }}
             >
               <i className="ph ph-magic-wand" />

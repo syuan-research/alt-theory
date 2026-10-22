@@ -1263,12 +1263,12 @@ function GeneralPanel() {
           />
         </div>
       </div>
-      <RuntimeCard />
       <DefaultPermissionCard />
       <CommandAllowlistCard />
       <ApprovalReviewerCard />
       <AutoTitleCard />
       <NativePiSkillsCard />
+      <RuntimeCard />
     </div>
   );
 }
@@ -1756,6 +1756,18 @@ function ApprovalReviewerCard() {
 }
 
 function SkillsPanel() {
+  const app = useApp();
+  const [dirs, setDirs] = useState<AssetDirs | null>(null);
+  const [notice, setNotice] = useState("");
+  useEffect(() => { void getAssetDirs().then(setDirs).catch((error) => setNotice(String(error))); }, []);
+  const save = async (paths: string[]) => {
+    try {
+      const saved = await saveAssetDirs({ skillDirs: paths });
+      setDirs((current) => current ? { ...current, extraSkillDirs: saved.extraSkillDirs } : current);
+      await app.refreshDiscovery();
+      setNotice("");
+    } catch (error) { setNotice(error instanceof Error ? error.message : String(error)); }
+  };
   return (
     <div className="set-panel">
       <h2>{t("Skills")}</h2>
@@ -1763,6 +1775,19 @@ function SkillsPanel() {
         {t("Skills are instruction files that carry a way of working. Alt Theory ships its own; you can also add your own.")}
       </p>
       <SkillPrecedenceCard />
+      <div className="set-card">
+        <div className="row2"><h4>{t("Skill folders")}</h4>
+          <button className="flat" disabled={!dirs} onClick={() => void pickDirectory(t("Add skill folder")).then((path) => {
+            if (path && dirs) void save([...dirs.extraSkillDirs, path]);
+          })}><i className="ph ph-plus" /> {t("Add skill folder")}</button>
+        </div>
+        {dirs?.extraSkillDirs.map((path) => <div className="folder-row" key={path}>
+          <i className="ph ph-folder" aria-hidden="true" />
+          <div className="grow"><div className="nm">{folderLabel(path)}</div><div className="path">{path}</div></div>
+          <button className="icon-x" aria-label={t("Remove")} onClick={() => void save(dirs.extraSkillDirs.filter((entry) => entry !== path))}><i className="ph ph-x" /></button>
+        </div>)}
+        {notice ? <p className="sub danger">{notice}</p> : null}
+      </div>
     </div>
   );
 }
@@ -1896,12 +1921,11 @@ function RoleKbPanel() {
         <div className="row2">
           <div>
             <h4>{t("Roles")}</h4>
-            <p>
-              {t("A role is a Markdown file describing who Alt should be for a conversation. Files you add are stored in your own folder and appear in the role picker.")}
-            </p>
+            {dirs ? <p className="fine"><code>{dirs.userRolePresetsDir}</code></p> : null}
             <ul className="asset-list">
               {roles.map((role) => (
                 <li key={role.slug}>
+                  <i className="ph ph-user-circle" aria-hidden="true" />{" "}
                   {role.displayName}
                   {role.source === "added" ? <em> {t("· added by you")}</em> : null}
                 </li>
@@ -1924,6 +1948,7 @@ function RoleKbPanel() {
             <ul className="asset-list">
               {kbDomains.map((domain) => (
                 <li key={domain.slug}>
+                  <i className="ph ph-book-open" aria-hidden="true" />{" "}
                   {domain.displayName}
                   {domain.source === "added" ? <em> {t("· added by you")}</em> : null}
                 </li>
@@ -1932,8 +1957,9 @@ function RoleKbPanel() {
             {dirs && dirs.extraKbDirs.length > 0 ? (
               <ul className="asset-list">
                 {dirs.extraKbDirs.map((dir) => (
-                  <li key={dir}>
-                    <code>{dir}</code>{" "}
+                  <li className="folder-row" key={dir}>
+                    <i className="ph ph-folder" aria-hidden="true" />
+                    <div className="grow"><div className="nm">{folderLabel(dir)}</div><div className="path">{dir}</div></div>
                     <button
                       className="flat"
                       data-tip={t("Stop scanning this folder (the folder itself is not deleted)")}

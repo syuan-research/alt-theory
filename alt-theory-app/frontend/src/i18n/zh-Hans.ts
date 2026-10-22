@@ -5,6 +5,10 @@
  * wording here AND noting it in the glossary so regeneration keeps it.
  */
 const catalog: Record<string, string> = {
+  "Sort and filter": "排序与筛选",
+  "Open in main area": "在主区域打开",
+  "Skill folders": "技能文件夹",
+  "Add skill folder": "添加技能文件夹",
   "Highlight": "高亮",
   "Yellow": "黄",
   "Green": "绿",

@@ -1499,19 +1499,13 @@ function SessionNode({
             }
           >
             {session.forkedFrom ? (
-              isFamilyHead(session, app.sessions) ? (
-                <i
-                  className="ph ph-crown-simple s-fork"
-                  aria-hidden
-                  data-tip={t("Heads this family — its original main conversation was deleted")}
-                />
-              ) : (
+              !isFamilyHead(session, app.sessions) ? (
               <i
                 className={`ph ${purposeIcon(session)} s-fork`}
                 aria-hidden
                 data-tip={originTitle(session)}
               />
-              )
+              ) : null
             ) : session.delisted ? (
               <i
                 className="ph ph-arrows-split s-fork"

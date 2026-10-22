@@ -186,6 +186,7 @@ export interface ResolvedThinking {
 }
 
 export interface SessionSnapshot {
+  lastFailure?: Failure | null;
   sessionId: string;
   branchId?: string;
   /** The server's run phase; anything but idle means a run owns the session. */
@@ -246,6 +247,7 @@ export interface ToolDetail {
 }
 
 export interface TranscriptMessage {
+  skill?: { name: string; content: string };
   role: "user" | "assistant" | "system" | "tool" | "other";
   text: string;
   timestamp: string | null;
@@ -469,6 +471,7 @@ export interface ProviderView {
 }
 
 export interface ConfigStatus {
+  activeThinkingLevel?: ThinkingLevel;
   agentDir: string;
   anyUsable: boolean;
   activeUsable: boolean;
@@ -701,7 +704,7 @@ export type ClientMessageBody =
     }
   | { type: "revise_latest"; payload: { text: string; entryId?: string } }
   | { type: "branch_revision"; payload: { text: string; entryId?: string } }
-  | { type: "prepare_branch_revision"; payload: { entryId: string } }
+  | { type: "prepare_branch_revision"; payload: { entryId?: string } }
   | { type: "retry_latest" }
   | { type: "delete_latest" }
   | {

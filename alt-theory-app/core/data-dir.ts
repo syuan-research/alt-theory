@@ -79,7 +79,6 @@ export function allocateReadableSessionId(
     formatLocalSessionTimestamp(now),
     normalizeSessionIdPart(parts.rolePresetSlug ?? null, "none"),
     normalizeSessionIdPart(parts.soulSlug ?? null, "none"),
-    normalizeSessionIdPart(parts.modelId ?? null, "default"),
   ].join("__");
 
   let candidate = base;

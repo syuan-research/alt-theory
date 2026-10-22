@@ -6,7 +6,6 @@ import type {
 } from "@/api/types";
 import { useApp } from "@/context/AppProvider";
 import { useConversationContext, useTurnParts } from "@/context/ConversationContext";
-import { useMainView } from "@/context/MainView";
 import { PendingMark } from "@/components/ui/PendingMark";
 import type { DisplayMessage } from "@/lib/conversation";
 import { useShell } from "@/context/ShellContext";
@@ -28,8 +27,8 @@ import { useFindTarget } from "@/lib/find";
 import { useMarks } from "@/components/conversation/useMarks";
 
 export function MessageList() {
-  const main = useMainView();
   const conv = useConversationContext();
+  const actions = useTranscriptActions();
   const streamParts = useTurnParts();
   const messages = conv.messages;
   const {
@@ -113,31 +112,6 @@ export function MessageList() {
     else if (!conv.loadingEarlier) jumpRetried.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jumpTo, messages, conv.loadingEarlier]);
-
-  // The callbacks read the latest conversation through a ref, so the settled
-  // list's memo holds while the composer, run phase or queue move (perf plan
-  // WP 1.9); only what the rows render from is a dependency.
-  const latestRef = useRef({ conv, main });
-  latestRef.current = { conv, main };
-  const recoveryEntryId = conv.recovery?.userEntryId ?? null;
-  const actions: TranscriptActions = useMemo(
-    () => ({
-      onEdit: (text, entryId) => {
-        const { conv, main } = latestRef.current;
-        return entryId && conv.recovery?.userEntryId === entryId
-          ? Boolean(text.trim()) && !conv.isRunning && conv.reviseLatest(text, entryId)
-          : main.branchRevision(text, entryId ?? undefined);
-      },
-      onPrepareCompare: (text, entryId) =>
-        entryId ? latestRef.current.main.prepareBranchRevision(text, entryId) : false,
-      onRetry: () => {
-        const { conv } = latestRef.current;
-        return Boolean(conv.sessionId) && !conv.isRunning && conv.retryLatest();
-      },
-      isReplacementEdit: (entryId) => Boolean(entryId && recoveryEntryId === entryId),
-    }),
-    [recoveryEntryId],
-  );
 
   return (
     <div className="msgs-wrap">
@@ -540,8 +514,7 @@ function ThinkingBlock({
 }
 
 /**
- * Per-message actions. Absent in a side / comparison pane, where the bubbles
- * render identically but branching stays with the conversation in the center.
+ * Per-message actions follow the conversation displayed in either pane.
  */
 export interface TranscriptActions {
   onEdit: (text: string, entryId: string | null) => boolean;
@@ -550,11 +523,30 @@ export interface TranscriptActions {
   isReplacementEdit: (entryId: string | null) => boolean;
 }
 
+export function useTranscriptActions(): TranscriptActions {
+  const conv = useConversationContext();
+  const latest = useRef(conv);
+  latest.current = conv;
+  const recoveryEntryId = conv.recovery?.userEntryId ?? null;
+  return useMemo(() => ({
+    onEdit: (text, entryId) => {
+      const current = latest.current;
+      if (!text.trim() || !current.sessionId) return false;
+      return entryId && current.recovery?.userEntryId === entryId
+        ? current.reviseLatest(text, entryId)
+        : current.branchRevision(text, entryId ?? undefined);
+    },
+    onPrepareCompare: (text, entryId) => Boolean(text.trim()) &&
+      latest.current.prepareBranchRevision(entryId ?? undefined, { text, autoSend: false }),
+    onRetry: () => Boolean(latest.current.sessionId) && latest.current.retryLatest(),
+    isReplacementEdit: (entryId) => Boolean(entryId && recoveryEntryId === entryId),
+  }), [recoveryEntryId]);
+}
+
 export function TranscriptEntry({
   message,
   isLatestUser,
   isDuplicateToolCall = false,
-  isRunning,
   actions,
 }: {
   message: DisplayMessage;
@@ -576,10 +568,10 @@ export function TranscriptEntry({
       <UserBubble
         rowId={message.rowId}
         text={message.text}
+        skill={message.skill}
         pending={Boolean(message.pending)}
         entryId={message.entryId ?? null}
         isLatest={isLatestUser}
-        isRunning={isRunning}
         onEdit={actions?.onEdit}
         onPrepareCompare={replacementEdit ? undefined : actions?.onPrepareCompare}
         onRetry={isLatestUser ? actions?.onRetry : undefined}
@@ -689,10 +681,10 @@ export function TranscriptEntry({
 function UserBubble({
   rowId,
   text,
+  skill,
   pending,
   entryId,
   isLatest,
-  isRunning,
   onEdit,
   onPrepareCompare,
   onRetry,
@@ -700,17 +692,19 @@ function UserBubble({
 }: {
   rowId?: string;
   text: string;
+  skill?: { name: string; content: string };
   /** Sent, not yet confirmed by the server (placeholder mark; design TBD). */
   pending: boolean;
   entryId: string | null;
   isLatest: boolean;
-  isRunning: boolean;
   onEdit?: (text: string, entryId: string | null) => boolean;
   onPrepareCompare?: (text: string, entryId: string | null) => boolean;
   onRetry?: () => boolean;
   replacementEdit: boolean;
 }) {
   const trimmed = (text || "").trim();
+  const invocation = trimmed.match(/^\/skill:([^\s]+)(?:\s+([\s\S]*))?$/);
+  const body = invocation ? invocation[2] ?? "" : trimmed;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(trimmed);
   const bubbleRef = useRef<HTMLDivElement>(null);
@@ -742,14 +736,19 @@ function UserBubble({
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
           />
-        ) : <MarkdownBody text={trimmed} markRow={entryId && rowId ? rowId : undefined} />}
+        ) : <>
+          {invocation ? <CollapseAnywhereDetails className="sys-detail" summary={<><i className="ph ph-cube" /> {invocation[1]}</>}>
+            {skill ? <MarkdownBody text={skill.content} /> : null}
+          </CollapseAnywhereDetails> : null}
+          {body ? <MarkdownBody text={body} markRow={entryId && rowId ? rowId : undefined} /> : null}
+        </>}
       </div>
       {editing ? (
         <div className="inline-edit-actions">
           <button className="flat" onClick={() => (setDraft(trimmed), setEditing(false))}>
             {t("Cancel")}
           </button>
-          {entryId && onPrepareCompare ? (
+          {(entryId || isLatest) && onPrepareCompare ? (
             <button
               className="flat"
               onClick={() => onPrepareCompare(draft, entryId) && setEditing(false)}
@@ -759,7 +758,7 @@ function UserBubble({
           ) : null}
           <button
             className="send"
-            disabled={!draft.trim() || isRunning}
+            disabled={!draft.trim()}
             onClick={() => onEdit?.(draft, entryId) && setEditing(false)}
           >
             {t("Send")}
@@ -778,7 +777,6 @@ function UserBubble({
           <button
             data-tip={t("Retry latest message")}
             aria-label={t("Retry latest message")}
-            disabled={isRunning}
             onClick={onRetry}
           >
             <i className="ph ph-arrow-clockwise" aria-hidden="true" />
@@ -793,19 +791,17 @@ function UserBubble({
                   : t("Edit and compare")
               }
               aria-label={replacementEdit ? t("Edit and retry") : t("Edit and compare")}
-              disabled={isRunning}
               onClick={() => {
                 setEditing(true);
               }}
             >
               <i className="ph ph-pencil-simple" aria-hidden="true" />
             </button>
-            {entryId && onPrepareCompare ? (
+            {(entryId || isLatest) && onPrepareCompare ? (
               <button
                 className="edit-setup-action"
                 data-tip={t("Adjust model or role before comparing")}
                 aria-label={t("Adjust model or role before comparing")}
-                disabled={isRunning}
                 onClick={() => onPrepareCompare(trimmed, entryId)}
               >
                 {t("Adjust model or role…")}

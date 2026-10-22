@@ -44,8 +44,6 @@ export interface MainViewValue {
   forkCurrentSession: (purpose: "fork" | "side" | "ab-arm", seedPrompt?: string) => void;
   askAboutAlt: () => void;
   duplicateSession: (sessionId: string) => void;
-  branchRevision: (text: string, entryId?: string) => boolean;
-  prepareBranchRevision: (text: string, entryId: string) => boolean;
   /** Draft for a just-created child; helper sends immediately, compare waits. */
   childSeed: { sessionId: string; text: string; autoSend: boolean } | null;
   clearChildSeed: () => void;
@@ -193,7 +191,7 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
 
   const forkCurrentSession = useCallback(
     (purpose: "fork" | "side" | "ab-arm", seedPrompt?: string) => {
-      if (!sessionId || conv.isRunning) return;
+      if (!sessionId) return;
       // The child asks the question the user already typed, instead of
       // opening with "what can I help with?".
       conv.fork(purpose, seedPrompt?.trim() ? { text: seedPrompt.trim(), autoSend: true } : undefined);
@@ -216,32 +214,6 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
   const duplicateSession = useCallback((target: string) => {
     conv.duplicate(target);
   }, [conv]);
-
-  const branchRevision = useCallback(
-    (text: string, entryId?: string) => {
-      if (!text.trim() || conv.isRunning || !sessionId) return false;
-      if (!conv.branchRevision(text, entryId)) return false;
-      // This conversation keeps running its own life — the branch opens in
-      // the right Related panel on `branch_created`.
-      conv.notify({
-        kind: "text",
-        text: entryId
-          ? t("Same question, fresh answer. What repeats is probably solid; what changes was a choice.")
-          : t("Both takes are kept — the branch is in Related conversations on the right."),
-      });
-      return true;
-    },
-    [conv, sessionId],
-  );
-
-  const prepareBranchRevision = useCallback(
-    (text: string, entryId: string) => {
-      const trimmed = text.trim();
-      if (!trimmed || !entryId || conv.isRunning || !sessionId) return false;
-      return conv.prepareBranchRevision(entryId, { text: trimmed, autoSend: false });
-    },
-    [conv, sessionId],
-  );
 
   const clearChildSeed = useCallback(() => setChildSeed(null), []);
 
@@ -307,8 +279,6 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
       forkCurrentSession,
       askAboutAlt,
       duplicateSession,
-      branchRevision,
-      prepareBranchRevision,
       childSeed,
       clearChildSeed,
       promoteRelatedSession,
@@ -326,8 +296,6 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
       forkCurrentSession,
       askAboutAlt,
       duplicateSession,
-      branchRevision,
-      prepareBranchRevision,
       childSeed,
       clearChildSeed,
       promoteRelatedSession,

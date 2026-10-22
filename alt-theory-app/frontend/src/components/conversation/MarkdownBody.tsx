@@ -15,13 +15,25 @@ let diagramSeq = 0;
 function loadMermaid() {
   if (!mermaidReady) {
     mermaidReady = import("mermaid").then((module) => {
+      const palette = getComputedStyle(document.documentElement);
+      const blue = palette.getPropertyValue("--selection").trim();
+      const ink = palette.getPropertyValue("--color-ink").trim();
+      const border = palette.getPropertyValue("--focus-ring").trim();
       module.default.initialize({
         startOnLoad: false,
         securityLevel: "strict",
         // A broken diagram throws instead of drawing mermaid's error graphic;
         // the fenced source stays visible (perf plan WP 1.7).
         suppressErrorRendering: true,
-        theme: document.documentElement.dataset.theme === "dark" ? "dark" : "default",
+        theme: "base",
+        themeVariables: {
+          primaryColor: blue, secondaryColor: blue, tertiaryColor: blue,
+          primaryTextColor: ink, secondaryTextColor: ink, tertiaryTextColor: ink,
+          primaryBorderColor: border, secondaryBorderColor: border, tertiaryBorderColor: border,
+          lineColor: ink,
+          ...Object.fromEntries(Array.from({ length: 12 }, (_, index) => [`cScale${index}`, blue])),
+          ...Object.fromEntries(Array.from({ length: 12 }, (_, index) => [`cScaleLabel${index}`, ink])),
+        },
       });
       return module.default;
     });

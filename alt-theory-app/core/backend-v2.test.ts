@@ -51,7 +51,7 @@ test("allocateReadableSessionId formats metadata and suffixes collisions", () =>
   );
   assert.equal(
     first,
-    "20260614-153045__default-role__soul-latest__mimo-v2-5-pro"
+    "20260614-153045__default-role__soul-latest"
   );
 
   const firstRoot = resolveSessionRoot(root, first);
@@ -72,7 +72,7 @@ test("allocateReadableSessionId formats metadata and suffixes collisions", () =>
 
   assert.equal(
     allocateReadableSessionId(root, {}, now),
-    "20260614-153045__none__none__default"
+    "20260614-153045__none__none"
   );
   assert.equal(
     allocateReadableSessionId(
@@ -84,6 +84,6 @@ test("allocateReadableSessionId formats metadata and suffixes collisions", () =>
       },
       now
     ),
-    "20260614-153045__unsafe-role-with-many-ma__none__default"
+    "20260614-153045__unsafe-role-with-many-ma__none"
   );
 });

@@ -441,11 +441,10 @@ function onServer(state: ConversationState, message: ServerMessage): Conversatio
       };
       // The user's own Stop needs no words; anything else says what happened.
       if (recovery?.interruptionCause === "user_abort") return withNotice(next, null);
-      const authRefresh = message.payload.failure.kind === "auth-refresh";
       return withNotice(
         next,
         { kind: "run-failed", failure: message.payload.failure, interrupted: recovery?.outcome === "interrupted" },
-        authRefresh ? 0 : NOTICE_TTL,
+        0,
       );
     }
 
@@ -582,7 +581,7 @@ function onServer(state: ConversationState, message: ServerMessage): Conversatio
       // A conversation that cannot be re-opened after a reconnect is gone
       // from this window: fall back to the new-conversation draft.
       if (request?.restore) next = { ...switchedTo(next, null), snapshot: null };
-      return withNotice(next, { kind: "refused", failure, code });
+      return withNotice(next, { kind: "refused", failure, code }, 0);
     }
 
     case "related_session_created":

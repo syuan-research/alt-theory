@@ -126,7 +126,8 @@ surfaces remain designation-gated and absent for everyone else.
   - Skills do not receive permanent navigation entries merely because they are
     installed.
 - **Messages**
-  - After a completed answer, the pencil means **Edit and compare**. Editing
+  - On an ordinary user message, the pencil means **Edit and compare**, including
+    while its answer runs. Editing
     stays in the user bubble; Send preserves the original and runs the edit in
     a sibling conversation.
   - After an interrupted turn, the composer quietly offers Continue and Retry.
@@ -140,7 +141,13 @@ surfaces remain designation-gated and absent for everyone else.
   - `Retry` reruns the latest user message from the start in the same visible
     conversation, whether the previous answer completed or was stopped. It does
     not create a Related child or list branch. Automatic provider retry remains
-    runtime recovery, not this user action.
+    runtime recovery, not this user action. During a run it stops and settles the
+    current attempt automatically before retrying. Inherited Branch/import
+    messages are eligible even without local run records.
+  - Skill selection completes the draft without sending or replacing its text.
+    A selected skill appears as a removable chip; the shared prompt path carries
+    it with attachments or through Pi's running queue. The transcript preserves
+    the invocation and Pi's stored skill body as a collapsible entry.
   - Traditional Branch is the second-level `/branch` command, not a message
     button. It opens an idle Related branch without sending.
   - Resolved conversation permissions do not become transcript events. When
@@ -237,6 +244,9 @@ surfaces remain designation-gated and absent for everyone else.
   - A Related conversation uses the same history, live thinking/tool rendering,
     approvals, skills, and slash commands as the center. Role stays above the
     composer; model and permission sit in its bottom toolbar. Both panes share
+    edit/compare and retry actions. Comparisons created from either pane open in
+    the right pane. Open in main area changes the display position without
+    promotion or stopping the conversation. Both panes share
     the permission picker and toolbar width rules: permission labels fold below
     460px and model labels below 360px, retaining their icons.
   - A pending approval in another conversation produces one global notice on
@@ -335,6 +345,9 @@ surfaces remain designation-gated and absent for everyone else.
     Related sorts its kind rows by recent activity (`updatedAt`, default),
     creation order (the saN / brN marker order) or name, with a Running
     filter; the ancestor chain stays first and a search ranks by relevance.
+    The strip above an open related conversation uses the same filtered/sorted
+    rows. Its right-hand caret reveals the existing controls, initially hidden;
+    Escape closes them while focus remains in those controls or the strip.
   - Files has one inline filter above the existing tree. It keeps matches and
     their ancestors in that tree, expands those ancestors while filtering, and
     restores the prior expansion when cleared. Selecting a matching folder
@@ -386,7 +399,9 @@ surfaces remain designation-gated and absent for everyone else.
     settings (`workingFolders.projects`), applied through the root policy
     as `global-list` / `project-secondary`; the explicit working-folder
     registry (`knownWorkspaces`) is derived from projects.
-  - Role & Knowledge: role, knowledge sets, and related paths when implemented.
+  - Role & Knowledge shows role and knowledge icons and the user-role storage
+    path. Skills can add/remove referenced folders using Pi's settings `skills`
+    paths and loader; the files stay in their original locations.
   - Help center: a curated capability guide and the shipped localized tips.
     The global Help menu opens either this surface or an ordinary new-conversation
     draft prefilled with `/skill:alt-theory-help`. The user adds a question and

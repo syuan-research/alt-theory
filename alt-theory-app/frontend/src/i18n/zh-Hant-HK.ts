@@ -4,6 +4,10 @@
  * hand-edit policy as zh-Hans.ts.
  */
 const catalog: Record<string, string> = {
+  "Sort and filter": "排序與篩選",
+  "Open in main area": "在主區域開啟",
+  "Skill folders": "技能資料夾",
+  "Add skill folder": "添加技能資料夾",
   "Highlight": "高亮",
   "Yellow": "黃",
   "Green": "綠",

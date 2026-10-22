@@ -347,12 +347,8 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
       },
       /** `draftText` is what the editor gets back if refused (the typed text). */
       invokeSkill(skillName: string, userText?: string, draftText = userText?.trim() ?? ""): boolean {
-        if (!skillName || runningNow() || creating()) return false;
-        const text = userText?.trim() ?? "";
-        return send(
-          { type: "invoke_skill", payload: { skillName, ...(text ? { userText: text } : {}) }, ...create() },
-          { sentText: text || t("Invoke {skillName}", { skillName }), bubble: true, draftText },
-        );
+        if (!skillName) return false;
+        return this.prompt(`/skill:${skillName}${userText?.trim() ? ` ${userText.trim()}` : ""}`, [], draftText);
       },
       continueLatest: () => send({ type: "continue_latest" }),
       retryLatest: () => send({ type: "retry_latest" }),
@@ -361,7 +357,7 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
       branchRevision: (text: string, entryId?: string) =>
         send({ type: "branch_revision", payload: entryId ? { text: text.trim(), entryId } : { text: text.trim() } }),
       /** A compare branch; `seed` waits in its editor. */
-      prepareBranchRevision: (entryId: string, seed?: PendingRequest["seed"]) =>
+      prepareBranchRevision: (entryId?: string, seed?: PendingRequest["seed"]) =>
         send({ type: "prepare_branch_revision", payload: { entryId } }, { seed }),
       compact: () => send({ type: "compact" }),
       abort: () => send({ type: "abort" }),
@@ -519,6 +515,7 @@ function useConversationView(
       opening: openingTarget(state),
       runState,
       recovery,
+      lastFailure: state.snapshot?.lastFailure ?? null,
       /** After the user's own Stop, editing won't branch. */
       stoppedByUser: !running && recovery?.interruptionCause === "user_abort",
       queuedTexts: queuedTexts(state),

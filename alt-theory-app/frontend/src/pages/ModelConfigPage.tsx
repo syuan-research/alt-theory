@@ -19,6 +19,7 @@ import type {
 } from "@/api/types";
 import { Button } from "@/components/ui/Button";
 import { MenuSelect } from "@/components/ui/MenuSelect";
+import { ModelPicker } from "@/components/conversation/ModelChip";
 import { FieldFrame, TextInput } from "@/components/ui/Field";
 import { BodyText, HintText, PageTitle } from "@/components/ui/Typography";
 import { cn } from "@/lib/cn";
@@ -337,6 +338,16 @@ export function ModelConfigPage({
   const shell = useShell();
   const app = useApp();
   const [status, setStatus] = useState<ConfigStatus | null>(null);
+  const [defaultMenuOpen, setDefaultMenuOpen] = useState(false);
+  const defaultMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!defaultMenuOpen) return;
+    const close = (event: MouseEvent) => { if (!defaultMenuRef.current?.contains(event.target as Node)) setDefaultMenuOpen(false); };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setDefaultMenuOpen(false); };
+    document.addEventListener("click", close);
+    document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("click", close); document.removeEventListener("keydown", escape); };
+  }, [defaultMenuOpen]);
   const [providers, setProviders] = useState<ProviderView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -797,34 +808,23 @@ export function ModelConfigPage({
               <span>{t("No provider has a key yet.")}</span>
             )}
           </span>
-          <label className="default-model-picker active-model-inline">
+          <div className="default-model-picker active-model-inline" ref={defaultMenuRef}>
             <span>{t("Session default model:")}</span>
-          <MenuSelect
-            ariaLabel={t("Session default model:")}
-            value={
+          <ModelPicker
+            open={defaultMenuOpen}
+            onToggle={() => setDefaultMenuOpen((value) => !value)}
+            defaultTarget
+            modelOverride={
               status.activeProvider && status.activeModel
-                ? `${status.activeProvider}::${status.activeModel}`
-                : ""
+                ? { provider: status.activeProvider, modelId: status.activeModel, thinkingLevel: status.activeThinkingLevel }
+                : null
             }
-            options={[
-              { value: "", label: t("Choose a model") },
-              ...providers.flatMap((provider) =>
-                (provider.models ?? []).map((model) => ({
-                  value: `${provider.name}::${model.id}`,
-                  label: `${provider.name} / ${model.name || model.id}`,
-                })),
-              ),
-            ]}
-            onChange={async (value) => {
+            setModel={async (value) => {
               if (!value) return;
-              const sep = value.indexOf("::");
-              if (sep < 0) return;
-              const provider = value.slice(0, sep);
-              const modelId = value.slice(sep + 2);
+              const { provider, modelId, thinkingLevel } = value;
               try {
-                await setActiveModel(provider, modelId);
-                showToast(t("Default model: {model}", { model: modelId }));
-                await Promise.all([refresh(), onConfigChanged?.()]);
+                setStatus(await setActiveModel(provider, modelId, thinkingLevel));
+                await onConfigChanged?.();
               } catch (err) {
                 showToast(
                   err instanceof Error ? err.message : t("Could not change model"),
@@ -833,7 +833,7 @@ export function ModelConfigPage({
               }
             }}
           />
-          </label>
+          </div>
         </div>
       ) : null}
       {status?.activeIssue ? (

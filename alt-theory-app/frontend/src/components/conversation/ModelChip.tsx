@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ProviderView, ThinkingLevel } from "@/api/types";
+import type { ProviderView, ThinkingLevel, SessionModelOverride, ResolvedThinking } from "@/api/types";
 import { getConfigStatus, listConfigProviders } from "@/api/config";
 import { PendingMark } from "@/components/ui/PendingMark";
 import { useConversationContext } from "@/context/ConversationContext";
@@ -59,6 +59,23 @@ export function ModelChip({
   onToggle: () => void;
 }) {
   const conversation = useConversationContext();
+  return <ModelPicker open={open} onToggle={onToggle}
+    modelOverride={conversation.modelOverride} currentModel={conversation.currentSessionModel}
+    thinking={conversation.thinking} pendingModel={conversation.pendingChanges.model !== undefined}
+    setModel={conversation.setSessionModel} ready={conversation.sessionReady} />;
+}
+
+export function ModelPicker({ open, onToggle, modelOverride, currentModel, thinking, pendingModel = false, setModel, ready = true, defaultTarget = false }: {
+  open: boolean;
+  onToggle: () => void;
+  modelOverride: SessionModelOverride | null;
+  currentModel?: { provider: string; modelId: string } | null;
+  thinking?: ResolvedThinking | null;
+  pendingModel?: boolean;
+  setModel: (model: SessionModelOverride | null) => unknown;
+  ready?: boolean;
+  defaultTarget?: boolean;
+}) {
   const shell = useShell();
   const [providers, setProviders] = useState<ProviderOptions[] | null>(null);
   const [defaultModel, setDefaultModel] = useState<{
@@ -117,11 +134,7 @@ export function ModelChip({
     }
   }, [open]);
 
-  const { modelOverride, thinking } = conversation;
-  const currentModel = conversation.currentSessionModel;
   // A model switch accepted mid-run shows as chosen + pending.
-  const pendingModel = conversation.pendingChanges.model !== undefined;
-  const setModel = conversation.setSessionModel;
   const effectiveModel = modelOverride ?? currentModel ?? defaultModel;
   const selectedOption = useMemo(
     () =>
@@ -289,7 +302,7 @@ export function ModelChip({
           event.stopPropagation();
           onToggle();
         }}
-        disabled={!conversation.sessionReady}
+        disabled={!ready}
         data-tip={title}
       >
         <i className="ph ph-cube chip-icon" aria-hidden="true" />
@@ -301,7 +314,7 @@ export function ModelChip({
         className={`menu model-picker${open ? " on" : ""}`}
         onClick={(event) => event.stopPropagation()}
       >
-        <button
+        {!defaultTarget ? <><button
           type="button"
           className="mi"
           onClick={() => {
@@ -315,7 +328,7 @@ export function ModelChip({
           </span>
           {usingDefault ? <i className="ph ph-check check" /> : null}
         </button>
-        <div className="sep" />
+        <div className="sep" /></> : null}
         {error ? (
           <div className="rp-empty" style={{ padding: "var(--space-tight) var(--space-control)" }}>
             {t("Models unavailable here.")}
@@ -410,10 +423,10 @@ export function ModelChip({
           />
         </div>
         <div className="sep" />
-        <button type="button" className="mi" onClick={() => shell.openSettings("models")}>
+        {!defaultTarget ? <button type="button" className="mi" onClick={() => shell.openSettings("models")}>
           <i className="ph ph-cpu" />
           {t("Manage models")}
-        </button>
+        </button> : null}
       </div>
     </>
   );
