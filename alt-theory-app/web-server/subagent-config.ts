@@ -31,21 +31,21 @@ export const DEFAULT_SUBAGENT_CONFIG: SubagentConfig = {
   agents: [
     {
       id: "general-medium",
-      description: "Integrate user intent, arguments, evidence, and context to assess the problem and cycle between judgment and action under ambiguity.",
+      description: "The lead uses this agent to repeatedly assess and act under ambiguity while preserving all goals. For example, reassess the problem as new evidence arrives, then adjust the next action.",
       model: "inherit:medium",
       fallbackModels: [],
     },
     {
       id: "general-low",
       description:
-        "Local processing and checks against clear criteria, such as text editing, source summaries, data updates, knowledge questions, and brainstorming.",
+        "The lead uses this agent to work against clear criteria or produce independent candidates. For example, text editing, source summaries, data updates, knowledge questions, and brainstorming.",
       model: "inherit:low",
       fallbackModels: [],
     },
     {
       id: "general-high",
       description:
-        "Strategic planning, difficult root-cause analysis, and complex architecture decisions. Finding facts or checking supplied criteria belongs to general-low.",
+        "The lead uses this agent for particularly difficult judgments. For example, complex architecture decisions, difficult root-cause analysis, and strategic planning.",
       model: "inherit:high",
       fallbackModels: [],
     },
@@ -58,10 +58,22 @@ export const BUILTIN_SUBAGENT_IDS = [
   "general-high",
 ] as const;
 
-const LEGACY_DESCRIPTIONS: Record<string, string> = {
-  "general-medium": "Most writing, implementation, and analysis; default when the appropriate level is unclear.",
-  "general-low": "Extraction, search, and checks against supplied criteria, including checklist reviews.",
-};
+const LEGACY_DESCRIPTIONS = new Map<string, string[]>([
+  ["general-medium", [
+    "Default for most work and whenever the right level is uncertain",
+    "Most writing, implementation, and analysis; default when the appropriate level is unclear.",
+    "Integrate user intent, arguments, evidence, and context to assess the problem and cycle between judgment and action under ambiguity.",
+  ]],
+  ["general-low", [
+    "High-volume, error-tolerant extraction, web search, and simple checks with clear criteria",
+    "Extraction, search, and checks against supplied criteria, including checklist reviews.",
+    "Local processing and checks against clear criteria, such as text editing, source summaries, data updates, knowledge questions, and brainstorming.",
+  ]],
+  ["general-high", [
+    "Review, strategic planning, and complex framework or architecture analysis with unknown unknowns",
+    "Strategic planning, difficult root-cause analysis, and complex architecture decisions. Finding facts or checking supplied criteria belongs to general-low.",
+  ]],
+]);
 
 export function subagentConfigPath(dataDir: string): string {
   return join(dataDir, "subagents.json");
@@ -108,7 +120,7 @@ function normalizeConfig(value: unknown): SubagentConfig | null {
     agents.push({
       id,
       ...(description
-        ? { description: description === LEGACY_DESCRIPTIONS[id] ? defaultDescription : description }
+        ? { description: LEGACY_DESCRIPTIONS.get(id)?.includes(description) ? defaultDescription : description }
         : {}),
       model,
       fallbackModels: fallbackModels as string[],

@@ -1645,8 +1645,7 @@ function AutoTitleCard() {
       </div>
       {settings.enabled && loaded ? (
         <div style={{ marginTop: "var(--space-control)" }}>
-          <h4>{t("Naming model")}</h4>
-          <p>{t("Choose a fast model with thinking off. The conversation's model is the automatic fallback.")}</p>
+          <p>{t("For naming, choose a fast model with thinking off. The conversation's model is the automatic fallback.")}</p>
           <ModelChainFields chain={chain} models={models} onChange={(next) => persist(fromChain(next))} />
         </div>
       ) : null}
