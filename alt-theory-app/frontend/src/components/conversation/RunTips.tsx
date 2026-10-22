@@ -21,13 +21,7 @@ const FIRST_DELAY_MS = 2000;
 /** Owner: +3s so tips are readable while a turn runs (was 7s). */
 const ROTATE_MS = 10000;
 
-export function RunTips({
-  running,
-  seedTip,
-}: {
-  running: boolean;
-  seedTip?: string | null;
-}) {
+export function RunTips({ running }: { running: boolean }) {
   const [index, setIndex] = useState(0);
   const [visible, setVisible] = useState(false);
 
@@ -52,7 +46,7 @@ export function RunTips({
     return () => window.clearInterval(timer);
   }, [visible]);
 
-  const text = seedTip ?? (visible ? productTipText(GENERAL_TIPS[index]) : null);
+  const text = visible ? productTipText(GENERAL_TIPS[index]) : null;
   if (!text) return null;
 
   // Stable key: remounting on every tip change re-ran tip-in and could nudge

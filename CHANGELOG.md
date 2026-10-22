@@ -5,6 +5,27 @@
 
 ---
 
+## v1.9.0 — 2026-10-22
+
+This update improves everyday use and fixes a few issues.
+
+### Conversations
+
+- You can edit or branch messages while a reply runs, including in side conversations.
+- Errors remain visible when you return to a conversation and clear after the next successful model response.
+- After a break, Alt receives the local time; after several days, it is reminded that older matters may already be resolved.
+
+### Skills and model setup
+
+- Skills provide reusable instructions. Choosing one keeps it in your draft; after sending, you can open its instructions from the message.
+- Settings lets you add skill folders, find models, and choose how much thinking the default model uses.
+- Quick setup adds DeepSeek Platform and more OpenCode Go models.
+
+### Other new and fixed
+
+- Alt chooses subagent tiers by the judgment needed throughout a task and favors reusing existing subagents for similar work.
+- You can sort and filter related conversations in the side panel.
+
 ## v1.8.0 — 2026-10-20
 
 This is the biggest update since v1.7 — and Alt Theory's first official release: a redesigned approval and safety system, conversations that can work together, and improvements to file management and long-conversation performance. This version has been in daily use for three weeks and has been stable.

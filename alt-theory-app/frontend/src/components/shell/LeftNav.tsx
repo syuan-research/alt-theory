@@ -158,7 +158,6 @@ function unanchorMenu(details: HTMLDetailsElement) {
 export function LeftNav({ hidden = false }: { hidden?: boolean }) {
   const main = useMainView();
   const shell = useShell();
-  const conv = useConversationContext();
 
   // Settings surface: same persistent rail instance, content swapped for the
   // settings nav (foot is only "Back to app"; collapsed strip is logo + ←).
@@ -168,11 +167,11 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
 
   return (
     <aside className="left" hidden={hidden}>
-      {/* collapsed icon strip; double-clicking its empty space expands it */}
+      {/* Clicking empty space expands the collapsed rail. */}
       <div
         className="mini"
-        onDoubleClick={(event) => {
-          if (!(event.target as HTMLElement).closest("button")) shell.setLeftCollapsed(false);
+        onClick={(event) => {
+          if (!(event.target as HTMLElement).closest("button, details")) shell.setLeftCollapsed(false);
         }}
       >
         <button
@@ -202,8 +201,13 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
         >
           <i className="ph ph-magnifying-glass" />
         </button>
-        {/* The list, condensed: its current-folder icon expands the rail
-            back to the current conversation. */}
+        <button
+          className={`mini-search${shell.surface === "files" ? " on" : ""}`}
+          data-tip={t("Conversation files")}
+          onClick={() => shell.openFiles()}
+        >
+          <i className="ph ph-files" />
+        </button>
         <button
           className="mini-search"
           data-tip={t("Conversation list")}
@@ -214,14 +218,7 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
             );
           }}
         >
-          <i className={`ph ${conv.workspacePrimaryDir ? "ph-folder" : "ph-note"}`} />
-        </button>
-        <button
-          className={`mini-search${shell.surface === "files" ? " on" : ""}`}
-          data-tip={t("Conversation files")}
-          onClick={() => shell.openFiles()}
-        >
-          <i className="ph ph-files" />
+          <i className="ph ph-chat" />
         </button>
         <div style={{ flex: 1 }} />
         <HelpMenu compact />
@@ -300,7 +297,9 @@ function SettingsRail({ hidden }: { hidden?: boolean }) {
     // icons and the back arrow keep their expanded positions by construction,
     // with no hand-tuned offsets left to drift when type or padding changes.
     return (
-      <aside className="left" hidden={hidden}>
+      <aside className="left" hidden={hidden} onClick={(event) => {
+        if (!(event.target as HTMLElement).closest("button")) shell.setLeftCollapsed(false);
+      }}>
         <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
           <div className="left-head">
             <button
@@ -884,7 +883,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
               <summary
                 data-tip={conv.workspacePrimaryDir ?? t("Independent conversations")}
               >
-                <i className={`ph ${conv.workspacePrimaryDir ? "ph-folder" : "ph-note"}`} />
+                <i className={`ph ${conv.workspacePrimaryDir ? "ph-stack" : "ph-note"}`} />
                 <span className="ws-label">
                   {conv.workspacePrimaryDir
                     ? folderLabel(conv.workspacePrimaryDir)
@@ -926,7 +925,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                       chooseFolder(dir);
                     }}
                   >
-                    <i className="ph ph-folder" />
+                    <i className="ph ph-stack" />
                     {folderLabel(dir)}
                     {conv.workspacePrimaryDir === dir ? (
                       <i className="ph ph-check check" />
@@ -1025,7 +1024,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   }
                   onDrop={(e) => dropSession("", e)}
                 >
-                  <div className="workspace-list-head">
+                  <div className="workspace-list-head divided">
                     <button
                       type="button"
                       className={`workspace-list-title${looseCollapsed ? " closed" : ""}`}
@@ -1195,7 +1194,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     data-tip={folderTip}
                     onClick={() => toggleGroup(group.dir)}
                   >
-                    <i className="ph ph-folder" />
+                    <i className="ph ph-stack" />
                     <span className="group-name">{group.label}</span>
                   </button>
                   <div className="reveal-layer -fade">

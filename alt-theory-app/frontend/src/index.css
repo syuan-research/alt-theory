@@ -525,7 +525,10 @@
   .left .pad { padding: var(--space-tight) var(--space-control); }
   .btn-new { width: 100%; display: flex; align-items: center; gap: var(--space-tight); background: none; color: var(--ink); border: none; border-radius: var(--r-sm); padding: var(--space-tight) var(--space-control); font-size: var(--fs-primary); font-weight: 500; cursor: pointer; text-align: left; }
   .btn-new:hover { background: var(--hover); }
-  .sessions { flex: 0 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: var(--space-hair) var(--space-tight); }
+  /* margin: keep the thumb outside the card shadow's perceptible reach —
+     the shadow measures ≤2 gray levels at x≤250, so 4px leaves it invisible
+     while halving the gap of the first attempt (8px). */
+  .sessions { flex: 0 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; margin-right: var(--space-hair); padding: var(--space-hair) var(--space-tight); }
   .group-label { display: flex; align-items: center; gap: var(--space-tight); min-width: 0; overflow: hidden; font-size: var(--fs-secondary); text-align: left; color: var(--text-3); padding: var(--space-control) var(--space-tight) var(--space-hair); cursor: pointer; user-select: none; }
   .group-label .group-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* 左栏项目名试等宽（owner 2026-09-08）：仅左栏（.ws），组行角色其他两处不随 */
@@ -828,7 +831,7 @@
   .session-row .s-time {
     position: absolute; top: 0; bottom: 0; right: 0;
     display: flex; align-items: center;
-    padding: 0 var(--space-control) 0 30px;
+    padding: 0 var(--space-hair) 0 30px;
     background: linear-gradient(90deg, transparent 0, var(--time-fade, var(--panel)) 30px);
     color: var(--text-3);
     font-size: var(--fs-micro);
@@ -899,6 +902,7 @@
   .composer-col { max-width: 660px; margin: 0 auto; }
   .ctx-line { position: relative; display: flex; align-items: center; gap: 16px; min-width: 0; padding: 0 6px 6px; font-size: var(--fs-secondary); color: var(--text-2); }
   .ctx-picker { display: inline-block; min-width: 0; max-width: 45%; }
+  .ctx-picker.role-picker { max-width: min(45%, 11em); }
   .ctx-item { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; cursor: pointer; background: none; border: none; color: inherit; font: inherit; padding: 0; }
   .ctx-item > i { flex-shrink: 0; }
   /* Steer bar (v1.4 round 1): tinted band + filled CTA buttons — the same
@@ -918,7 +922,6 @@
   .preset-bar .preset-btn:hover { flex-shrink: 0; }
   .preset-btn:disabled { opacity: 0.45; cursor: default; }
   .preset-btn.on, .preset-btn.locked { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
-  .preset-btn .preset-num { font-size: var(--fs-micro); opacity: 0.7; }
   /* text-overflow needs a block child, not the flex button itself (opus B10) */
   .preset-btn .preset-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   /* Inline icon-only picker at the row end — not a settings-style control,

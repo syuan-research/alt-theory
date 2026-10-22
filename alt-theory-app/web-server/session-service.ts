@@ -805,9 +805,11 @@ export class SessionService implements AgentTeamBridge {
     this.emit(managed, { type: "session_updated", payload: this.snapshot(managed) });
   }
 
-  private recordFailure(managed: ManagedSession, failure: Failure | null): void {
+  private recordFailure(managed: ManagedSession, failure: Failure | null): boolean {
     const header = readV4SessionHeader(managed.manifest.recordsDir);
-    if (header) writeSessionHeader(managed.manifest.recordsDir, { ...header, lastFailure: failure });
+    if (!header || (!failure && !header.lastFailure)) return false;
+    writeSessionHeader(managed.manifest.recordsDir, { ...header, lastFailure: failure });
+    return true;
   }
 
   /**
@@ -5208,6 +5210,14 @@ export class SessionService implements AgentTeamBridge {
         }
         break;
       }
+      case "message_end":
+        if (this.sessions.get(managed.manifest.sessionId) !== managed) break;
+        if (event.message.role === "assistant" &&
+          event.message.stopReason !== "error" && event.message.stopReason !== "aborted" &&
+          this.recordFailure(managed, null)) {
+          this.emit(managed, { type: "session_updated", payload: this.snapshot(managed) });
+        }
+        break;
       case "tool_execution_start":
         this.emitRunPhase(managed, "tool");
         this.emit(managed, {

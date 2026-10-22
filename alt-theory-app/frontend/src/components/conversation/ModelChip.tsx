@@ -193,11 +193,16 @@ export function ModelPicker({ open, onToggle, modelOverride, currentModel, think
   const showsEffort =
     Boolean(thinkingText) &&
     (selectedOption?.thinkingLevels.some((level) => level !== "off") ?? false);
+  const modelLabel = selectedOption?.label ?? effectiveModel?.modelId;
+  const defaultModelLabel = providers
+    ?.find((provider) => provider.name === defaultModel?.provider)
+    ?.models.find((option) => option.modelId === defaultModel?.modelId)
+    ?.label ?? defaultModel?.modelId;
   const chipLabel = effectiveModel
-    ? `${effectiveModel.modelId}${showsEffort ? ` · ${thinkingText}` : ""}`
+    ? `${modelLabel}${showsEffort ? ` · ${thinkingText}` : ""}`
     : t("Choose model");
   const title = effectiveModel
-    ? `${effectiveModel.provider} / ${effectiveModel.modelId}${
+    ? `${effectiveModel.provider} / ${modelLabel}${
         showsEffort ? ` · ${thinkingText}` : ""
       }`
     : t("Choose a model");
@@ -324,7 +329,7 @@ export function ModelPicker({ open, onToggle, modelOverride, currentModel, think
         >
           <span>
             {t("App default")}
-            {defaultModel ? ` · ${defaultModel.modelId}` : ""}
+            {defaultModel ? ` · ${defaultModelLabel}` : ""}
           </span>
           {usingDefault ? <i className="ph ph-check check" /> : null}
         </button>

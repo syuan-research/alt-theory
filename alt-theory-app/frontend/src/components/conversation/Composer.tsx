@@ -41,20 +41,10 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   );
   const [moreHelpStarters, setMoreHelpStarters] = useState(false);
   const [helpQuestionArmed, setHelpQuestionArmed] = useState(false);
-  // Briefly explain Steer when its cards open.
-  const [cardHint, setCardHint] = useState<string | null>(null);
-  const cardHintTimer = useRef<number | null>(null);
   const togglePresetOpen = () => {
     const next = !presetOpen;
     setPresetOpen(next);
     window.localStorage.setItem("alt-preset-open", next ? "1" : "0");
-    setCardHint(
-      next
-        ? t("Steer is for this moment: press a way of working and it rides your next few messages.")
-        : null,
-    );
-    if (cardHintTimer.current) window.clearTimeout(cardHintTimer.current);
-    cardHintTimer.current = window.setTimeout(() => setCardHint(null), 10000);
   };
   const [fileDragOver, setFileDragOver] = useState(false);
   const rowRef = useRef<HTMLDivElement>(null);
@@ -234,7 +224,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
         {hasRunNotes(conv) ||
         conv.stoppedByUser ||
         conv.recovery ||
-        cardHint ||
         reviewerHint ||
         needsModel ? (
           <div className="composer-notes">
@@ -286,7 +275,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 </button>
               </span>
             ) : null}
-            <RunTips running={conv.isRunning} seedTip={cardHint} />
+            <RunTips running={conv.isRunning} />
           </div>
         ) : null}
 
@@ -319,7 +308,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               back. */}
           {presetOpen && variant === "live" ? (
             <div className="preset-bar">
-              {app.presetButtons.map((name, index) => {
+              {app.presetButtons.map((name) => {
                 const active =
                   app.presetState &&
                   app.presetState.sessionId === conv.sessionId &&
@@ -358,7 +347,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                     }
                     onClick={() => conv.sessionId && app.pressPreset(conv.sessionId, name)}
                   >
-                    <span className="preset-num">{index + 1}</span>
                     <span className="preset-label">{name}</span>
                     {active?.locked ? (
                       <i className="ph ph-lock-simple" aria-hidden="true" />
@@ -405,6 +393,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
           ) : (
           <>
           <CtxPicker
+            className="role-picker"
             icon="ph-user-circle"
             label={roleLabel}
             open={menu === "role"}
@@ -721,6 +710,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
 }
 
 function CtxPicker({
+  className = "",
   icon,
   label,
   open,
@@ -729,6 +719,7 @@ function CtxPicker({
   pending = false,
   children,
 }: {
+  className?: string;
   icon: string;
   label: string;
   open: boolean;
@@ -739,7 +730,7 @@ function CtxPicker({
   children: React.ReactNode;
 }) {
   return (
-    <span className="ctx-picker">
+    <span className={`ctx-picker ${className}`}>
       <button
         className="ctx-item"
         data-tip={label}

@@ -698,7 +698,6 @@ const catalog: Record<string, string> = {
   "Starting a related conversation…": "啟動相關對話…",
   "Steer": "引導",
   "Steer — ask Alt to work a certain way for the next few turns": "引導—讓Alt在接下來幾輪按特定方式工作",
-  "Steer is for this moment: press a way of working and it rides your next few messages.": "轉向用於當前時刻：選擇一種工作方式，它會影響你接下來的幾條消息。",
   "Stop": "停止",
   "Stop a long answer any time; what finished is kept, not thrown away.": "隨時可以停止長篇回答；已經完成的內容會保留，不會被丟棄。",
   "Stop scanning this folder (the folder itself is not deleted)": "停止掃描此資料夾（資料夾本身不會被刪除）",

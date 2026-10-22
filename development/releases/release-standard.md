@@ -60,6 +60,10 @@ installation material defined below.
   Behavior a reader would take for granted also stays out: state a change
   only if the reader would notice or care. Link to the relevant architecture
   doc or commit history instead.
+- Being visible does not by itself make a change worth listing. Omit tiny
+  styling and layout fixes such as scrollbar widths, icon substitutions, and
+  button ordering. A substantial group may be summarized as UI improvements;
+  do not enumerate its small adjustments.
 
 ### Temporary brevity reference — 2026-10-22 through 2026-11-05
 

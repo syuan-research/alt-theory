@@ -411,8 +411,8 @@ function ModelsPanel() {
 }
 
 const BUILTIN_AGENT_IDS = new Set([
-  "general-medium",
   "general-low",
+  "general-medium",
   "general-high",
 ]);
 const AGENT_THINKING_LEVELS = [
@@ -659,6 +659,13 @@ function AgentsPanel() {
       }],
     });
   };
+  const builtInIndexes = [...BUILTIN_AGENT_IDS]
+    .map((id) => config.agents.findIndex((agent) => agent.id === id))
+    .filter((index) => index >= 0);
+  const displayAgents = [
+    ...builtInIndexes.map((index) => config.agents[index]),
+    ...config.agents.filter((agent) => !BUILTIN_AGENT_IDS.has(agent.id)),
+  ];
   const renderAgent = (agent: SubagentPreset, index: number, builtIn: boolean) => (
     <div className="agent-preset" key={agent.id}>
       <div className="agent-preset-copy">
@@ -715,7 +722,7 @@ function AgentsPanel() {
           <MenuSelect
             ariaLabel={t("Default subagent")}
             value={config.defaultAgent}
-            options={config.agents.map((agent) => ({ value: agent.id, label: agent.id }))}
+            options={displayAgents.map((agent) => ({ value: agent.id, label: agent.id }))}
             onChange={(value) => edit({ ...config, defaultAgent: value })}
           />
         </div>
@@ -723,7 +730,7 @@ function AgentsPanel() {
       <section className="agent-section">
         <div className="set-card">
           <h4>{t("Built-in subagents")}</h4>
-          <div className="agent-preset-list">{config.agents.map((agent, index) => BUILTIN_AGENT_IDS.has(agent.id) ? renderAgent(agent, index, true) : null)}</div>
+          <div className="agent-preset-list">{builtInIndexes.map((index) => renderAgent(config.agents[index], index, true))}</div>
         </div>
       </section>
       <section className="agent-section">
@@ -1249,8 +1256,8 @@ function GeneralPanel() {
         </div>
       </div>
       <DefaultPermissionCard />
-      <CommandAllowlistCard />
       <ApprovalReviewerCard />
+      <CommandAllowlistCard />
       <AutoTitleCard />
       <NativePiSkillsCard />
       <RuntimeCard />
@@ -2236,7 +2243,7 @@ function WorkingFoldersPanel() {
           projects.map((project) => (
             <div className="proj" key={project.id}>
               <div className="proj-head">
-                <i className="ph ph-folder-open" aria-hidden="true" />
+                <i className="ph ph-stack" aria-hidden="true" />
                 {renaming === project.id ? (
                   <form
                     className="session-rename-inline"

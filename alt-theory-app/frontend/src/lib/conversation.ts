@@ -401,6 +401,8 @@ function onServer(state: ConversationState, message: ServerMessage): Conversatio
         ...state,
         snapshot: message.payload,
         warnings: message.payload.resumeWarnings ?? state.warnings,
+        notice: state.snapshot?.lastFailure && !message.payload.lastFailure && state.notice?.body.kind === "run-failed"
+          ? null : state.notice,
         turn: begins ? EMPTY_TURN : state.turn,
       };
     }

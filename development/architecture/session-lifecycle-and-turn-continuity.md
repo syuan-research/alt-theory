@@ -324,8 +324,10 @@ never inferred from text (`core/failure.test.ts`).
 
 Terminal run and manual-compaction failures are retained in the session header's
 `lastFailure` and included in snapshots, so reopening restores the reason. A
-successful run/compaction clears it; beginning recovery only hides the previous
-reason while work is in progress. Run failures and refused-request notices have
+successful assistant API response (including a tool-call response) or manual
+compaction clears it. Beginning recovery alone does not clear it; the first
+successful assistant message_end publishes a snapshot that also removes the
+old run-failed notice. A later failure records a new reason. Run failures and refused-request notices have
 no automatic timeout. Informational notices retain their existing lifetime.
 
 ## Managed child-session lifecycle
