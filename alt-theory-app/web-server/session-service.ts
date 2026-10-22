@@ -897,7 +897,7 @@ export class SessionService implements AgentTeamBridge {
    * runs once (only when no ui-alias.json exists — imports seed one, manual
    * renames create one), fires-and-forgets, and swallows all errors so a failed
    * title never disturbs the run. Model chain: pinned model (settings) → its
-   * fallbacks → session model at low → no write (frontend keeps the
+   * fallbacks → session model with thinking off → no write (frontend keeps the
    * first-words snippet). Each fallback is announced in the conversation.
    */
   private async maybeAutoTitle(managed: ManagedSession): Promise<void> {
@@ -915,16 +915,16 @@ export class SessionService implements AgentTeamBridge {
       );
       if (!firstUser) return;
 
-      // Pinned model → its fallbacks → the conversation's model at low
-      // (ruling I); unpinned, just the conversation's model at low.
+      // Naming defaults to thinking off; explicit effort choices still win.
       const pin = settings.autoTitle?.model ?? null;
       const steps = this.auxiliaryChain(
         managed,
         [
-          ...(pin ? [`${pin.provider}/${pin.modelId}${pin.thinkingLevel ? `:${pin.thinkingLevel}` : ""}`] : []),
-          ...(settings.autoTitle?.fallbackModels ?? []),
+          ...(pin ? [`${pin.provider}/${pin.modelId}:${pin.thinkingLevel ?? "off"}`] : []),
+          ...(settings.autoTitle?.fallbackModels ?? []).map((ref) =>
+            modelReferenceIdentity(ref) === ref ? `${ref}:off` : ref),
         ],
-        "low",
+        "off",
       );
       const answer = await this.completeDownChain(
         managed,

@@ -1,4 +1,5 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import { timeContextMessage } from "./model-reminders.js";
 
 /**
  * Resuming a turn on another model after the current one failed (the
@@ -22,10 +23,12 @@ export function stripLastErrorAssistantMessage(session: AgentSession): void {
   }
 }
 
-export function continueAgentTurnAfterModelSwitch(
+export async function continueAgentTurnAfterModelSwitch(
   session: AgentSession
 ): Promise<void> {
   stripLastErrorAssistantMessage(session);
+  const clock = timeContextMessage(session.sessionManager.getBranch());
+  if (clock) await session.sendCustomMessage(clock, { triggerTurn: false });
   // session.agent and Agent.continue() are public Pi API — a rename in a Pi
   // upgrade must fail here at compile time, not at runtime.
   return new Promise((resolve, reject) => {

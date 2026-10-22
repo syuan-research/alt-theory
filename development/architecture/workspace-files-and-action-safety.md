@@ -494,7 +494,9 @@ model and ordered fallbacks in the subagent reference syntax
 conversation's own model at low thinking is always the last level (the only
 one under auto). Each fallback is announced in the conversation. Auto-naming
 uses the same chain (`autoTitle.fallbackModels` after the pinned model, then
-the conversation's model at low). Settings > General edits both with the
+the conversation's model with thinking off). Auto-naming defaults unspecified
+effort to off throughout its chain, while preserving explicit choices.
+Settings > General edits both with the
 subagent presets' chain control, and lists recommended reviewers from
 `agent-assets/model-presets/reviewer-models.json`, read from the public
 repository once a day and from the shipped copy when offline, with the

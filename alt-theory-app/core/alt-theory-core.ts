@@ -508,7 +508,7 @@ async function createAltTheorySessionWithManager(
   const kbMetadataPrompt = formatKbMetadataPrompt(kbMetadata);
   if (kbEnabled) {
     altSections.push(
-      `## Knowledge Base\nYour knowledge base is at: ${resolvedKbDir}`
+      `## Knowledge Base\nYour knowledge base is at: ${resolvedKbDir}\nConsult it first for relevant domain knowledge.`
     );
     if (kbMetadataPrompt) {
       altSections.push(`## Knowledge Base Metadata\n${kbMetadataPrompt}`);
@@ -653,8 +653,28 @@ async function createAltTheorySessionWithManager(
     noExtensions: true,
     extensionFactories: [
       ...(config.extensionFactories ?? []),
-      // Custom provider names bypass Pi's built-in OpenCode header wrapper.
       (pi) => {
+        pi.on("before_agent_start", (_event, context) => {
+          const policy = config.readFolderPolicy?.();
+          const folders = [
+            `Main folder / relative link base: ${cwd}`,
+            ...(resolvedWriteDir !== cwd ? [`Conversation workspace: ${resolvedWriteDir}`] : []),
+            ...(policy?.projectSecondaryDirs ?? []).map((path) => `Companion folder (read/write): ${resolve(path)}`),
+            ...(policy?.globalFolders ?? []).map((folder) =>
+              `Global folder (${folder.writable ? "read/write" : "read-only"}): ${resolve(folder.path)}`),
+          ];
+          const content = `Current folder context:\n${folders.join("\n")}`;
+          const previous = [...context.sessionManager.buildContextEntries()].reverse().find((entry) =>
+            entry.type === "custom_message" && entry.customType === "alt-theory-folders");
+          if (previous?.type === "custom_message" && previous.content === content) return;
+          // Append only when folders change, preserving the existing request prefix.
+          return { message: {
+            customType: "alt-theory-folders",
+            content,
+            display: false,
+          } };
+        });
+        // Custom provider names bypass Pi's built-in OpenCode header wrapper.
         pi.on("before_provider_headers", (event, context) => {
           if (/^https:\/\/opencode\.ai\//i.test(context.model?.baseUrl ?? "")) {
             event.headers["x-opencode-session"] = sessionId;

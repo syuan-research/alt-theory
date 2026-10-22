@@ -27,11 +27,13 @@ test("subagent config defaults safely and derives provider/model candidates", ()
     agents: [
       {
         id: "general-medium",
+        description: "Most writing, implementation, and analysis; default when the appropriate level is unclear.",
         model: "openai-codex/gpt-5.6-terra:high",
         fallbackModels: ["openai-codex/gpt-5.6-sol:low"],
       },
       {
         id: "general-low",
+        description: "My own delegation rule",
         model: "inherit:low",
         fallbackModels: [],
       },
@@ -48,6 +50,9 @@ test("subagent config defaults safely and derives provider/model candidates", ()
       },
     ],
   });
+  assert.equal(config.agents[0].description, DEFAULT_SUBAGENT_CONFIG.agents[0].description);
+  assert.equal(config.agents[1].description, "My own delegation rule");
+  assert.equal(config.agents[2].description, DEFAULT_SUBAGENT_CONFIG.agents[2].description);
   assert.deepEqual(subagentModelCandidates(config), [
     "inherit",
     "openai-codex/gpt-5.6-terra",

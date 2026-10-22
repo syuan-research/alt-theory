@@ -436,7 +436,7 @@ export function ModelConfigPage({
         t("A key is already saved for this provider. Leave blank to keep it, or paste a new key to replace it.");
     } else if (provider?.keyState === "oauth") {
       nextKeyHint =
-        t("Connected with OAuth. Leave the API key blank to keep using this account.");
+        t("Signed in via OAuth.");
     } else if (provider?.keyState === "env-set") {
       nextKeyHint =
         t("An environment-variable key is configured and available in this process. Leave blank to keep it.");

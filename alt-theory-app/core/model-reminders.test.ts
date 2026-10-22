@@ -25,8 +25,11 @@ test("model reminders use the live model and recover once after compaction", () 
   const before = handlers.get("before_agent_start")!;
   const compact = handlers.get("session_compact")!;
   const event = { prompt: "hello", systemPrompt: "Base" };
-  const gpt = { model: { id: "gpt-6-sol" } };
-  const other = { model: { id: "claude-opus" } };
+  const sessionManager = { getBranch: () => [{
+    type: "custom_message", customType: "alt-theory-time", timestamp: new Date().toISOString(),
+  }] };
+  const gpt = { model: { id: "gpt-6-sol" }, sessionManager };
+  const other = { model: { id: "claude-opus" }, sessionManager };
 
   assert.match(before(event, gpt).systemPrompt, /STOP PILING/);
   assert.equal(before(event, gpt), undefined);

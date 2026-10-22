@@ -1,4 +1,4 @@
-import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import type { ExtensionFactory, SessionEntry } from "@earendil-works/pi-coding-agent";
 
 const WRITING_WORDS = /写|改稿|修改|草稿|段落|论文|文章|大纲|通信|写作|outline|draft|writ(?:e|ing)|revis(?:e|ion)|edit|manuscript|letter|report/i;
 
@@ -18,6 +18,24 @@ export function shouldShowGptWritingReminder(prompt: string, turn: number): bool
   return turn === 1 || turn % 5 === 0 || WRITING_WORDS.test(prompt);
 }
 
+export function timeContextMessage(entries: readonly SessionEntry[], now = Date.now()) {
+  const recent = [...entries].reverse();
+  const clock = recent.find((entry) => entry.type === "custom_message" &&
+    entry.customType === "alt-theory-time");
+  const lastClock = clock ? Date.parse(clock.timestamp) : 0;
+  if (lastClock && now >= lastClock && now - lastClock < 60 * 60 * 1000) return;
+  const activity = recent.find((entry) => entry.type === "message" &&
+    (entry.message.role === "user" || entry.message.role === "assistant"));
+  const stale = activity && now - Date.parse(activity.timestamp) >= 3 * 24 * 60 * 60 * 1000;
+  return {
+    customType: "alt-theory-time",
+    content: `Current local time: ${new Date(now).toString()}` + (stale
+      ? "\nThis conversation is resuming after several days. Old unfinished matters may have been resolved elsewhere; prioritize the user's latest request."
+      : ""),
+    display: false,
+  };
+}
+
 export function createModelRemindersExtension(
   isAltTheory: () => boolean,
   modelHooksEnabled: boolean,
@@ -31,7 +49,8 @@ export function createModelRemindersExtension(
     });
 
     pi.on("before_agent_start", (event, ctx) => {
-      if (!isAltTheory()) return;
+      const message = timeContextMessage(ctx.sessionManager.getBranch());
+      if (!isAltTheory()) return message ? { message } : undefined;
       turn += 1;
       const sections: string[] = [];
       if (afterCompaction) {
@@ -45,9 +64,11 @@ export function createModelRemindersExtension(
       ) {
         sections.push(GPT_WRITING_REMINDER);
       }
-      return sections.length
-        ? { systemPrompt: `${event.systemPrompt}\n\n${sections.join("\n\n")}` }
-        : undefined;
+      if (!message && !sections.length) return;
+      return {
+        ...(message ? { message } : {}),
+        ...(sections.length ? { systemPrompt: `${event.systemPrompt}\n\n${sections.join("\n\n")}` } : {}),
+      };
     });
   };
 }

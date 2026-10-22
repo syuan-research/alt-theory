@@ -150,7 +150,8 @@ test("auto-title chain: a failing pin falls back with a notice", async () => {
     content: [{ type: "text", text: "Help me plan the interview study." }],
     timestamp: Date.now(),
   });
-  managed.session.modelRuntime.completeSimple = async (model: { id: string }) => {
+  managed.session.modelRuntime.completeSimple = async (model: { id: string }, _context: unknown, options: { reasoning?: string }) => {
+    assert.equal(options.reasoning, undefined);
     if (model.id === "second-model") return { ...reply(""), stopReason: "error", errorMessage: "model unavailable" };
     return reply("Planning the interview study");
   };
@@ -159,7 +160,7 @@ test("auto-title chain: a failing pin falls back with a notice", async () => {
   assert.equal(alias, "Planning the interview study");
   const notices = events.filter((event) => event.type === "extension_notice");
   assert.equal(notices.length, 1);
-  assert.match((notices[0] as any).payload.message, /^Auto-name: test\/second-model did not answer \(model unavailable\)/);
+  assert.match((notices[0] as any).payload.message, /^Auto-name: test\/second-model · off did not answer \(model unavailable\)/);
 });
 
 test("reviewer recommendations: online first, the shipped copy when offline", async () => {

@@ -199,7 +199,11 @@ every release onward (Windows ZIP gets the `-win` file; macOS ZIP gets the
 
 1. Decide the version (`X.Y.Z`) and the release date.
 2. Write the `CHANGELOG.md` section for it in the format above, and the two
-   Chinese sections.
+   Chinese sections. For every formal release, refresh the bundled models.dev
+   snapshot with `npx tsx scripts/refresh-models-dev-snapshot.ts` after restoring
+   the locked dependencies. Include the generated snapshot in the committed
+   release source before building; a failed fetch must not silently count as a
+   refreshed snapshot. Updating Pi itself is a separate dependency decision.
 3. Build and verify the bundles (Build, Archive and naming, Required
    verification).
 4. Tag `vX.Y.Z` at the commit that matches the built source.

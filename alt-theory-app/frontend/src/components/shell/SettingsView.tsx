@@ -438,13 +438,6 @@ function joinAgentModelRef(model: string, thinking: string): string {
   return thinking ? `${model}:${thinking}` : model;
 }
 
-function builtInAgentDescription(id: string, fallback: string): string {
-  if (id === "general-medium") return t("Most writing, implementation, and analysis; default when the appropriate level is unclear.");
-  if (id === "general-low") return t("Extraction, search, and checks against supplied criteria, including checklist reviews.");
-  if (id === "general-high") return t("Strategic planning, difficult root-cause analysis, and complex architecture decisions. Finding facts or checking supplied criteria belongs to general-low.");
-  return fallback;
-}
-
 function AgentModelFields({
   reference,
   models,
@@ -684,7 +677,7 @@ function AgentsPanel() {
             }}
           />
         )}
-        {builtIn ? <p>{builtInAgentDescription(agent.id, agent.description ?? "")}</p> : (
+        {builtIn ? <p>{t(agent.description ?? "")}</p> : (
           <input
             className="agent-description-input"
             aria-label={t("Description")}
@@ -712,7 +705,7 @@ function AgentsPanel() {
   return (
     <div className="set-panel agents-panel">
       <div className="agents-heading">
-        <div><h2>{t("Subagents")}</h2><p className="sub">{t("Choose model and thinking defaults for delegated work.")}</p></div>
+        <div><h2>{t("Subagents")}</h2><p className="sub">{t("The lead agent delegates by the descriptions below. Choose models accordingly.")}</p></div>
       </div>
       <div className="set-card agent-default-card">
         <div className="row2">
@@ -1301,7 +1294,7 @@ function LanguageCard() {
           <h4>{t("Language")}</h4>
           <p>
             {t(
-              "App language. Auto follows your system language. Conversations always follow the language you write in.",
+              "Auto follows your system language.",
             )}
           </p>
         </div>
@@ -1360,7 +1353,7 @@ function DefaultPermissionCard() {
         <div>
           <h4>{t("New conversations start with")}</h4>
           <p>
-            {t("The permission a new conversation starts with. Each conversation can still change its own from the shield next to the message box.")}
+            {t("Each conversation can choose its own permission.")}
           </p>
         </div>
         <MenuSelect
@@ -1424,7 +1417,7 @@ function CommandAllowlistCard() {
     <div className="set-card">
       <h4>{t("Commands that run without asking")}</h4>
       <p>
-        {t("One per line. Matching pushes, uploads and installs run without asking; under strict smart approval, matching commands skip the review. Destructive git, database files and changes outside your folders still ask.")}
+        {t("One per line. Protected actions may still need approval.")}
       </p>
       <textarea
         className="set-lines"
@@ -1492,7 +1485,7 @@ function RuntimeCard() {
           <h4>{t("Agent behavior")}</h4>
           <p>
             {t(
-              "Native Pi drops Alt's roles, soul, and knowledge context and works like an ordinary coding agent. Safety and approvals are unchanged.",
+              "Native Pi does not load Alt's roles, Soul, or knowledge base.",
             )}
           </p>
         </div>
@@ -1548,7 +1541,7 @@ function NativePiSkillsCard() {
           <h4>{t("Native Pi: scan Alt Theory bundled skills")}</h4>
           <p>
             {t(
-              "Keep Alt Theory's bundled skills discoverable in Native Pi. This does not add Alt Theory behavior.",
+              "Include Alt Theory's bundled skills.",
             )}
           </p>
         </div>
@@ -1618,8 +1611,8 @@ function AutoTitleCard() {
   // The pinned model reads as the head of a chain; "inherit" = no pin.
   const pin = settings.model;
   const chain = {
-    model: pin ? joinAgentModelRef(`${pin.provider}/${pin.modelId}`, pin.thinkingLevel ?? "") : "inherit",
-    fallbackModels: settings.fallbackModels ?? [],
+    model: pin ? joinAgentModelRef(`${pin.provider}/${pin.modelId}`, pin.thinkingLevel ?? "off") : "inherit:off",
+    fallbackModels: (settings.fallbackModels ?? []).map((ref) => splitAgentModelRef(ref)[1] ? ref : `${ref}:off`),
   };
   const fromChain = (next: { model: string; fallbackModels: string[] }): AutoTitleSettings => {
     const [model, thinking] = splitAgentModelRef(next.model);
@@ -1640,7 +1633,7 @@ function AutoTitleCard() {
         <div>
           <h4>{t("Auto-name conversations")}</h4>
           <p>
-            {t("Name a conversation automatically after the first message, using its own model. Falls back to the first few words if naming fails.")}
+            {t("Auto-name after the first message.")}
           </p>
         </div>
         <button
@@ -1653,7 +1646,7 @@ function AutoTitleCard() {
       {settings.enabled && loaded ? (
         <div style={{ marginTop: "var(--space-control)" }}>
           <h4>{t("Naming model")}</h4>
-          <p>{t("A small model is recommended — cheaper and faster. If it fails, the fallbacks are tried in order, then the conversation's own model.")}</p>
+          <p>{t("Choose a fast model with thinking off. The conversation's model is the automatic fallback.")}</p>
           <ModelChainFields chain={chain} models={models} onChange={(next) => persist(fromChain(next))} />
         </div>
       ) : null}
@@ -1695,7 +1688,7 @@ function ApprovalReviewerCard() {
         <div>
           <h4>{t("Smart approval reviewer")}</h4>
           <p>
-            {t("The model that reviews actions under smart approval. Auto uses this conversation's model at low thinking. After the chain, the conversation's model at low thinking is tried last; if that fails too, you are asked.")}
+            {t("Choose a fast model with low thinking effort. Auto uses the current conversation's model at low effort.")}
           </p>
         </div>
         <MenuSelect
@@ -1929,7 +1922,7 @@ function RoleKbPanel() {
           <div>
             <h4>{t("Knowledge sets")}</h4>
             <p>
-              {t("Each knowledge set is a folder of material Alt can ground its answers in. Add a folder of your own to make it selectable; the bundled sets stay untouched.")}
+              {t("Knowledge sets supplement domain knowledge. Alt consults them first.")}
             </p>
             <ul className="asset-list">
               {kbDomains.map((domain) => (
@@ -2062,31 +2055,31 @@ function FeaturesPanel() {
       <div className="set-card">
         <h4>{t("Do concrete work on your materials")}</h4>
         <p>
-          {t("The same conversation can read and produce documents, work through the files in your project and global folders, and search the web and literature. The permission next to the message box decides how much it may do on its own: Read-only asks before every file change, Ask for approval asks before risky actions, Full access asks nothing.")}
+          {t("Alt can work with files, find sources, and produce documents.")}
         </p>
       </div>
       <div className="set-card">
         <h4>{t("Compare different lines of inquiry")}</h4>
         <p>
-          {t("AI answers can change—or conflict—when a question is framed differently. At important moments, edit your question or retry it to open a comparison, then continue from the answer that offers the stronger direction.")}
+          {t("AI answers vary with the prompt and model. Edit the question and model to compare another answer.")}
         </p>
       </div>
       <div className="set-card">
         <h4>{t("Delegate parts of a task")}</h4>
         <p>
-          {t("On larger tasks, Alt can hand a bounded piece to a subagent and keep going. Subagents appear in the right panel like any related conversation — you can watch them, message them directly, or stop them at any point.")}
+          {t("Subagents can handle bounded tasks or independently propose candidate answers. They appear in related conversations, where you can message them.")}
         </p>
       </div>
       <div className="set-card">
         <h4>{t("Use roles, knowledge sets, and skills")}</h4>
         <p>
-          {t("Roles shape how Alt interprets a situation, identifies what matters, and organizes its response; knowledge sets provide material it can draw on; skills provide reusable ways of working.")}
+          {t("Roles shape how Alt interprets situations and identifies priorities; knowledge sets provide domain knowledge; skills provide reusable ways of working.")}
         </p>
       </div>
       <div className="set-card">
         <h4>{t("Keep side paths without losing the main conversation")}</h4>
         <p>
-          {t("Branch starts another direction from the current conversation. BTW opens a smaller related conversation. For questions about Alt or setup, use the help skill in an ordinary conversation.")}
+          {t("Branch and BTW keep related conversations alongside. Use BTW for questions and explanations about a conversation without affecting its main thread.")}
         </p>
       </div>
       <div className="set-card help-tip-catalog">
@@ -2183,7 +2176,7 @@ function WorkingFoldersPanel() {
       app.requestConfirm({
         message: t("Move this project to work in \"{label}\"?", { label }),
         details: [
-          t("Every conversation of the project moves with it — families stay together."),
+          t("All project conversations move together."),
           t("Alt will ask for permissions again in the new folder."),
           t("Files already on disk are not moved."),
           t("A conversation that is working right now refuses the move; try again when it is idle."),
@@ -2300,7 +2293,7 @@ function WorkingFoldersPanel() {
               </div>
               {project.available === false ? (
                 <div className="sf">
-                  <span className="lbl quiet">{t("The main folder is not on this computer right now. Move the project to its new location, or bring the folder back.")}</span>
+                  <span className="lbl quiet">{t("Main folder not found. Change its location.")}</span>
                 </div>
               ) : null}
               {companionsOf(project).map((dir) => (

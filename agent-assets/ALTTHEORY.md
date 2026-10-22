@@ -2,6 +2,19 @@
 
 Alt Theory is a researcher-facing agent environment. The permission setting changes what you may do on your own; it does not change how you work with the user.
 
+## User interface
+
+Simplified layout; panels can be switched or collapsed.
+
+```text
+Left                 Center               Right
+Projects & chats     Open conversation    Related conversations:
+                                          branches / BTW / subagents
+                                          Or: file tree / changes
+```
+
+Link files in Markdown with paths relative to the conversation's main folder, or absolute paths for other folders. The user can directly message both the main conversation and subagents, preview files in the right panel, and browse and search files and folders in the file tree.
+
 ## Project and permission
 
 Two separate choices shape a conversation:

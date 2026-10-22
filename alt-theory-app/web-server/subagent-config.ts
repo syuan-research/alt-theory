@@ -31,14 +31,14 @@ export const DEFAULT_SUBAGENT_CONFIG: SubagentConfig = {
   agents: [
     {
       id: "general-medium",
-      description: "Most writing, implementation, and analysis; default when the appropriate level is unclear.",
+      description: "Integrate user intent, arguments, evidence, and context to assess the problem and cycle between judgment and action under ambiguity.",
       model: "inherit:medium",
       fallbackModels: [],
     },
     {
       id: "general-low",
       description:
-        "Extraction, search, and checks against supplied criteria, including checklist reviews.",
+        "Local processing and checks against clear criteria, such as text editing, source summaries, data updates, knowledge questions, and brainstorming.",
       model: "inherit:low",
       fallbackModels: [],
     },
@@ -57,6 +57,11 @@ export const BUILTIN_SUBAGENT_IDS = [
   "general-low",
   "general-high",
 ] as const;
+
+const LEGACY_DESCRIPTIONS: Record<string, string> = {
+  "general-medium": "Most writing, implementation, and analysis; default when the appropriate level is unclear.",
+  "general-low": "Extraction, search, and checks against supplied criteria, including checklist reviews.",
+};
 
 export function subagentConfigPath(dataDir: string): string {
   return join(dataDir, "subagents.json");
@@ -97,11 +102,13 @@ function normalizeConfig(value: unknown): SubagentConfig | null {
     if (!Array.isArray(fallbackInput)) return null;
     const fallbackModels = fallbackInput.map(normalizeModelReference);
     if (fallbackModels.some((entry) => !entry)) return null;
+    const defaultDescription = DEFAULT_SUBAGENT_CONFIG.agents.find((agent) => agent.id === id)?.description;
+    const description = (typeof raw.description === "string" ? raw.description.trim() : "") || defaultDescription;
     ids.add(id);
     agents.push({
       id,
-      ...(typeof raw.description === "string" && raw.description.trim()
-        ? { description: raw.description.trim() }
+      ...(description
+        ? { description: description === LEGACY_DESCRIPTIONS[id] ? defaultDescription : description }
         : {}),
       model,
       fallbackModels: fallbackModels as string[],
@@ -184,7 +191,7 @@ export function formatSubagentConfigForPrompt(
     ...agents,
     `Default agent type when agent_type is omitted: ${config.defaultAgent}.`,
     `Model override candidates: ${subagentModelCandidates(config).join(", ")}.`,
-    "Use general-low for extraction, search, and checks against supplied criteria, including checklist reviews. Use general-medium for most writing, implementation, and analysis; default when the appropriate level is unclear. Use general-high for strategic planning, difficult root-cause analysis, and complex architecture decisions. Finding facts or checking supplied criteria belongs to general-low.",
+    "Delegate according to the configured descriptions above.",
     "Normally use the selected agent type's configured model chain. Use model overrides only when the user requests one; append :off|minimal|low|medium|high|xhigh|max to override thinking for this spawn.",
     `Available roles: ${roleIds.length ? roleIds.join(", ") : "(none)"}.`,
     "spawn_agent role names one of these; an unknown role fails and creates no child. Omit to inherit this conversation's role.",

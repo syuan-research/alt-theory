@@ -2,7 +2,7 @@
  * Refreshes the models.dev snapshot shipped with the app
  * (agent-assets/model-presets/models-dev-snapshot.json.gz): the catalog the
  * app uses before its first successful models.dev fetch or without network.
- * Run before a release when provider metadata moved:
+ * Run before every formal release:
  *
  *   npx tsx scripts/refresh-models-dev-snapshot.ts
  */

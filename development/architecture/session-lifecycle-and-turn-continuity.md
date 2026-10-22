@@ -90,6 +90,14 @@ The materialized session has two related authorities:
   The client paints marks with the CSS Custom Highlight API in every
   conversation pane (`frontend/src/lib/marks.ts`), with Ctrl+F hits on top.
 
+Pi-native custom messages carry folder context and local time, hidden from chat
+bubbles but retained in the transcript. Folder context is appended when its
+effective paths or access change. Time is appended initially and after an hour;
+resuming after three days without user/assistant activity also adds a short
+reminder to prioritize the latest request. The shared Continue path applies the
+same clock rule. These messages extend history rather than changing the system
+prompt prefix (`core/model-reminders.ts`, `core/model-switch.ts`).
+
 `ManagedSession` keeps the live `AgentSession`, selectors and manifest-derived
 state, counters, a process-local mutation guard, recovery state, and the
 current live-run buffer. Subscribers are kept by `SessionService` per logical
