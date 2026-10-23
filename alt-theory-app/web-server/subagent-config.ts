@@ -31,14 +31,14 @@ export const DEFAULT_SUBAGENT_CONFIG: SubagentConfig = {
   agents: [
     {
       id: "general-medium",
-      description: "The lead uses this agent to repeatedly assess and act under ambiguity while preserving all goals. For example, reassess the problem as new evidence arrives, then adjust the next action.",
+      description: "The lead uses this agent when continued execution requires reflection beyond concrete methods, reaching the task’s wider goals and their trade-offs. It carries these reassessments into further autonomous action.",
       model: "inherit:medium",
       fallbackModels: [],
     },
     {
       id: "general-low",
       description:
-        "The lead uses this agent to work against clear criteria or produce independent candidates. For example, text editing, source summaries, data updates, knowledge questions, and brainstorming.",
+        "The lead uses this agent to work against clear criteria or produce independent candidates. For example, text editing, source summaries, data updates, knowledge questions, brainstorming, data analysis, and information exploration.",
       model: "inherit:low",
       fallbackModels: [],
     },
@@ -60,11 +60,13 @@ export const BUILTIN_SUBAGENT_IDS = [
 
 const LEGACY_DESCRIPTIONS = new Map<string, string[]>([
   ["general-medium", [
+    "The lead uses this agent to repeatedly assess and act under ambiguity while preserving all goals. For example, reassess the problem as new evidence arrives, then adjust the next action.",
     "Default for most work and whenever the right level is uncertain",
     "Most writing, implementation, and analysis; default when the appropriate level is unclear.",
     "Integrate user intent, arguments, evidence, and context to assess the problem and cycle between judgment and action under ambiguity.",
   ]],
   ["general-low", [
+    "The lead uses this agent to work against clear criteria or produce independent candidates. For example, text editing, source summaries, data updates, knowledge questions, and brainstorming.",
     "High-volume, error-tolerant extraction, web search, and simple checks with clear criteria",
     "Extraction, search, and checks against supplied criteria, including checklist reviews.",
     "Local processing and checks against clear criteria, such as text editing, source summaries, data updates, knowledge questions, and brainstorming.",
@@ -203,7 +205,7 @@ export function formatSubagentConfigForPrompt(
     ...agents,
     `Default agent type when agent_type is omitted: ${config.defaultAgent}.`,
     `Model override candidates: ${subagentModelCandidates(config).join(", ")}.`,
-    "Follow the user's custom subagent configuration first. Otherwise, use general-low, general-medium, and general-high as described above, preferring a lower configured tier that can reliably complete the whole task. Judge difficulty by the assessment–execution loop and drift risk, rather than by task domain or length.",
+    "Follow the user's custom subagent configuration first. Otherwise, use general-low, general-medium, and general-high as described above, preferring a lower configured tier that can reliably complete the delegated subtask.",
     "Prefer reusing an existing subagent for similar tasks over spawning another.",
     "Normally use the selected agent type's configured model chain. Use model overrides only when the user requests one; append :off|minimal|low|medium|high|xhigh|max to override thinking for this spawn.",
     `Available roles: ${roleIds.length ? roleIds.join(", ") : "(none)"}.`,

@@ -5,6 +5,10 @@
 
 ---
 
+## v1.9.1 — 2026-10-23
+
+Long error messages use a limited, scrollable area. Subagent selection is refined, and the bundled model catalog is refreshed.
+
 ## v1.9.0 — 2026-10-22
 
 This update improves everyday use and fixes a few issues.

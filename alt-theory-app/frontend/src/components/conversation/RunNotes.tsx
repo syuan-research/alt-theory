@@ -54,7 +54,7 @@ export function NoticeLine() {
   return (
     <>
     {unsaved}
-    <span className="run-tip">
+    <span className="run-tip run-notice">
       {icon ? (
         <i
           className={`ph ${

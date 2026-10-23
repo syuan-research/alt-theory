@@ -952,6 +952,8 @@
   .composer-notes .danger { color: var(--danger); }
   .composer-notes .retry-run { align-self: flex-start; padding: var(--space-hair) 0; }
   .composer-notes .run-tip { display: flex; align-items: center; gap: var(--space-tight); min-height: 1.25em; color: var(--text-3); font-family: inherit; }
+  .composer-notes .run-notice { max-height: min(8lh, 20vh); overflow-y: auto; overscroll-behavior: contain; overflow-wrap: anywhere; align-items: flex-start; }
+  .composer-notes .run-notice > i { flex-shrink: 0; }
   .staged-attachments { display: flex; flex-wrap: wrap; gap: var(--space-tight); margin: 0 var(--space-hair) var(--space-tight); }
   .attachment-chip { display: inline-flex; align-items: center; gap: var(--space-tight); max-width: min(260px, 100%); padding: var(--space-hair) var(--space-tight); background: var(--selected); border: 1px solid var(--hairline); border-radius: var(--r-sm); color: var(--ink); font-size: var(--fs-secondary); }
   .attachment-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
