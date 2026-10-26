@@ -9,6 +9,7 @@ import {
   IMPORT_HARNESSES,
   discoverImportSessions,
   getImportAdapter,
+  importProjectCandidates,
 } from "./session-import.js";
 import { ImportRefusalError } from "./session-import-shared.js";
 import { listSessionSummaries, readSessionDetail } from "./session-store.js";
@@ -18,6 +19,24 @@ const codexAdapter = getImportAdapter("codex");
 const openCodeAdapter = getImportAdapter("opencode");
 const grokAdapter = getImportAdapter("grok-build");
 const claudeCodeAdapter = getImportAdapter("claude-code");
+
+test("import project resolution prefers main folders, then recently active companion matches", () => {
+  const shared = join(tmpdir(), "shared-import-folder");
+  const projects = [
+    { id: "old", primaryDir: join(tmpdir(), "old-project"), secondaryDirs: [shared] },
+    { id: "recent", primaryDir: join(tmpdir(), "recent-project"), secondaryDirs: [shared] },
+  ];
+  const sessions = [
+    { workspacePrimaryDir: projects[0].primaryDir, updatedAt: "2026-10-01T00:00:00Z" },
+    { workspacePrimaryDir: projects[1].primaryDir, updatedAt: "2026-10-26T00:00:00Z" },
+    { workspacePrimaryDir: projects[0].primaryDir, updatedAt: "2026-10-27T00:00:00Z", deletedAt: "2026-10-27T01:00:00Z" },
+  ];
+  assert.deepEqual(importProjectCandidates(shared, projects, sessions).map((project) => project.id), ["recent", "old"]);
+  const primary = { id: "primary", primaryDir: shared, secondaryDirs: [] };
+  assert.deepEqual(importProjectCandidates(shared, [...projects, primary], sessions), [primary]);
+  assert.deepEqual(importProjectCandidates(projects[0].primaryDir, projects, sessions), [projects[0]]);
+  assert.deepEqual(importProjectCandidates(join(tmpdir(), "unmatched-import"), projects, sessions), []);
+});
 
 test("Pi discovery and managed registration preserve history and workspace", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-session-import-"));

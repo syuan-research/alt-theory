@@ -30,6 +30,9 @@ export interface ImportResult {
   count?: number;
   reason?: string;
   error?: string;
+  projectCandidates?: Array<{ id: string; name?: string; primaryDir: string }>;
+  projectId?: string | null;
+  workspacePrimaryDir?: string;
 }
 
 /**
@@ -82,6 +85,7 @@ export async function submitSessionImport(args: {
   sourceId: string;
   preflightOnly: boolean;
   workspaceOverride?: string;
+  projectId?: string;
 }): Promise<ImportResult> {
   const response = await fetch(`/api/session-import/${args.harness}`, {
     method: "POST",
@@ -90,6 +94,7 @@ export async function submitSessionImport(args: {
       selection: "selected",
       sourceIds: [args.sourceId],
       preflightOnly: args.preflightOnly,
+      projectId: args.projectId,
       changedSourcePolicy: "copy",
       ...(args.workspaceOverride
         ? { workspaceOverrides: { [args.sourceId]: args.workspaceOverride } }

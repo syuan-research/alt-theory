@@ -11,7 +11,7 @@ product tokens marked "keep" stay in English everywhere.
 | Read-only (permission) | 只读 | |
 | Ask for approval (permission) | 向我请求批准 | |
 | Full access (permission) | 完全访问 | |
-| Independent conversations | 独立对话 | conversations without a project |
+| Standalone conversations | 独立对话 | conversations without a project; left section title uses Standalone |
 | mode | 模式 | |
 | Branch | 分支 | related conversation for another direction |
 | BTW | BTW | keep — product name for a side conversation |

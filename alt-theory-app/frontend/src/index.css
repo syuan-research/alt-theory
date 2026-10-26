@@ -523,7 +523,7 @@
   .icon-btn { width: 30px; height: 30px; border: none; background: transparent; border-radius: var(--r-sm); color: var(--ink-soft); cursor: pointer; font-size: 1rem; display: inline-flex; align-items: center; justify-content: center; }
   .icon-btn:hover { background: var(--hover); color: var(--ink); }
   .left .pad { padding: var(--space-tight) var(--space-control); }
-  .user-nav > .pad { padding-bottom: var(--space-hair); }
+  .user-nav > .pad { padding-inline: var(--space-tight); padding-bottom: 0; }
   .btn-new { width: 100%; display: flex; align-items: center; gap: var(--space-tight); background: none; color: var(--ink); border: none; border-radius: var(--r-sm); padding: var(--space-tight) var(--space-control); font-size: var(--fs-primary); font-weight: 500; cursor: pointer; text-align: left; }
   .btn-new:hover { background: var(--hover); }
   /* margin: keep the thumb outside the card shadow's perceptible reach —
@@ -747,17 +747,12 @@
   .new-row { display: flex; align-items: center; gap: var(--space-tight); }
   .new-row .btn-new { flex: 1; }
   .workspace-list-head { display: flex; align-items: center; justify-content: space-between; margin: 0 var(--space-control); padding: var(--space-hair) var(--space-tight) var(--space-hair); color: var(--ink); font-size: var(--fs-primary); font-weight: 600; }
-  .sessions .workspace-list-head { margin: 0 var(--space-hair); }
-  .sessions .workspace-list-head.divided { margin-top: var(--space-block); border-top: 1px solid var(--hairline); padding-top: var(--space-control); }
-  .sessions > :first-child .workspace-list-head.divided { margin-top: 0; }
-  /* Disclosure chevron on section titles (prototype round 2, variant B): the
-     16px slot joins .family-fold's column — family-fold anchors to .session-row
-     inside .sessions' 8px left padding, so its slot sits at x=16, center 24.
-     Both heads' absolute leading edge is 20px (Projects head is outside
-     .sessions: 12+8; loose head inside: 8+4+8), so one -4px offset serves both
-     and the title text then starts at x=36 like .sess rows (8+28). */
-  .workspace-list-title { display: flex; align-items: center; gap: var(--space-hair); min-width: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: inherit; cursor: pointer; padding: 0; text-align: left; margin-left: -4px; }
-  .workspace-list-title .tw { width: 16px; display: inline-flex; justify-content: center; font-size: var(--fs-micro); color: var(--text-3); transition: transform 0.12s; }
+  .sessions .workspace-list-head { margin: var(--space-tight) 0; }
+  .sessions > :first-child .workspace-list-head { margin-top: 0; }
+  .workspace-list-title { display: flex; align-items: center; gap: var(--space-tight); min-width: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: inherit; cursor: pointer; padding: 0; text-align: left; white-space: nowrap; }
+  .workspace-list-title .section-icon { color: var(--ink); }
+  .workspace-list-title .tw { width: 16px; display: inline-flex; justify-content: center; font-size: var(--fs-micro); color: var(--text-3); opacity: 0; transition: transform 0.12s; }
+  .workspace-list-head:hover .tw, .workspace-list-head:focus-within .tw { opacity: 1; }
   .workspace-list-title.closed .tw { transform: rotate(-90deg); }
   .workspace-list-title:hover { color: var(--ink-soft); }
   .workspace-list-actions { display: flex; align-items: center; gap: 1px; }
@@ -781,7 +776,13 @@
   .split-new { flex: 1; display: flex; align-items: stretch; min-width: 0; border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--canvas); overflow: visible; }
   .split-new .ws-pick { flex: 1; min-width: 0; }
   .split-new .ws-pick > .list-menu { left: 0; right: auto; width: min(320px, calc(100vw - 24px)); }
-  .split-new .ws-pick > summary { width: 100%; height: 100%; padding: var(--space-tight) var(--space-tight); display: flex; align-items: center; gap: var(--space-tight); border-radius: var(--r-md) 0 0 var(--r-md); font-size: var(--fs-primary); color: var(--ink-soft); }
+  /* The selector's outer border occupies 1px of the shared row inset. */
+  .split-new .ws-pick > summary { width: 100%; height: 100%; padding: var(--space-tight) var(--space-tight); padding-left: calc(var(--space-tight) - 1px); display: flex; align-items: center; gap: var(--space-tight); border-radius: var(--r-md) 0 0 var(--r-md); font-size: var(--fs-primary); color: var(--ink-soft); }
+  .files-entry .sess { padding-inline: var(--space-tight); }
+  .user-nav :is(.ws-pick > summary, .files-entry .sess, .workspace-list-title, .group-label.ws) > i:first-child {
+    display: inline-flex; align-items: center; justify-content: center;
+    flex: 0 0 1rem; width: 1rem; font-size: 1rem;
+  }
   .split-new .ws-pick > summary .ws-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .split-new .ws-pick > summary .caret { margin-left: auto; font-size: 0.7rem; color: var(--text-3); }
   .split-new .split-plus, .split-new .split-search { flex: 0 0 auto; width: 34px; display: flex; align-items: center; justify-content: center; border: none; border-left: 1px solid var(--hairline); background: none; border-radius: 0; cursor: pointer; color: var(--ink); }

@@ -50,6 +50,7 @@ export function SessionImportDialog({
   const [sourceId, setSourceId] = useState("");
   const [query, setQuery] = useState("");
   const [workspaceOverride, setWorkspaceOverride] = useState("");
+  const [projectOverride, setProjectOverride] = useState("");
   const [result, setResult] = useState<ImportResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -58,6 +59,7 @@ export function SessionImportDialog({
     if (!open) return;
     setQuery("");
     setWorkspaceOverride("");
+    setProjectOverride("");
     void fetchImportHarnesses()
       .then((next) => {
         setHarnessOptions(next);
@@ -111,7 +113,7 @@ export function SessionImportDialog({
       .sort(([, a], [, b]) => b[0]!.updatedAt.localeCompare(a[0]!.updatedAt))
       .map(([cwd, group]) => ({
         cwd,
-        label: cwd ? folderLabel(cwd) : t("Independent conversations"),
+        label: cwd ? folderLabel(cwd) : t("Standalone conversations"),
         sessions: group,
       }));
   }, [visibleSessions]);
@@ -122,6 +124,7 @@ export function SessionImportDialog({
     }
     setSourceId(visibleSessions[0]?.sourceId ?? "");
     setWorkspaceOverride("");
+    setProjectOverride("");
     setResult(null);
   }, [open, sourceId, visibleSessions]);
 
@@ -142,10 +145,12 @@ export function SessionImportDialog({
         sourceId,
         preflightOnly,
         workspaceOverride: workspaceOverride || undefined,
+        projectId: preflightOnly ? undefined : projectOverride || result?.projectId || undefined,
       });
       setResult(next);
       if (!preflightOnly && next.sessionId) {
         await app.refreshSessions();
+        await app.refreshWorkingFolders();
         main.openCatalogSession(next.sessionId);
         onClose();
       }
@@ -197,6 +202,7 @@ export function SessionImportDialog({
                 setQuery("");
                 setWorkspaceOverride("");
                 setResult(null);
+                setProjectOverride("");
               }}
             />
           </span>
@@ -231,6 +237,7 @@ export function SessionImportDialog({
               setSourceId(event.target.value);
               setWorkspaceOverride("");
               setResult(null);
+              setProjectOverride("");
             }}
           >
             {workspaceGroups.length === 0 ? (
@@ -280,6 +287,7 @@ export function SessionImportDialog({
                 if (!path?.trim()) return;
                 setWorkspaceOverride(path.trim());
                 setResult(null);
+                setProjectOverride("");
               }}
             >
               {workspaceOverride ? t("Change folder…") : t("Choose replacement folder…")}
@@ -302,6 +310,25 @@ export function SessionImportDialog({
 
         {result?.status === "ready" ? (
           <div className="mt-4 rounded-md border border-hairline bg-canvas p-3 text-sm">
+            {(result.projectCandidates?.length ?? 0) > 1 ? (
+              <label className="mb-3 block">
+                {t("Destination project")}
+                <MenuSelect
+                  ariaLabel={t("Destination project")}
+                  value={projectOverride || result.projectId || ""}
+                  disabled={busy}
+                  options={result.projectCandidates!.map((project) => ({
+                    value: project.id,
+                    label: `${project.name || folderLabel(project.primaryDir)} · ${project.primaryDir}`,
+                  }))}
+                  onChange={setProjectOverride}
+                />
+              </label>
+            ) : result.workspacePrimaryDir ? (
+              <p className="mb-3 text-text-secondary" data-tip={result.workspacePrimaryDir}>
+                {t("Project: {name}", { name: result.projectCandidates?.[0]?.name || folderLabel(result.workspacePrimaryDir) })}
+              </p>
+            ) : null}
             <p className="font-medium text-ink">{t("Ready to continue this conversation.")}</p>
             <p className="mt-1 text-text-secondary">
               {t("The main conversation becomes active history. Preserved supporting records remain available when the agent needs to search them.")}

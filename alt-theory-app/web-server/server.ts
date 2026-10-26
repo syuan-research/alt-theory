@@ -139,6 +139,7 @@ import {
   ImportHarnessNotImplementedError,
   discoverImportSessions,
   getImportAdapter,
+  importProjectCandidates,
   isImportHarness,
 } from "./session-import.js";
 import { ImportRefusalError } from "./session-import-shared.js";
@@ -1111,6 +1112,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       workspaceOverrides?: unknown;
       visibility?: unknown;
       preflightOnly?: unknown;
+      projectId?: unknown;
     };
     const selection = body.selection ?? "selected";
     // Imported conversations start from the default permission, never Full.
@@ -1142,6 +1144,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     const visibility =
       body.visibility === "exportable" ? "exportable" : "no-export";
     const preflightOnly = body.preflightOnly === true;
+    const projectId = typeof body.projectId === "string" ? body.projectId : undefined;
 
     try {
       const adapter = getImportAdapter(harness);
@@ -1165,6 +1168,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       }
       const metadata = sessionCreationMetadata(visibility);
       const importSelectors = createDraftSelectors();
+      const importSessions = listSessionSummaries(dataDir).sessions;
       const results = selected.map((source) => {
         if (source.repeat === "unchanged" && changedSourcePolicy !== "copy") {
           return {
@@ -1192,12 +1196,28 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         }
         try {
           const preflight = adapter.preflight(source);
+          const settings = readAppSettings(dataDir);
+          const projects = settings.workingFolders?.projects ?? [];
+          const folder = resolve(workspacePrimaryDir ?? source.cwd);
+          const candidates = importProjectCandidates(folder, projects, importSessions);
+          const project = projectId ? candidates.find((item) => item.id === projectId) : candidates[0];
+          if (projectId && !project) throw new Error("The selected project no longer matches the source folder. Check the conversation again.");
+          const targetDir = project?.primaryDir ?? folder;
+          if (!statSync(targetDir, { throwIfNoEntry: false })?.isDirectory()) {
+            throw new Error(`Folder does not exist: ${targetDir}`);
+          }
+          const destination = {
+            projectCandidates: candidates.map(({ id, name, primaryDir }) => ({ id, name, primaryDir })),
+            projectId: project?.id ?? null,
+            workspacePrimaryDir: targetDir,
+          };
           if (preflightOnly) {
             return {
               sourceId: source.sourceId,
               status: "ready" as const,
               sessionId: null,
               transformations: preflight.transformations,
+              ...destination,
             };
           }
           const registered = adapter.register({
@@ -1205,11 +1225,20 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             source,
             preflight,
             mode,
-            workspacePrimaryDir,
+            workspacePrimaryDir: targetDir,
             rolePresetSlug: importSelectors.rolePresetSlug,
             soulSlug: importSelectors.soulSlug,
             ...metadata,
           });
+          if (!project) {
+            writeAppSettings(dataDir, {
+              ...settings,
+              workingFolders: {
+                global: settings.workingFolders?.global ?? [],
+                projects: [...projects, { id: randomUUID(), primaryDir: targetDir, secondaryDirs: [] }],
+              },
+            });
+          }
           return {
             sourceId: source.sourceId,
             status: preflight.transformations.length
@@ -1217,6 +1246,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               : ("imported" as const),
             sessionId: registered.sessionId,
             transformations: preflight.transformations,
+            ...destination,
           };
         } catch (error) {
           if (error instanceof ImportRefusalError) {

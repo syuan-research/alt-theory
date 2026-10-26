@@ -115,7 +115,15 @@ The alias is
 `{source name} · {harness} import {date} #{ordinal}`.
 
 The imported cwd uses the normal `workspace.primaryDir`. It must exist unless
-the caller supplies an existing replacement. Mode, role, soul, tools,
+the caller supplies an existing replacement. Import resolves that folder to an
+existing project by exact main-folder match first, then exact secondary-folder
+match. Multiple secondary matches are ordered by the latest actual conversation
+activity within each project, using shared/session-recency.ts; preflight returns
+the candidates and selected project. The dialog preselects the most recent and
+allows a change without another confirmation. The selected project's main folder
+becomes the imported conversation's main folder. With no match, successful import
+registers a new project for the source/replacement folder. No standalone target
+or parent-directory matching is offered. Mode, role, soul, tools,
 permissions, model, and system prompt are normal Alt Theory runtime choices;
 source runtime configuration is historical evidence, not active
 configuration.

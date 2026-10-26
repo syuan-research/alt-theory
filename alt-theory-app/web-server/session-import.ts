@@ -12,6 +12,10 @@ import {
 } from "fs";
 import { homedir } from "os";
 import { basename, dirname, join, resolve } from "path";
+import { samePath } from "../core/path-verdict.js";
+import { sessionActivityTime } from "../shared/session-recency.js";
+import type { ProjectFolderSettings } from "./app-settings.js";
+
 import {
   parseSessionEntries,
   SessionManager,
@@ -49,6 +53,22 @@ import {
   preflightClaudeCodeSession,
 } from "./claude-code-session-import.js";
 import { ImportRefusalError } from "./session-import-shared.js";
+
+/** Exact main-folder matches win; shared companions prefer recent project activity. */
+export function importProjectCandidates(
+  folder: string,
+  projects: ProjectFolderSettings[],
+  sessions: Array<{ workspacePrimaryDir?: string | null; updatedAt?: string | null; createdAt?: string | null; deletedAt?: string | null }>,
+): ProjectFolderSettings[] {
+  const primary = projects.find((project) => samePath(project.primaryDir, folder));
+  if (primary) return [primary];
+  const candidates = projects.filter((project) => project.secondaryDirs.some((dir) => samePath(dir, folder)));
+  const activity = new Map(candidates.map((project) => [project.id,
+    sessions.reduce((latest, session) => !session.deletedAt && session.workspacePrimaryDir && samePath(session.workspacePrimaryDir, project.primaryDir)
+      ? Math.max(latest, sessionActivityTime(session)) : latest, 0),
+  ]));
+  return candidates.sort((a, b) => activity.get(b.id)! - activity.get(a.id)! || a.primaryDir.localeCompare(b.primaryDir));
+}
 
 export const IMPORT_HARNESSES = [
   "pi",

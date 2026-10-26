@@ -398,6 +398,7 @@ function SessionRootList({
   onOpen,
   draggable,
   cap,
+  emptyLabel = t("No conversations"),
 }: {
   roots: SessionSummary[];
   tree: WorkspaceTree;
@@ -410,12 +411,13 @@ function SessionRootList({
   onOpen: (id: string) => void;
   draggable: boolean;
   cap: number;
+  emptyLabel?: string;
 }) {
   const shown = expanded || visibleIds !== null ? roots : roots.slice(0, cap);
   return (
     <>
       {roots.length === 0 ? (
-        <div className="rp-empty ws-empty">{t("No conversations yet.")}</div>
+        <div className="rp-empty ws-empty">{emptyLabel}</div>
       ) : null}
       {shown.map((root) => (
         <SessionNode
@@ -645,7 +647,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
       return;
     }
     if ((dir ?? "") === (conv.workspacePrimaryDir ?? "")) return;
-    const label = dir ? folderLabel(dir) : t("Independent conversations");
+    const label = dir ? folderLabel(dir) : t("Standalone conversations");
     app.requestConfirm({
       message: t("Move this conversation to work in \"{label}\"?", { label }),
       details: [
@@ -712,7 +714,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
     const project = projectByDir.get(dir);
     app.requestConfirm({
       message:
-        t("Move this project's conversations to Independent conversations, then remove the project from the list? Conversations and files are not deleted."),
+        t("Move this project's conversations to Standalone conversations, then remove the project from the list? Conversations and files are not deleted."),
       ...(project?.secondaryDirs.length
         ? {
             details: [
@@ -739,7 +741,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
     const dragged = app.sessions.find((s) => s.sessionId === sessionId);
     const sourceDir = dragged?.workspacePrimaryDir || "";
     if ((target ?? "") === sourceDir) return; // dropped back on its own folder
-    const label = target ? folderLabel(target) : t("Independent conversations");
+    const label = target ? folderLabel(target) : t("Standalone conversations");
 
     // Whole-folder migration (item 4): when the dragged conversation's current
     // folder holds other conversations too (the "renamed/merged folder" case),
@@ -810,13 +812,13 @@ function UserNav({ onImport }: { onImport: () => void }) {
           <div className="split-new">
             <details className="list-more ws-pick">
               <summary
-                data-tip={conv.workspacePrimaryDir ?? t("Independent conversations")}
+                data-tip={conv.workspacePrimaryDir ?? t("Standalone conversations")}
               >
                 <i className={`ph ${conv.workspacePrimaryDir ? "ph-stack" : "ph-note"}`} />
                 <span className="ws-label">
                   {conv.workspacePrimaryDir
                     ? folderLabel(conv.workspacePrimaryDir)
-                    : t("Independent conversations")}
+                    : t("Standalone conversations")}
                 </span>
                 <i className="ph ph-caret-down caret" />
               </summary>
@@ -838,7 +840,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   }}
                 >
                   <i className="ph ph-note" />
-                  {t("Independent conversations")}
+                  {t("Standalone conversations")}
                   {!conv.workspacePrimaryDir ? (
                     <i className="ph ph-check check" />
                   ) : null}
@@ -928,7 +930,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
         ) : (
           <>
             {(() => {
-              const looseLabel = t("Independent conversations");
+              const looseLabel = t("Standalone conversations");
               const folderHit = searchScope === "names" && visibleIds !== null &&
                 quickFindScore(quickFindTerms(railQuery), [{ text: looseLabel, weight: 10 }]) > 0;
               const looseRoots = looseGroup?.roots ?? [];
@@ -953,15 +955,17 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   }
                   onDrop={(e) => dropSession("", e)}
                 >
-                  <div className="workspace-list-head divided">
+                  <div className="workspace-list-head">
                     <button
                       type="button"
                       className={`workspace-list-title${looseCollapsed ? " closed" : ""}`}
                       aria-expanded={!looseCollapsed}
+                      data-tip={looseLabel}
                       onClick={() => setLooseCollapsed((value) => !value)}
                     >
+                      <i className="ph ph-chat section-icon" aria-hidden="true" />
+                      {t("Standalone")}
                       <i className="ph ph-caret-down tw" aria-hidden="true" />
-                      {looseLabel}
                     </button>
                     <div className="workspace-list-actions">
                       <button
@@ -994,21 +998,23 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     onOpen={openSession}
                     draggable
                     cap={GROUP_CAP}
+                    emptyLabel={t("No standalone conversations")}
                   />
                   )}
                 </div>
               );
             })()}
-            {/* Independent conversations come first (owner 2026-09-25). */}
-            <div className="workspace-list-head divided">
+            {/* Standalone conversations come first (owner 2026-09-25). */}
+            <div className="workspace-list-head">
               <button
                 type="button"
                 className={`workspace-list-title${projectsCollapsed ? " closed" : ""}`}
                 aria-expanded={!projectsCollapsed}
                 onClick={() => setProjectsCollapsed((value) => !value)}
               >
-                <i className="ph ph-caret-down tw" aria-hidden="true" />
+                <i className="ph ph-stack section-icon" aria-hidden="true" />
                 {t("Projects")}
+                <i className="ph ph-caret-down tw" aria-hidden="true" />
               </button>
               <div className="workspace-list-actions">
                 <button
@@ -1071,6 +1077,8 @@ function UserNav({ onImport }: { onImport: () => void }) {
                 </details>
               </div>
             </div>
+            {!projectsCollapsed && visibleIds === null && projectGroups.length === 0 ?
+              <div className="rp-empty ws-empty">{t("No projects")}</div> : null}
             {(!projectsCollapsed || visibleIds !== null) && projectGroups.map((group) => {
             const closed = closedGroups.has(group.dir) && visibleIds === null;
             const project = projectByDir.get(group.dir);

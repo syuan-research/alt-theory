@@ -176,7 +176,7 @@ surfaces remain designation-gated and absent for everyone else.
     sorting. Search sits in the new-conversation row's control group, left of
     the new-conversation button, and filters projects and the Independent
     conversations section alike. These controls do not change
-    conversation-family folding or the Independent conversations section's own
+    conversation-family folding or the Standalone conversations section's own
     collapse state.
   - The search field switches between **Names** (title, project folder name
     and summary metadata, with unordered word matching; a query containing

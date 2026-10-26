@@ -1981,7 +1981,10 @@ function AboutPanel() {
       <p className="sub">Alt Theory v{version}.</p>
       {hasNativeBridge() ? (
         <div className="set-card">
-          <button className="add-btn" onClick={() => versions.setOpen(true)}>{t("Versions")}</button>
+          <div className="row2">
+            <p>{t("View release notes and check for updates.")}</p>
+            <button className="add-btn" onClick={() => versions.setOpen(true)}>{t("Versions")}</button>
+          </div>
         </div>
       ) : null}
       {dataDir ? (
