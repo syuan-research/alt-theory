@@ -144,13 +144,14 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
   // or stopped for an approval while you were elsewhere leaves a mark that
   // survives until it is opened. From the pushed activity's transitions (WP-4).
   const raiseAlerts = (changes: ActivityChange[]) => {
-    const raised: Record<string, SessionAlert> = alertsFor(changes, sessionId);
-    for (const [id, alert] of Object.entries(raised)) {
+    // An open conversation can still finish while the app is in the background.
+    for (const [id, alert] of Object.entries(alertsFor(changes, null))) {
       const name = app.sessionDisplayNames[id]?.alias || t("A conversation");
       if (alert === "done") notifyBackground(t("Work finished"), t("{name} finished its turn.", { name }));
       else if (alert === "failed") notifyBackground(t("Work stopped"), t("{name} ran into an error.", { name }));
       else notifyBackground(t("Waiting for you"), t("{name} needs your approval.", { name }));
     }
+    const raised: Record<string, SessionAlert> = alertsFor(changes, sessionId);
     if (Object.keys(raised).length > 0) setSessionAlerts((prev) => ({ ...prev, ...raised }));
   };
 
