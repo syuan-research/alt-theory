@@ -4,11 +4,11 @@
  * hand-edit policy as zh-Hans.ts.
  */
 const catalog: Record<string, string> = {
-  "Major updates": "重要更新",
+  "Major update history": "重要更新歷史",
   "Versions": "版本",
   "Update available": "有新版",
   "New version": "新版更新",
-  "What's new": "本版更新說明",
+  "What's new": "本版更新",
   "Release notes are available on the release page.": "更新說明可在發佈頁面查看。",
   "Could not check for updates.": "暫時無法檢查更新。",
   "{count} conversations need your attention": "{count} 條對話需要你留意",

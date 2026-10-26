@@ -5,7 +5,7 @@
 - [Permissions and safety] Four permission levels replaced the Understand/Work modes; Smart approval is the default for new conversations, with an approval model confirming actions on your behalf
 - [Permissions and safety] Deletion protection: your home folder, Desktop, Documents, whole disks and the project itself cannot simply be deleted
 - [Coordination] Conversations can message each other; dedicated agents — one that reads the literature, one that reviews writing style — can be kept and consulted by you and the main agent, reused across stages or projects
-- [Files] New Conversation files page
+- [Files] New Conversation files page for managing content in conversation-specific folders outside project folders
 - [Conversation] Select text to annotate: highlight, underline, strikethrough
 - [Conversation] Every conversation keeps its own unsent draft, surviving switches and restarts
 - [Smoothness] Long conversations scroll, hold memory, and install noticeably lighter

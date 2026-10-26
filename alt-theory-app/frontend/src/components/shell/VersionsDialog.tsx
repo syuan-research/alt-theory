@@ -50,7 +50,7 @@ export function VersionsDialog() {
     <nav>
       {status?.newer ? <button className={latest ? "on" : ""} onClick={() => setPage("latest")}>{t("New version")}</button> : null}
       <button className={page === "current" ? "on" : ""} onClick={() => setPage("current")}>{t("What's new")}</button>
-      <button className={page === "timeline" ? "on" : ""} onClick={() => setPage("timeline")}>{t("Major updates")}</button>
+      <button className={page === "timeline" ? "on" : ""} onClick={() => setPage("timeline")}>{t("Major update history")}</button>
     </nav>
     {notes ? <div className="markdown-body version-notes" dangerouslySetInnerHTML={{ __html: renderMarkdown(notes) }}
       onClick={(event) => {

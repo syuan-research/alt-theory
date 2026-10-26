@@ -9,17 +9,9 @@
 
 This small update improves everyday use.
 
-### Projects and folders
-
-- Opening a conversation no longer changes its activity time or list position.
-
-### Permissions and safety
-
-- Commands checked by the approval model show a shield with the result and reason on hover.
-
-### Interface
-
-- The Versions entry provides release notes, major updates and update downloads.
+- [Projects and folders] Opening a conversation no longer changes its activity time or list position.
+- [Permissions and safety] Commands checked by the approval model show a shield with the result and reason on hover.
+- [Interface] The Versions entry provides release notes, major updates and update downloads.
 
 ## v1.9.1 — 2026-10-23
 

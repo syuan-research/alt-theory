@@ -5,11 +5,11 @@
  * wording here AND noting it in the glossary so regeneration keeps it.
  */
 const catalog: Record<string, string> = {
-  "Major updates": "重要更新",
+  "Major update history": "重要更新历史",
   "Versions": "版本",
   "Update available": "有新版",
   "New version": "新版更新",
-  "What's new": "本版更新说明",
+  "What's new": "本版更新",
   "Release notes are available on the release page.": "更新说明可在发布页面查看。",
   "Could not check for updates.": "暂时无法检查更新。",
   "{count} conversations need your attention": "{count} 条对话需要你关注",
