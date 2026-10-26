@@ -129,6 +129,40 @@ function unanchorMenu(details: HTMLDetailsElement) {
 export function LeftNav({ hidden = false }: { hidden?: boolean }) {
   const main = useMainView();
   const shell = useShell();
+  const railRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const closeOpenMenus = (event: PointerEvent) => {
+      railRef.current?.querySelectorAll<HTMLDetailsElement>(
+        "details.list-more[open], details.help-menu[open]",
+      ).forEach((details) => {
+        if (!details.contains(event.target as Node)) details.open = false;
+      });
+    };
+    const closeAllMenus = (event: Event) => {
+      railRef.current?.querySelectorAll<HTMLDetailsElement>("details.list-more[open]").forEach((details) => {
+        if (scrollAffectsAnchor(details, event.target)) details.open = false;
+      });
+    };
+    const closeTopMenu = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      const open = railRef.current?.querySelectorAll<HTMLDetailsElement>(
+        "details.list-more[open], details.help-menu[open]",
+      );
+      const details = open?.[open.length - 1];
+      if (!details) return;
+      event.preventDefault();
+      details.open = false;
+      details.querySelector<HTMLElement>("summary")?.focus();
+    };
+    document.addEventListener("pointerdown", closeOpenMenus);
+    document.addEventListener("scroll", closeAllMenus, { capture: true });
+    document.addEventListener("keydown", closeTopMenu);
+    return () => {
+      document.removeEventListener("pointerdown", closeOpenMenus);
+      document.removeEventListener("scroll", closeAllMenus, { capture: true });
+      document.removeEventListener("keydown", closeTopMenu);
+    };
+  }, []);
 
   // Settings surface: same persistent rail instance, content swapped for the
   // settings nav (foot is only "Back to app"; collapsed strip is logo + ←).
@@ -137,7 +171,7 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
   }
 
   return (
-    <aside className="left" hidden={hidden}>
+    <aside ref={railRef} className="left" hidden={hidden}>
       {/* Clicking empty space expands the collapsed rail. */}
       <div
         className="mini"
@@ -192,7 +226,7 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
           <i className="ph ph-chat" />
         </button>
         <div style={{ flex: 1 }} />
-        <VersionsEntry compact />
+        <VersionsEntry />
         <HelpMenu compact />
         <button
           className="mini-gear"
@@ -227,12 +261,14 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
         <Workbench />
 
         <div className="left-foot">
-          <VersionsEntry />
           <button className="gear" onClick={() => shell.openSettings()}>
             <i className="ph ph-gear" />
             {t("Settings")}
           </button>
-          <HelpMenu />
+          <div className="left-foot-tools">
+            <VersionsEntry />
+            <HelpMenu />
+          </div>
         </div>
       </div>
       <SessionImportDialog
@@ -484,49 +520,6 @@ function UserNav({ onImport }: { onImport: () => void }) {
 
   useEffect(() => {
     void getSessionListSort().then(setListSort);
-  }, []);
-
-  useEffect(() => {
-    const closeOpenMenus = (event: PointerEvent) => {
-      navRef.current
-        ?.querySelectorAll<HTMLDetailsElement>(
-          "details.list-more[open], details.help-menu[open]",
-        )
-        .forEach((details) => {
-          if (!details.contains(event.target as Node)) details.open = false;
-        });
-    };
-    // position:fixed menus keep their layout-time spot while the list
-    // scrolls beneath them (opus C2) — a scrolled menu could sit over row B
-    // with row A's Delete bound to it. Close them when their own pane scrolls.
-    const closeAllMenus = (event: Event) => {
-      navRef.current
-        ?.querySelectorAll<HTMLDetailsElement>("details.list-more[open]")
-        .forEach((details) => {
-          if (scrollAffectsAnchor(details, event.target)) details.open = false;
-        });
-    };
-    const closeTopMenu = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      const open = navRef.current?.querySelectorAll<HTMLDetailsElement>(
-        "details.list-more[open], details.help-menu[open]",
-      );
-      const details = open?.[open.length - 1];
-      if (!details) return;
-      event.preventDefault();
-      details.open = false;
-      details.querySelector<HTMLElement>("summary")?.focus();
-    };
-    document.addEventListener("pointerdown", closeOpenMenus);
-    document.addEventListener("scroll", closeAllMenus, { capture: true });
-    document.addEventListener("keydown", closeTopMenu);
-    return () => {
-      document.removeEventListener("pointerdown", closeOpenMenus);
-      document.removeEventListener("scroll", closeAllMenus, {
-        capture: true,
-      });
-      document.removeEventListener("keydown", closeTopMenu);
-    };
   }, []);
 
   const tree = useMemo(

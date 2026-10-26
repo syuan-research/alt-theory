@@ -4,19 +4,19 @@ import { currentLang, t } from "@/i18n";
 import { hasNativeBridge, openExternal } from "@/lib/native";
 import { releaseNotes } from "@/lib/versions";
 import { renderMarkdown } from "@/lib/markdown";
+import { Button } from "@/components/ui/Button";
 import en from "../../../../../CHANGELOG.md?raw";
 import hans from "../../../../../CHANGELOG.zh-Hans.md?raw";
 import hant from "../../../../../CHANGELOG.zh-Hant-HK.md?raw";
 
-export function VersionsEntry({ compact = false }: { compact?: boolean }) {
+export function VersionsEntry() {
   const { versions } = useShell();
-  return <button className={compact ? "versions-entry" : "gear versions-entry"}
-    data-tip={compact ? t("Versions") : undefined} aria-label={t("Versions")}
+  return <button className="icon-btn versions-entry"
+    data-tip={versions.status?.newer ? `${t("Versions")} · ${t("Update available")}` : t("Versions")} aria-label={t("Versions")}
     onClick={() => versions.setOpen(true)}>
     <i className="ph ph-info" aria-hidden="true" />
-    {!compact ? t("Versions") : null}
     {versions.status?.newer ? <span className="version-update" aria-label={t("Update available")}>
-      <i className="ph ph-arrow-up" aria-hidden="true" />{!compact ? t("Update available") : null}
+      <i className="ph ph-arrow-up" aria-hidden="true" />
     </span> : null}
   </button>;
 }
@@ -42,7 +42,7 @@ export function VersionsDialog() {
       if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) close();
     } }}>
     <header><h2 id="versions-title">Alt Theory {version}</h2>
-      <button className="flat" onClick={close} aria-label={t("Close")}><i className="ph ph-x" /></button></header>
+      <Button variant="ghost" onClick={close} aria-label={t("Close")}><i className="ph ph-x" /></Button></header>
     <nav>
       {status?.newer ? <button className={latest ? "on" : ""} onClick={() => setLatest(true)}>{t("New version")}</button> : null}
       <button className={!latest ? "on" : ""} onClick={() => setLatest(false)}>{t("What's new")}</button>
@@ -54,9 +54,9 @@ export function VersionsDialog() {
       }} /> : <p>{t("Release notes are available on the release page.")}</p>}
     {versions.error ? <p>{t("Could not check for updates.")}</p> : versions.checked && !status?.newer ? <p>{t("No newer version.")}</p> : null}
     <footer>
-      {hasNativeBridge() ? <button className="flat" disabled={versions.checking} onClick={() => void versions.check()}>{t("Check for updates")}</button> : null}
-      {latest && status?.htmlUrl ? <button className="flat" onClick={() => void openExternal(status.htmlUrl!)}>{t("Open download page")}</button> : null}
-      <button className="flat" onClick={close}>{t("Close")}</button>
+      {hasNativeBridge() ? <Button variant="secondary" disabled={versions.checking} onClick={() => void versions.check()}>{t("Check for updates")}</Button> : null}
+      {latest && status?.htmlUrl ? <Button variant="primary" onClick={() => void openExternal(status.htmlUrl!)}>{t("Open download page")}</Button> : null}
+      <Button variant={latest && status?.htmlUrl ? "secondary" : "primary"} onClick={close}>{t("Close")}</Button>
     </footer>
   </dialog>;
 }

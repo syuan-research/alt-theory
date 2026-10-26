@@ -15,13 +15,9 @@ export function HelpMenu({
   return (
     <details
       className={"help-menu" + (compact ? " compact" : "")}
-      onKeyDown={(event) => {
-        if (event.key === "Escape") event.currentTarget.removeAttribute("open");
-      }}
     >
-      <summary data-tip={t("Help")}>
-        <i className="ph ph-lifebuoy" />
-        {compact ? null : t("Help")}
+      <summary data-tip={t("Help")} aria-label={t("Help")}>
+        <i className="ph ph-question" aria-hidden="true" />
       </summary>
       <div className="help-popover">
         <button
@@ -43,7 +39,7 @@ export function HelpMenu({
             shell.openSettings("features");
           }}
         >
-          <i className="ph ph-lifebuoy" />
+          <i className="ph ph-question" aria-hidden="true" />
           <span>{t("Help center")}</span>
         </button>
       </div>

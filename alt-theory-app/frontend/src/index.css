@@ -495,13 +495,13 @@
   /* Collapsed conversation rail (LeftNav) still uses the icon strip. */
   .left .mini { display: none; flex-direction: column; align-items: center; gap: var(--space-tight); padding-top: var(--space-control); padding-bottom: var(--space-tight); flex: 1; }
   .app-root.leftCol .left .mini { display: flex; }
-  .mini button { width: 36px; height: 36px; border: none; background: transparent; border-radius: var(--r-sm); color: var(--text-2); cursor: pointer; font-size: 1rem; display: inline-flex; align-items: center; justify-content: center; }
+  .mini > button { width: 36px; height: 36px; border: none; background: transparent; border-radius: var(--r-sm); color: var(--text-2); cursor: pointer; font-size: 1rem; display: inline-flex; align-items: center; justify-content: center; }
   /* Row heights follow the expanded rows (project row 33px, list header 32px)
      and the two foot glyphs match the foot's own size, so collapsing moves the
      icons by ~1px instead of a visible step. */
   .mini .mini-new { height: 34px; }
   .mini .mini-search, .mini .mini-gear { font-size: var(--fs-primary); }
-  .mini button:hover { background: var(--hover); }
+  .mini > button:hover { background: var(--hover); }
   .mini .mono { font-family: var(--brand); font-weight: 600; font-size: var(--fs-title); color: var(--ink); }
   /* Pin the collapsed logo to the exact spot the expanded head paints it
      (left-head padding 12/12, .brand-mark 24px in a 30px row → x12 y15). */
@@ -523,6 +523,7 @@
   .icon-btn { width: 30px; height: 30px; border: none; background: transparent; border-radius: var(--r-sm); color: var(--ink-soft); cursor: pointer; font-size: 1rem; display: inline-flex; align-items: center; justify-content: center; }
   .icon-btn:hover { background: var(--hover); color: var(--ink); }
   .left .pad { padding: var(--space-tight) var(--space-control); }
+  .user-nav > .pad { padding-bottom: var(--space-hair); }
   .btn-new { width: 100%; display: flex; align-items: center; gap: var(--space-tight); background: none; color: var(--ink); border: none; border-radius: var(--r-sm); padding: var(--space-tight) var(--space-control); font-size: var(--fs-primary); font-weight: 500; cursor: pointer; text-align: left; }
   .btn-new:hover { background: var(--hover); }
   /* margin: keep the thumb outside the card shadow's perceptible reach —
@@ -569,7 +570,7 @@
   @media (prefers-reduced-motion: reduce) { .activity-shimmer { animation: none; background: none; color: var(--focus-ring); } }
   .versions-entry { position: relative; }
   .version-update { margin-left: auto; color: var(--focus-ring); display: inline-flex; align-items: center; gap: var(--space-hair); font-size: var(--fs-micro); }
-  .mini .versions-entry .version-update { position: absolute; right: 0; top: 0; }
+  .versions-entry .version-update { position: absolute; right: 0; top: 0; }
   .versions-dialog { width: min(560px, 90vw); max-height: 80vh; margin: auto; overflow: auto; padding: var(--space-column); color: var(--ink); }
   .versions-dialog::backdrop { background: rgb(0 0 0 / .25); }
   .versions-dialog header, .versions-dialog footer, .versions-dialog nav { display: flex; align-items: center; gap: var(--space-control); }
@@ -596,18 +597,17 @@
   .search-box .s-result:hover { background: var(--hover); }
   .search-box .recent { padding: var(--space-hair) var(--space-control) var(--space-control); font-size: var(--fs-secondary); color: var(--text-3); }
 
-  .update-line .link-btn { background: none; border: none; padding: 0; color: var(--ink-soft); cursor: pointer; font: inherit; text-decoration: underline; text-underline-offset: 2px; }
-  .update-line .link-btn:hover { color: var(--ink); }
   .left-foot { border-top: 1px solid var(--hairline); padding: var(--space-control) var(--space-control); display: flex; align-items: center; gap: var(--space-control); }
+  .left-foot-tools { margin-left: auto; display: flex; align-items: center; gap: var(--space-tight); flex-shrink: 0; }
   .left-foot .gear { display: flex; align-items: center; gap: var(--space-tight); color: var(--ink-soft); cursor: pointer; padding: var(--space-tight) var(--space-control); border-radius: var(--r-sm); font-size: var(--fs-primary); background: none; border: none; }
   .left-foot .gear:hover { background: var(--hover); }
   .help-menu { position: relative; }
-  .help-menu > summary { list-style: none; display: flex; align-items: center; gap: var(--space-tight); color: var(--ink-soft); cursor: pointer; padding: var(--space-tight) var(--space-control); border-radius: var(--r-sm); font-size: var(--fs-primary); }
+  .help-menu > summary { list-style: none; display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; color: var(--ink-soft); cursor: pointer; border-radius: var(--r-sm); font-size: 1rem; }
   .help-menu > summary::-webkit-details-marker { display: none; }
   .help-menu > summary:hover { background: var(--hover); }
   .help-menu.compact > summary { width: 36px; height: 36px; justify-content: center; padding: 0; font-size: var(--fs-primary); color: var(--text-2); }
-  .help-popover { position: absolute; z-index: 80; left: 0; bottom: calc(100% + 6px); width: 238px; padding: var(--space-tight); border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--canvas); box-shadow: var(--shadow-popup); }
-  .help-menu.compact .help-popover { left: 44px; bottom: 0; }
+  .help-popover { position: absolute; z-index: 80; right: 0; bottom: calc(100% + 6px); width: 238px; padding: var(--space-tight); border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--canvas); box-shadow: var(--shadow-popup); }
+  .help-menu.compact .help-popover { left: 44px; right: auto; bottom: 0; }
   .help-popover button { width: 100%; min-height: 36px; display: flex; align-items: flex-start; gap: var(--space-control); padding: var(--space-tight) var(--space-control); border: 0; border-radius: var(--r-sm); background: none; color: var(--ink-soft); text-align: left; cursor: pointer; }
   .help-popover button:hover { background: var(--hover); color: var(--ink); }
   .help-popover i { margin-top: 1px; }
@@ -749,6 +749,7 @@
   .workspace-list-head { display: flex; align-items: center; justify-content: space-between; margin: 0 var(--space-control); padding: var(--space-hair) var(--space-tight) var(--space-hair); color: var(--ink); font-size: var(--fs-primary); font-weight: 600; }
   .sessions .workspace-list-head { margin: 0 var(--space-hair); }
   .sessions .workspace-list-head.divided { margin-top: var(--space-block); border-top: 1px solid var(--hairline); padding-top: var(--space-control); }
+  .sessions > :first-child .workspace-list-head.divided { margin-top: 0; }
   /* Disclosure chevron on section titles (prototype round 2, variant B): the
      16px slot joins .family-fold's column — family-fold anchors to .session-row
      inside .sessions' 8px left padding, so its slot sits at x=16, center 24.
@@ -1765,5 +1766,5 @@
 .thumb:hover { background: var(--row-active); }
 .thumb img, .thumb video { display: block; width: 120px; height: 90px; object-fit: cover; border-radius: var(--radius-sm); background: var(--card); pointer-events: none; }
 .thumb .s-title { font-size: var(--fs-micro); color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mini button.on { background: var(--selected); color: var(--ink); }
+.mini > button.on { background: var(--selected); color: var(--ink); }
 .files-entry .sess:not(.active) { color: var(--text-2); }
