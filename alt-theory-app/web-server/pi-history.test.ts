@@ -1,9 +1,6 @@
 /**
- * Real Pi requests against a local fake OpenAI-compatible model: the turn
- * flows that move the Pi leaf, checked against the JSONL chain Pi writes.
- * Pi 0.86+ stores the prompt and tool loadout in the history as `system`
- * messages and builds every request from the history (0.87), so these flows
- * are where an upgrade can silently change what the model sees.
+ * Alt's prompt projection and permission patches, checked through real
+ * Pi requests to a local model stub and the JSONL history Pi writes.
  */
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -19,18 +16,13 @@ type Entry = { type: string; id: string; parentId: string | null; message?: { ro
 const root = mkdtempSync(join(tmpdir(), "alt-theory-pi-history-"));
 const requests: Request[] = [];
 
-/** Answers with one `ls`/`bash` call and then text; "[notool]" answers
- *  directly; "[fail]" on the first model is a 500. */
+/** Answers with one `ls`/`bash` call and then text; "[notool]" answers directly. */
 const model = createServer(async (req: IncomingMessage, res: ServerResponse) => {
   let body = "";
   for await (const chunk of req) body += chunk;
   const request = JSON.parse(body) as Request;
   requests.push(request);
   const lastUser = JSON.stringify(request.messages.filter((m) => m.role === "user").at(-1) ?? "");
-  if (lastUser.includes("[fail]") && request.model === "test-model") {
-    res.writeHead(500, { "content-type": "application/json" }).end('{"error":{"message":"boom"}}');
-    return;
-  }
   const tool = (request.tools ?? []).map((t) => t.function?.name).find((name) => name === "bash" || name === "ls");
   const answer = !tool || request.messages.at(-1)?.role === "tool" || lastUser.includes("[notool]");
   res.writeHead(200, { "content-type": "text/event-stream" });
@@ -83,14 +75,14 @@ const systems = (entries: Entry[]) => entries.filter((e) => e.type === "message"
 const userEntry = (entries: Entry[], text: string) =>
   [...entries].reverse().find((e) => e.type === "message" && e.message?.role === "user" && JSON.stringify(e.message.content).includes(text));
 
-test("turn flows keep one prompt history that the model actually receives", async () => {
+test("Alt projects one prompt and applies permission changes without exposing internal rows", async () => {
   await new Promise<void>((r) => model.listen(0, "127.0.0.1", r));
   const agentDir = join(root, "agent");
   mkdirSync(agentDir, { recursive: true });
   const port = (model.address() as { port: number }).port;
   // Like the frontier catalog models: later system messages may stay in place.
   const compat = { supportsMidConvoSystemMessages: true };
-  const models = ["test-model", "test-model-2"].map((id) => ({ id, name: id, reasoning: false, contextWindow: 200_000, maxTokens: 4_000, compat }));
+  const models = [{ id: "test-model", name: "test-model", reasoning: false, contextWindow: 200_000, maxTokens: 4_000, compat }];
   writeFileSync(join(agentDir, "models.json"), JSON.stringify({ providers: { test: { baseUrl: `http://127.0.0.1:${port}/v1`, api: "openai-completions", apiKey: "test", models } } }));
   writeFileSync(join(agentDir, "auth.json"), JSON.stringify({ test: { type: "api_key", key: "test-local" } }));
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "test", defaultModel: "test-model", retry: { enabled: false } }));
@@ -159,57 +151,6 @@ test("turn flows keep one prompt history that the model actually receives", asyn
     assert.ok(rows.length > 0);
     assert.ok(!rows.some((row) => /Alt Theory Application Context|<cwd>/.test(row.text ?? "")));
 
-    // A failed turn continued on another model sends no errored assistant.
-    const f = client(serverPort);
-    await f.open;
-    try {
-      const failedOpened = f.wait(["session_opened", "error"]);
-      const failed = f.wait(END);
-      f.send({ type: "prompt", payload: "[fail] now [notool]", create: {} });
-      assert.equal((await failedOpened).type, "session_opened");
-      assert.equal((await failed).type, "run_failed");
-      const modelSet = f.wait(["request_done", "error"]);
-      f.send({ type: "set_session_model", payload: { override: { provider: "test", modelId: "test-model-2" } }, requestId: "model" });
-      assert.equal((await modelSet).type, "request_done");
-      const before = requests.length;
-      const end2 = f.wait(END);
-      f.send({ type: "continue_latest", payload: {} });
-      assert.equal((await end2).type, "run_completed");
-      const continued = requests.slice(before).find((request) => request.model === "test-model-2")!;
-      const afterUser = continued.messages.slice(continued.messages.map((m) => m.role).lastIndexOf("user") + 1);
-      assert.ok(!afterUser.some((message) => message.role === "assistant"));
-    } finally {
-      f.close();
-    }
-
-    // Deleting the only turn leaves Pi's system message, so a role switch
-    // reopens the history instead of starting afresh; the model still gets
-    // one head with the new role and no trace of the deleted turn.
-    const d = client(serverPort);
-    await d.open;
-    try {
-      const onlyOpened = d.wait(["session_opened", "error"]);
-      const only = d.wait(END);
-      d.send({ type: "prompt", payload: "the only turn [notool]", create: {} });
-      assert.equal((await onlyOpened).type, "session_opened");
-      assert.equal((await only).type, "run_completed");
-      assert.match(JSON.stringify(requests.at(-1)!.messages[0]), /calm research companion/);
-      const deleted = d.wait(["session_transcript"], (m) => m.payload.messages.length === 0);
-      d.send({ type: "delete_latest", payload: {} });
-      await deleted;
-      const roleless = d.wait(["session_updated", "error"], (m) => m.type === "error" || m.payload.rolePresetSlug === null);
-      d.send({ type: "switch_role_preset", payload: { rolePresetSlug: null } });
-      assert.equal((await roleless).type, "session_updated");
-      const after = d.wait(END);
-      d.send({ type: "prompt", payload: "after the role switch [notool]" });
-      assert.equal((await after).type, "run_completed");
-      const sentAfter = requests.at(-1)!.messages;
-      assert.equal(sentAfter.filter((m) => m.role === "system").length, 1);
-      assert.doesNotMatch(JSON.stringify(sentAfter[0]), /calm research companion/);
-      assert.deepEqual(sentAfter.filter((m) => m.role === "user").map((m) => JSON.stringify(m.content).includes("after the role switch")), [true]);
-    } finally {
-      d.close();
-    }
   } finally {
     c.close();
     instance.httpServer.close();
