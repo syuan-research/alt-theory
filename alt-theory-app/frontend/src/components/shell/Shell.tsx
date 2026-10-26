@@ -11,6 +11,7 @@ import { ReviewPage } from "@/components/shell/ReviewPage";
 import { ConversationFilesPage } from "@/components/shell/ConversationFilesPage";
 
 import { ExternalAiSetupDialog } from "@/components/shell/ExternalAiSetupDialog";
+import { VersionsDialog } from "@/components/shell/VersionsDialog";
 import { ApprovalNotice } from "@/components/shell/ApprovalNotice";
 import { FindBar } from "@/components/shell/FindBar";
 
@@ -155,6 +156,7 @@ export function Shell() {
     >
 
       <ExternalAiSetupDialog />
+      <VersionsDialog />
       <FindBar />
       {shell.surface === "app" ? null : <ApprovalNotice />}
       {/* One persistent left rail shared by the app and settings surfaces;

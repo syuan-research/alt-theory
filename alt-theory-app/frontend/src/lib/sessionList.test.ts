@@ -346,7 +346,7 @@ test("rail filter keeps a match and its ancestors; an empty query means no filte
   assert.deepEqual([...railMatchIds([root, br, nested, other], "kappa", names)!].sort(), ["br", "nested", "root"]);
 });
 
-test("family and folder modified sorting follow descendant prompt acceptance", () => {
+test("family and folder modified sorting follow descendant actual activity", () => {
   const oldRoot = {
     ...child("old-root", "unused", "fork", "2026-06-01T00:00:00.000Z"),
     forkedFrom: null,
@@ -364,7 +364,7 @@ test("family and folder modified sorting follow descendant prompt acceptance", (
     "2026-06-02T00:00:00.000Z",
   );
   descendant.workspacePrimaryDir = "C:/alpha";
-  descendant.lastPromptAcceptedAt = "2026-08-01T00:00:00.000Z";
+  descendant.updatedAt = "2026-08-01T00:00:00.000Z";
 
   const tree = buildWorkspaceTree(
     [freshRoot, oldRoot, descendant],

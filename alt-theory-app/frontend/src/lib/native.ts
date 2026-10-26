@@ -7,6 +7,8 @@ export interface AppUpdateStatus {
   latestVersion: string | null;
   htmlUrl: string | null;
   newer: boolean;
+  releaseNotes?: string | null;
+  showReleaseNotes?: boolean;
 }
 
 interface AltElectron {
@@ -19,7 +21,7 @@ interface AltElectron {
   getPathForFile?(file: File): string;
   getUpdateStatus?(): Promise<AppUpdateStatus>;
   checkForUpdates?(): Promise<AppUpdateStatus>;
-  dismissUpdate?(version: string): Promise<AppUpdateStatus>;
+  acknowledgeReleaseNotes?(): Promise<AppUpdateStatus>;
   openExternal?(url: string): Promise<boolean>;
   onUpdateStatus?(callback: (status: AppUpdateStatus) => void): () => void;
   getViewSize?(): Promise<number>;
@@ -117,8 +119,8 @@ export async function checkForUpdates(): Promise<AppUpdateStatus | null> {
   return (await bridge()?.checkForUpdates?.()) ?? null;
 }
 
-export async function dismissUpdate(version: string): Promise<AppUpdateStatus | null> {
-  return (await bridge()?.dismissUpdate?.(version)) ?? null;
+export async function acknowledgeReleaseNotes(): Promise<AppUpdateStatus | null> {
+  return (await bridge()?.acknowledgeReleaseNotes?.()) ?? null;
 }
 
 export async function openExternal(url: string): Promise<boolean> {

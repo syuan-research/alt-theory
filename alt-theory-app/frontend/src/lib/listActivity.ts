@@ -16,6 +16,18 @@ export interface ActivityChange {
 
 /** A mark a list row keeps until its conversation is opened. */
 export type ListAlert = "done" | "failed" | "approval";
+export type ConversationState = "running" | ListAlert;
+
+/** Current activity wins; historical marks only describe completed work. */
+export function conversationState(
+  activity: ListActivity | undefined,
+  alert?: ListAlert,
+): ConversationState | null {
+  if (activity === "running") return "running";
+  if (activity === "awaiting-approval") return "approval";
+  if (activity === "failed") return "failed";
+  return alert === "done" ? "done" : null;
+}
 
 /**
  * The marks these changes leave (the open conversation's own changes leave

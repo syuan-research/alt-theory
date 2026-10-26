@@ -26,7 +26,7 @@ contextBridge.exposeInMainWorld("altElectron", {
   },
   getUpdateStatus: () => ipcRenderer.invoke("alt:getUpdateStatus"),
   checkForUpdates: () => ipcRenderer.invoke("alt:checkForUpdates"),
-  dismissUpdate: (version) => ipcRenderer.invoke("alt:dismissUpdate", version),
+  acknowledgeReleaseNotes: () => ipcRenderer.invoke("alt:acknowledgeReleaseNotes"),
   openExternal: (url) => ipcRenderer.invoke("alt:openExternal", url),
   onUpdateStatus: (callback) => {
     const listener = (_event, status) => callback(status);

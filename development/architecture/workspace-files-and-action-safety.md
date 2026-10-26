@@ -479,8 +479,10 @@ reason.
   which are reviewed every time. A grant the user gave for the conversation
   (under Ask, before switching) is honoured first, without the reviewer. A write outside the
   roots passes that one file (`allowWriteOnce`), not the folder. The verdict
-  rides on the tool result's `details.altApproval`, so the tool row shows
-  "Smart approval: allowed · reason"; the model never sees it.
+  rides on the tool result's `details.altApproval`; the tool row shows a shield
+  with result, reason and reviewer on hover/focus. Reused approvals carry a
+  `reused` flag. `approvalFromResult` projects the same record for live
+  `tool_finished` events and saved transcript rows; the model never sees it.
 - **Deny** — the call is blocked with the reason, which the agent reads as
   the tool result. The third denial in a row within one run — commands and
   messages alike — adds an instruction to stop working around it and ask

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { alertsFor, stepActivity } from "./listActivity.ts";
+import { alertsFor, stepActivity, conversationState } from "./listActivity.ts";
 
 test("the first picture is the baseline; each change after it says what moved", () => {
   const first = stepActivity(null, { type: "activity_snapshot", payload: { activity: { a: "running" } } });
@@ -30,6 +30,11 @@ test("a reconnect's picture reports what moved while away", () => {
 });
 
 test("the marks follow the old rules and skip the open conversation", () => {
+  assert.equal(conversationState("running", "approval"), "running");
+  assert.equal(conversationState("idle", "failed"), null);
+  assert.equal(conversationState("failed"), "failed");
+  assert.equal(conversationState("awaiting-approval"), "approval");
+  assert.equal(conversationState("idle", "done"), "done");
   assert.deepEqual(
     alertsFor(
       [

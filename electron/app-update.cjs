@@ -65,6 +65,12 @@ function parseRepo(packageJson) {
   return match ? { owner: match[1], repo: match[2] } : null;
 }
 
+function shouldShowReleaseNotes(currentVersion, lastSeenVersion, existingInstall) {
+  return lastSeenVersion
+    ? compareSemver(currentVersion, lastSeenVersion) > 0
+    : existingInstall;
+}
+
 function githubEndpoints(currentVersion, owner, repo) {
   const base = `https://api.github.com/repos/${owner}/${repo}`;
   return isPrerelease(currentVersion)
@@ -79,6 +85,7 @@ function normalizeReleasePayload(payload) {
     .map((entry) => ({
       version: stripV(entry.tag_name || entry.name || ""),
       htmlUrl: typeof entry.html_url === "string" ? entry.html_url : "",
+      releaseNotes: typeof entry.body === "string" ? entry.body : "",
       prerelease: Boolean(entry.prerelease) || isPrerelease(entry.tag_name),
     }))
     .filter((entry) => entry.version && entry.htmlUrl);
@@ -117,4 +124,5 @@ module.exports = {
   normalizeReleasePayload,
   pickNewer,
   findUpdate,
+  shouldShowReleaseNotes,
 };

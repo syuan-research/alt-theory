@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { SessionSummary } from "@/api/types";
 import { useConversationContext } from "@/context/ConversationContext";
 import { useMainView } from "@/context/MainView";
-import { useApp, type SessionAlert } from "@/context/AppProvider";
+import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { t } from "@/i18n";
 import { relativeTimeLabel } from "@/lib/format";
@@ -25,18 +25,14 @@ import {
 import { Workbench } from "@/components/shell/Workbench";
 import { SessionImportDialog } from "@/components/shell/SessionImportDialog";
 import { HelpMenu } from "@/components/shell/HelpMenu";
+import { VersionsEntry } from "@/components/shell/VersionsDialog";
 import { scrollAffectsAnchor, useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 import { promoteToMainline as promoteToMainlineRequest, searchSessionContent } from "@/api/sessions";
 import { getWorkingFolders, saveWorkingFolders, type ProjectFolder } from "@/api/config";
 import {
-  dismissUpdate,
-  getUpdateStatus,
   hasNativeBridge,
-  onUpdateStatus,
-  openExternal,
   pickDirectory,
   revealPath,
-  type AppUpdateStatus,
 } from "@/lib/native";
 import { fetchSessionDetail } from "@/api/sessions";
 import {
@@ -53,13 +49,11 @@ import {
 import { copyText } from "@/lib/clipboard";
 import { NEW_DRAFT, readDraft } from "@/lib/draft";
 import { useFindTarget } from "@/lib/find";
+import { conversationState } from "@/lib/listActivity";
+import { ConversationState } from "@/components/conversation/ConversationState";
 import { usePaneMemory } from "@/lib/paneMemory";
 import { isPathQuery, quickFindScore, quickFindTerms } from "../../../../shared/quick-find";
 
-/**
- * What a conversation row says about itself when you are not in it (alpha.3).
- * Live state wins over a leftover mark; both clear once you open it.
- */
 /** Hover text saying where a listed child came from (alpha.6). */
 function originTitle(session: SessionSummary): string | undefined {
   const label = listedOriginLabel(session);
@@ -69,29 +63,6 @@ function originTitle(session: SessionSummary): string | undefined {
     "From subagent": t("Came from a subagent"),
     "From BTW": t("Came from a BTW side conversation"),
   }[label];
-}
-
-function sessionRowState(
-  runStatus: SessionSummary["runStatus"],
-  alert: SessionAlert | undefined,
-): { label: string; tone: string; title: string } | null {
-  if (runStatus === "awaiting-approval" || alert === "approval") {
-    return {
-      label: t("needs you"),
-      tone: "warn",
-      title: t("Waiting for your approval before it can continue"),
-    };
-  }
-  if (runStatus === "running") {
-    return { label: t("running"), tone: "", title: t("Working right now") };
-  }
-  if (runStatus === "failed" || alert === "failed") {
-    return { label: t("stopped"), tone: "danger", title: t("This conversation ran into an error") };
-  }
-  if (alert === "done") {
-    return { label: t("done"), tone: "ok", title: t("Finished while you were elsewhere") };
-  }
-  return null;
 }
 
 /**
@@ -221,6 +192,7 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
           <i className="ph ph-chat" />
         </button>
         <div style={{ flex: 1 }} />
+        <VersionsEntry compact />
         <HelpMenu compact />
         <button
           className="mini-gear"
@@ -253,9 +225,9 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
 
         <UserNav onImport={() => shell.setImportOpen(true)} />
         <Workbench />
-        <UpdateLine />
 
         <div className="left-foot">
+          <VersionsEntry />
           <button className="gear" onClick={() => shell.openSettings()}>
             <i className="ph ph-gear" />
             {t("Settings")}
@@ -375,42 +347,6 @@ function SettingsRail({ hidden }: { hidden?: boolean }) {
         </div>
       </div>
     </aside>
-  );
-}
-
-function UpdateLine() {
-  const [status, setStatus] = useState<AppUpdateStatus | null>(null);
-  useEffect(() => {
-    if (!hasNativeBridge()) return;
-    let alive = true;
-    void getUpdateStatus().then((next) => alive && setStatus(next));
-    const stop = onUpdateStatus((next) => {
-      if (alive) setStatus(next);
-    });
-    return () => {
-      alive = false;
-      stop();
-    };
-  }, []);
-  if (!status?.newer || !status.latestVersion) return null;
-  return (
-    <div className="update-line">
-      <span>{t("Version {version} is available.", { version: status.latestVersion })}</span>
-      {status.htmlUrl ? (
-        <button type="button" className="link-btn" onClick={() => void openExternal(status.htmlUrl!)}>
-          {t("Open download page")}
-        </button>
-      ) : null}
-      <button
-        type="button"
-        className="link-btn"
-        onClick={() => {
-          void dismissUpdate(status.latestVersion!).then(setStatus);
-        }}
-      >
-        {t("Dismiss")}
-      </button>
-    </div>
   );
 }
 
@@ -1357,7 +1293,7 @@ function SessionNode({
     (child) => visibleIds === null || visibleIds.has(child.sessionId),
   );
   // One source for every row, the open one included: the pushed activity.
-  const state = sessionRowState(session.runStatus, main.sessionAlerts[session.sessionId]);
+  const state = conversationState(session.runStatus, main.sessionAlerts[session.sessionId]);
   // The badge outranks the resident time label; idle rows carry the label.
   const editedLabel = state ? null : relativeTimeLabel(session.updatedAt);
   const title = sessionTitle(session, app.sessionDisplayNames, app.sessions);
@@ -1512,12 +1448,9 @@ function SessionNode({
                 data-tip={t("Former main conversation — demoted when a branch was promoted")}
               />
             ) : null}
-            <span className="s-title">{title}</span>
-            {state ? (
-              <span className={`badge-run ${state.tone}`} data-tip={state.title}>
-                {state.label}
-              </span>
-            ) : null}
+            <span className={`s-title${state === "running" ? " activity-shimmer" : ""}`}
+              data-tip={state === "running" ? t("Working right now") : undefined}>{title}</span>
+            <ConversationState state={state} />
           </button>
         )}
         {/* Resident last-edited label: the default state's right edge. Yields

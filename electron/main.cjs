@@ -269,7 +269,9 @@ let updateStatus = {
   currentVersion: "",
   latestVersion: null,
   htmlUrl: null,
+  releaseNotes: null,
 };
+let showReleaseNotes = false;
 
 function appSettingsPath() {
   return path.join(process.env.ALT_THEORY_DATA_DIR || LOCAL_DATA_DIR, "app-settings.json");
@@ -452,14 +454,12 @@ function buildMacMenu() {
 }
 
 function publicUpdateStatus() {
-  const dismissed = readAppSettingsFile().updateCheck?.dismissedVersion;
   const latest = updateStatus.latestVersion;
   const newer = Boolean(
     latest &&
-      appUpdate.compareSemver(latest, updateStatus.currentVersion) > 0 &&
-      dismissed !== latest,
+      appUpdate.compareSemver(latest, updateStatus.currentVersion) > 0,
   );
-  return { ...updateStatus, newer };
+  return { ...updateStatus, newer, showReleaseNotes };
 }
 
 function pushUpdateStatus() {
@@ -524,6 +524,7 @@ async function runUpdateCheck({ force }) {
   if (!force && last && Date.now() - last < UPDATE_CHECK_INTERVAL_MS) {
     updateStatus.latestVersion = stored.latestVersion ?? null;
     updateStatus.htmlUrl = stored.htmlUrl ?? null;
+    updateStatus.releaseNotes = stored.releaseNotes ?? null;
     return publicUpdateStatus();
   }
   try {
@@ -535,13 +536,16 @@ async function runUpdateCheck({ force }) {
     });
     updateStatus.latestVersion = found?.version ?? null;
     updateStatus.htmlUrl = found?.htmlUrl ?? null;
+    updateStatus.releaseNotes = found?.releaseNotes ?? null;
     patchUpdateCheck({
       lastCheckedAt: new Date().toISOString(),
       latestVersion: updateStatus.latestVersion,
       htmlUrl: updateStatus.htmlUrl,
+      releaseNotes: updateStatus.releaseNotes,
     });
-  } catch {
-    // Offline or rate-limited: show nothing, no dialog.
+  } catch (error) {
+    // Background checks stay quiet; a manual check must not claim success.
+    if (force) throw error;
   }
   return publicUpdateStatus();
 }
@@ -554,6 +558,7 @@ ipcMain.handle("alt:getUpdateStatus", () => {
   if (!updateStatus.latestVersion && stored.latestVersion) {
     updateStatus.latestVersion = stored.latestVersion;
     updateStatus.htmlUrl = stored.htmlUrl ?? null;
+    updateStatus.releaseNotes = stored.releaseNotes ?? null;
   }
   return publicUpdateStatus();
 });
@@ -562,10 +567,9 @@ ipcMain.handle("alt:checkForUpdates", async () => {
   pushUpdateStatus();
   return status;
 });
-ipcMain.handle("alt:dismissUpdate", (_event, version) => {
-  if (typeof version === "string" && version) {
-    patchUpdateCheck({ dismissedVersion: version });
-  }
+ipcMain.handle("alt:acknowledgeReleaseNotes", () => {
+  patchUpdateCheck({ lastSeenVersion: app.getVersion() });
+  showReleaseNotes = false;
   const status = publicUpdateStatus();
   pushUpdateStatus();
   return status;
@@ -592,6 +596,10 @@ app.whenReady().then(async () => {
   if (!process.env.ALT_THEORY_DATA_DIR) {
     process.env.ALT_THEORY_DATA_DIR = LOCAL_DATA_DIR;
   }
+  // Establish the first-install baseline before the backend creates settings.
+  showReleaseNotes = appUpdate.shouldShowReleaseNotes(app.getVersion(),
+    readAppSettingsFile().updateCheck?.lastSeenVersion, fs.existsSync(appSettingsPath()));
+  if (!showReleaseNotes) patchUpdateCheck({ lastSeenVersion: app.getVersion() });
   if (!process.env.PI_CODING_AGENT_DIR) {
     process.env.PI_CODING_AGENT_DIR = LOCAL_PI_AGENT_DIR;
   }

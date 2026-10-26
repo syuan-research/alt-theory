@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { syncTitlebarTheme } from "@/lib/native";
+import { useVersions } from "@/lib/versions";
 import { paneMemory } from "@/lib/paneMemory";
 import { INITIAL_PANE, navigate, targetKey, type RailKey, type ViewTarget } from "@/lib/viewTarget";
 
@@ -22,6 +23,7 @@ export type Surface = "app" | "settings" | "review" | "files";
 export type RelatedPaneSize = "half" | "default";
 
 export interface ShellContextValue {
+  versions: ReturnType<typeof useVersions>;
   surface: Surface;
   openApp: () => void;
   openSettings: (panel?: string) => void;
@@ -191,6 +193,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   }, [openModelsFromUrl]);
   const [settingsPanel, setSettingsPanel] = useState("models");
   const [externalAiSetupOpen, setExternalAiSetupOpen] = useState(false);
+  const versions = useVersions();
   const [leftCollapsed, setLeftCollapsedState] = useState(() =>
     readFlag(LEFT_COLLAPSED_KEY)
   );
@@ -309,6 +312,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       settingsPanel,
       setSettingsPanel,
       externalAiSetupOpen,
+      versions,
       openExternalAiSetup,
       closeExternalAiSetup,
       leftCollapsed: leftCollapsed || narrow,
@@ -351,6 +355,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       openFiles,
       settingsPanel,
       externalAiSetupOpen,
+      versions,
       openExternalAiSetup,
       closeExternalAiSetup,
       leftCollapsed,

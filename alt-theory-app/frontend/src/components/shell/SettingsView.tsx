@@ -52,16 +52,12 @@ import { authConnectEntryStep } from "@/lib/authConnect";
 import { MenuSelect } from "@/components/ui/MenuSelect";
 import {
   applyTitlebarVar,
-  checkForUpdates,
-  getUpdateStatus,
   getViewSize,
   hasNativeBridge,
-  openExternal,
   pickDirectory,
   pickFiles,
   revealPath,
   setViewSize,
-  type AppUpdateStatus,
   ZOOM_STOPS,
 } from "@/lib/native";
 import { useMainView } from "@/context/MainView";
@@ -1967,55 +1963,25 @@ function RoleKbPanel() {
 }
 
 function AboutPanel() {
+  const { versions } = useShell();
   const [dataDir, setDataDir] = useState<string | null>(null);
-  const [update, setUpdate] = useState<AppUpdateStatus | null>(null);
-  const [checked, setChecked] = useState(false);
   useEffect(() => {
     let alive = true;
     getDataFolder()
       .then((r) => alive && setDataDir(r.dataDir))
       .catch(() => {});
-    if (hasNativeBridge()) {
-      void getUpdateStatus().then((status) => alive && setUpdate(status));
-    }
     return () => {
       alive = false;
     };
   }, []);
-  const version = update?.currentVersion || __ALT_THEORY_VERSION__;
+  const version = versions.status?.currentVersion || __ALT_THEORY_VERSION__;
   return (
     <div className="set-panel">
       <h2>{t("About")}</h2>
       <p className="sub">Alt Theory v{version}.</p>
       {hasNativeBridge() ? (
         <div className="set-card">
-          <h4>{t("Updates")}</h4>
-          {update?.newer && update.latestVersion ? (
-            <p>{t("Version {version} is available.", { version: update.latestVersion })}</p>
-          ) : checked && update && !update.newer ? (
-            <p>{t("No newer version.")}</p>
-          ) : null}
-          <div className="row2">
-            <button
-              className="add-btn"
-              onClick={() => {
-                void checkForUpdates().then((status) => {
-                  setUpdate(status);
-                  setChecked(true);
-                });
-              }}
-            >
-              {t("Check for updates")}
-            </button>
-            {update?.newer && update.htmlUrl ? (
-              <button
-                className="add-btn"
-                onClick={() => void openExternal(update.htmlUrl!)}
-              >
-                {t("Open download page")}
-              </button>
-            ) : null}
-          </div>
+          <button className="add-btn" onClick={() => versions.setOpen(true)}>{t("Versions")}</button>
         </div>
       ) : null}
       {dataDir ? (

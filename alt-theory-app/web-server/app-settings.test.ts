@@ -62,7 +62,8 @@ test("app settings keep a cached update check across a later write", () => {
       lastCheckedAt: "2026-09-05T00:00:00.000Z",
       latestVersion: "1.5.1",
       htmlUrl: "https://github.com/syuan-research/alt-theory/releases/tag/v1.5.1",
-      dismissedVersion: null,
+      lastSeenVersion: "1.5.0",
+      releaseNotes: "## v1.5.1 — 2026-09-05\n\nUpdate notes.",
     },
   });
   const settings = readAppSettings(dataDir);
@@ -72,7 +73,8 @@ test("app settings keep a cached update check across a later write", () => {
     lastCheckedAt: "2026-09-05T00:00:00.000Z",
     latestVersion: "1.5.1",
     htmlUrl: "https://github.com/syuan-research/alt-theory/releases/tag/v1.5.1",
-    dismissedVersion: null,
+    lastSeenVersion: "1.5.0",
+    releaseNotes: "## v1.5.1 — 2026-09-05\n\nUpdate notes.",
   });
 });
 

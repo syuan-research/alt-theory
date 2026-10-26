@@ -25,7 +25,7 @@ import {
   resolveSessionsRoot,
 } from "../core/data-dir.js";
 import { canonicalPathKey, isPathInside, verdict } from "../core/path-verdict.js";
-import { SMART_DENIAL_PREFIX } from "../core/security-extension.js";
+import { approvalFromResult } from "../core/approval-ask.js";
 import { TOOL_RESULT_HEAD, TOOL_RESULT_TAIL } from "./limits.js";
 import type { Root } from "../core/root-policy.js";
 import { folderPolicyFor, readAppSettings } from "./app-settings.js";
@@ -40,6 +40,8 @@ import {
   type WriteTextFileOptions,
 } from "./text-file-policy.js";
 import type { SessionEvent } from "./session-events.js";
+import { lastSessionActivity } from "./session-activity.js";
+import { compareSessionActivity } from "../shared/session-recency.js";
 import {
   extractToolDetail,
   extractToolPath as extractSharedToolPath,
@@ -88,8 +90,9 @@ export interface SessionSummary {
   snippet?: string;
   visibility: SessionVisibility;
   createdAt: string | null;
-  /** Product recency: newest prompt accepted for execution, never read/open mtime. */
+  /** Historical prompt acceptance, distinct from actual activity below. */
   lastPromptAcceptedAt: string | null;
+  /** Actual message/execution activity; opening and config writes do not advance it. */
   updatedAt: string | null;
   deletedAt: string | null;
   trashDueAt: string | null;
@@ -780,11 +783,7 @@ export function promoteToMainlineRecords(
             isListVisible(m) &&
             isDelistable(m),
         )
-        .sort((a, b) =>
-          (b.updatedAt ?? b.createdAt ?? "").localeCompare(
-            a.updatedAt ?? a.createdAt ?? "",
-          ),
-        )[0] ?? null;
+        .sort(compareSessionActivity)[0] ?? null;
   }
   writeListFlags(dataDir, sessionId, true);
   if (stepDown) {
@@ -943,7 +942,7 @@ export function readFolderOwner(
     state: tombstone ? "trash" : "live",
     title: summary.alias || summary.snippet || "",
     workspacePrimaryDir: summary.workspacePrimaryDir ?? null,
-    at: summary.lastPromptAcceptedAt ?? summary.updatedAt ?? summary.createdAt ?? null,
+    at: summary.updatedAt ?? summary.createdAt ?? null,
   };
 }
 
@@ -1184,7 +1183,7 @@ function allSessionSummaries(dataDir: string): SessionSummary[] {
     .filter((entry) => entry.isDirectory())
     .map((entry) => readSessionSummary(resolvedDataDir, entry.name))
     .filter((summary): summary is SessionSummary => summary !== null)
-    .sort(compareSummaries);
+    .sort(compareSessionActivity);
   return withLineage(sessions);
 }
 
@@ -1383,6 +1382,7 @@ function readSessionParts(
 }
 
 function buildSummary(sessionId: string, parts: SessionParts): SessionSummary {
+  const createdAt = parts.v4Session?.createdAt ?? parts.manifest?.createdAt ?? null;
   const warnings = [...parts.state.warnings];
   if (!parts.manifest) warnings.push("assembly manifest is missing");
   if (!parts.sessionFile) warnings.push("Pi session JSONL is missing");
@@ -1393,7 +1393,7 @@ function buildSummary(sessionId: string, parts: SessionParts): SessionSummary {
     alias,
     snippet,
     visibility: parts.v4Session?.visibility ?? "no-export",
-    createdAt: parts.manifest?.createdAt ?? parts.v4Session?.createdAt ?? null,
+    createdAt,
     lastPromptAcceptedAt:
       latestPromptAcceptedAt(parts.recordsDir) ??
       parts.v4Session?.lastActivityAt ??
@@ -1404,13 +1404,7 @@ function buildSummary(sessionId: string, parts: SessionParts): SessionSummary {
     ...(parts.v4Session?.delistedFor
       ? { delistedFor: parts.v4Session.delistedFor }
       : {}),
-    updatedAt: newestTimestamp([
-      parts.sessionRoot,
-      join(parts.recordsDir, "assembly-manifest.json"),
-      join(parts.recordsDir, "session-metrics.json"),
-      join(parts.recordsDir, "session-events.jsonl"),
-      parts.sessionFile,
-    ]),
+    updatedAt: lastSessionActivity(parts.sessionFile, readRunRecords(parts.recordsDir), createdAt),
     status: parts.state.hasError
       ? "error"
       : parts.manifest && parts.sessionFile
@@ -2376,12 +2370,7 @@ export function buildTranscriptFromEntries(
         : -1;
       // Smart approval's verdict rides on the result's details; a denial
       // blocks the call, and Pi's blocked result is only the reason text.
-      const approval =
-        (value.message.details as { altApproval?: TranscriptMessage["approval"] } | undefined)
-          ?.altApproval ??
-        (!success && full.startsWith(SMART_DENIAL_PREFIX)
-          ? { by: "smart" as const, outcome: "deny" as const, reason: full.slice(SMART_DENIAL_PREFIX.length), model: "" }
-          : undefined);
+      const approval = approvalFromResult(value.message.details, !success, full);
       if (callIndex >= 0) {
         transcript[callIndex] = {
           ...transcript[callIndex],
@@ -2648,25 +2637,6 @@ function readJsonFile<T>(
     state.warnings.push(`${label} is malformed`);
     return null;
   }
-}
-
-function newestTimestamp(paths: Array<string | null>): string | null {
-  let newest = 0;
-  for (const path of paths) {
-    if (!path || !existsSync(path)) continue;
-    newest = Math.max(newest, statSync(path).mtimeMs);
-  }
-  return newest > 0 ? new Date(newest).toISOString() : null;
-}
-
-function compareSummaries(a: SessionSummary, b: SessionSummary): number {
-  const aTime = Date.parse(a.lastPromptAcceptedAt ?? a.createdAt ?? "");
-  const bTime = Date.parse(b.lastPromptAcceptedAt ?? b.createdAt ?? "");
-  const timeDiff = (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
-  if (timeDiff !== 0) return timeDiff;
-  // Timestamps are second-granular; same-second sessions tie. IDs carry the
-  // creation counter, so a numeric-aware descending ID compare keeps newest first.
-  return b.sessionId.localeCompare(a.sessionId, undefined, { numeric: true });
 }
 
 function uniqueWarnings(warnings: string[]): string[] {

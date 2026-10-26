@@ -512,6 +512,7 @@ function onServer(state: ConversationState, message: ServerMessage): Conversatio
             ...current,
             status: message.payload.success ? "finished" : "failed",
             success: message.payload.success,
+            approval: message.payload.approval,
             progressText: undefined,
           })
         : state.turn.parts;

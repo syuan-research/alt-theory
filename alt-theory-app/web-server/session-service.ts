@@ -135,7 +135,7 @@ import {
 import { TRANSCRIPT_PAGE_MAX, TRANSCRIPT_TAIL_ROWS } from "./limits.js";
 import { continueAgentTurnAfterModelSwitch } from "../core/model-switch.js";
 import { AGENT_MAIL_TAG } from "../core/agent-mail-frame.js";
-import type { Approver } from "../core/approval-ask.js";
+import { approvalFromResult, type Approver } from "../core/approval-ask.js";
 import {
   appendAgentMail,
   formatEnvelopeForContext,
@@ -336,7 +336,7 @@ export type SessionServiceEvent =
       };
     }
   | { type: "tool_updated"; payload: { callId: string; text?: string } }
-  | { type: "tool_finished"; payload: { callId: string; success: boolean } }
+  | { type: "tool_finished"; payload: { callId: string; success: boolean; approval?: TranscriptMessage["approval"] } }
   | {
       type: "run_completed";
       payload: { snapshot: SessionSnapshot } & TurnRows;
@@ -5247,7 +5247,8 @@ export class SessionService implements AgentTeamBridge {
         managed.counters.toolCallCount++;
         this.emit(managed, {
           type: "tool_finished",
-          payload: { callId: event.toolCallId, success: !event.isError },
+          payload: { callId: event.toolCallId, success: !event.isError,
+            approval: approvalFromResult(event.result.details, event.isError, contentToText(event.result.content)) },
         });
         if (!managed.runState.isIdle()) {
           this.emitRunPhase(managed, "processing");

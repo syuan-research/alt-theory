@@ -265,7 +265,7 @@ export interface TranscriptMessage {
   toolDetail?: ToolDetail;
   success?: boolean;
   /** Smart approval's verdict on this tool call (the reviewer model's). */
-  approval?: { by: "smart"; outcome: "allow" | "deny"; reason: string; model: string };
+  approval?: import("../../../core/approval-ask").ApprovalRecord;
   truncated?: boolean;
   /** Non-message boundary markers rendered specially (e.g. context compaction). */
   marker?: "compaction" | "imported-context" | "agent-team";
@@ -807,7 +807,7 @@ export type ServerMessage =
     }
   | { type: "tool_started"; payload: { toolName: string; callId: string; path?: string | null; detail?: ToolDetail } }
   | { type: "tool_updated"; payload: { callId: string; text?: string; progress?: number } }
-  | { type: "tool_finished"; payload: { callId: string; success: boolean; output?: unknown } }
+  | { type: "tool_finished"; payload: { callId: string; success: boolean; output?: unknown; approval?: TranscriptMessage["approval"] } }
   /** The turn ended: the post-settle snapshot and the settled rows, applied together. */
   | { type: "run_completed"; payload: { snapshot: SessionSnapshot } & TurnRows }
   /** The run ended failed or stopped; the snapshot (read after settle) carries its recovery. */
@@ -862,6 +862,7 @@ export interface ActiveToolState {
   /** Last output line of a running command (Pi sends bash progress only). */
   progressText?: string;
   success?: boolean;
+  approval?: TranscriptMessage["approval"];
 }
 
 /** One chunk of the in-progress assistant turn, in arrival order. */

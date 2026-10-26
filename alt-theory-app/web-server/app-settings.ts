@@ -134,7 +134,8 @@ export interface AppSettings {
     lastCheckedAt?: string;
     latestVersion?: string | null;
     htmlUrl?: string | null;
-    dismissedVersion?: string | null;
+    lastSeenVersion?: string;
+    releaseNotes?: string | null;
   };
 }
 
@@ -339,9 +340,11 @@ export function readAppSettingsWithWarning(dataDir: string): {
               parsed.updateCheck.htmlUrl === null
                 ? { htmlUrl: parsed.updateCheck.htmlUrl }
                 : {}),
-              ...(typeof parsed.updateCheck.dismissedVersion === "string" ||
-              parsed.updateCheck.dismissedVersion === null
-                ? { dismissedVersion: parsed.updateCheck.dismissedVersion }
+              ...(typeof parsed.updateCheck.lastSeenVersion === "string"
+                ? { lastSeenVersion: parsed.updateCheck.lastSeenVersion }
+                : {}),
+              ...(typeof parsed.updateCheck.releaseNotes === "string" || parsed.updateCheck.releaseNotes === null
+                ? { releaseNotes: parsed.updateCheck.releaseNotes }
                 : {}),
             },
           }

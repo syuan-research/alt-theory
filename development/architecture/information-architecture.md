@@ -411,13 +411,18 @@ surfaces remain designation-gated and absent for everyone else.
     navigation. Permanent conversation deletion removes conversation/session
     records, including a managed import-source copy, but not attachments or
     working files.
-  - About: version, changes, and stable storage statements. Bundle version
-    display follows the normal build path. After a successful automatic check,
+  - Versions: a persistent left-rail entry (also an icon when collapsed) opens
+    one window for bundled release notes, available updates and manual checks.
+    About links to that same window and keeps storage information. Upgrades show
+    the installed version's bundled notes once; fresh installs establish a
+    baseline without opening notes. The acknowledged version lives in the
+    existing app settings. After a successful automatic check,
     the Electron bundle waits 24 hours before another automatic GitHub release
     check (prerelease builds may see newer prereleases; stable builds do not).
-    The explicit About action may check immediately. Successful results are
-    cached and may show a dismissible rail notice; offline or rate-limited
-    checks stay silent and do not advance the last-checked time. Download links
+    The explicit Versions action may check immediately. Successful results and
+    release notes are cached; an available update marks the Versions entry.
+    Background offline or rate-limited checks stay silent and do not advance
+    the last-checked time; explicit checks report failure. Download links
     open only on GitHub.
   - Opening Settings or Review hides the mounted conversation instead of
     unmounting it, so browser undo history and DOM editing state survive the

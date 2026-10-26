@@ -11,6 +11,7 @@ import type { DisplayMessage } from "@/lib/conversation";
 import { useShell } from "@/context/ShellContext";
 import { MarkdownBody } from "@/components/conversation/MarkdownBody";
 import { fileName, toolLabel, toolResultText } from "@/lib/tools";
+import { ApprovalMark } from "./ApprovalMark";
 import { fetchToolResult } from "@/api/sessions";
 import { cn } from "@/lib/cn";
 import { pickDirectory } from "@/lib/native";
@@ -426,6 +427,7 @@ function ToolLine({ tool }: { tool: ActiveToolState }) {
       <i className={TOOL_ICON[outcome]} />
       {toolLabel(tool.toolName, tool.path, tool.detail, outcome)}
       {tool.progressText ? ` — ${tool.progressText}` : ""}
+      <ApprovalMark approval={tool.approval} />
     </SysLine>
   );
 }
@@ -623,13 +625,7 @@ export function TranscriptEntry({
           message.toolDetail,
           outcome,
         )}
-        {approval ? (
-          <span className="approval-note" data-tip={approval.reason}>
-            {approval.outcome === "allow"
-              ? t("Smart approval: allowed · {reason}", { reason: approval.reason })
-              : t("Smart approval: denied · {reason}", { reason: approval.reason })}
-          </span>
-        ) : null}
+        <ApprovalMark approval={approval} />
       </SysLine>
     );
   }

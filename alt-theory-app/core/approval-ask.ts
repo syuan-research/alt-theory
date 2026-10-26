@@ -39,6 +39,18 @@ export interface ApprovalRecord {
   outcome: "allow" | "deny";
   reason: string;
   model: string;
+  reused?: boolean;
+}
+
+/** The same result projection serves live events and saved transcripts. */
+export function approvalFromResult(details: unknown, isError: boolean, text: string): ApprovalRecord | undefined {
+  const record = (details as { altApproval?: ApprovalRecord } | null)?.altApproval;
+  if (record?.by === "smart" && (record.outcome === "allow" || record.outcome === "deny") &&
+    typeof record.reason === "string" && typeof record.model === "string") return record;
+  if (isError && text.startsWith(SMART_DENIAL_PREFIX)) {
+    return { by: "smart", outcome: "deny", reason: text.slice(SMART_DENIAL_PREFIX.length), model: "" };
+  }
+  return undefined;
 }
 
 /** One reviewer audit line (the conversation's security-audit.jsonl). */
@@ -114,7 +126,7 @@ export function createApprover(options: {
     async review({ rule, toolCallId, signal, cacheKey, ...request }) {
       const cached = cacheKey === undefined ? undefined : allowed.get(cacheKey);
       if (cached) {
-        records.set(toolCallId, cached);
+        records.set(toolCallId, { ...cached, reused: true });
         return { outcome: "allow" };
       }
       if (!reviewAction) return { outcome: "unavailable", reason: "no reviewer is attached" };

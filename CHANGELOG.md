@@ -5,6 +5,10 @@
 
 ---
 
+## v1.9.2 — 2026-10-26
+
+Opening a conversation no longer changes its activity time or list position. Commands checked by the approval model show a shield with the result and reason on hover; the Versions entry provides release notes and update downloads.
+
 ## v1.9.1 — 2026-10-23
 
 Long error messages use a limited, scrollable area. Subagent selection is refined, and the bundled model catalog is refreshed.

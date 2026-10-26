@@ -37,6 +37,7 @@ export interface MainViewValue {
   selectedCatalogSessionId: string | null;
   /** Conversations that changed state while you were looking elsewhere. */
   sessionAlerts: Record<string, SessionAlert>;
+  markSessionRead: (sessionId: string) => void;
   /** False when nothing was sent (same session, cannot open, socket down). */
   openCatalogSession: (sessionId: string) => boolean;
   startNewSession: () => void;
@@ -152,18 +153,25 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
       else notifyBackground(t("Waiting for you"), t("{name} needs your approval.", { name }));
     }
     const raised: Record<string, SessionAlert> = alertsFor(changes, sessionId);
-    if (Object.keys(raised).length > 0) setSessionAlerts((prev) => ({ ...prev, ...raised }));
+    setSessionAlerts((prev) => {
+      const next = { ...prev };
+      for (const { sessionId: id } of changes) delete next[id];
+      return { ...next, ...raised };
+    });
   };
 
-  // Opening a conversation is reading it.
-  useEffect(() => {
-    if (!sessionId) return;
+  const markSessionRead = useCallback((id: string) => {
     setSessionAlerts((prev) => {
-      if (!(sessionId in prev)) return prev;
+      if (!(id in prev)) return prev;
       const next = { ...prev };
-      delete next[sessionId];
+      delete next[id];
       return next;
     });
+  }, []);
+
+  // Reading clears the completion mark, not the conversation's live state.
+  useEffect(() => {
+    if (sessionId) markSessionRead(sessionId);
   }, [sessionId]);
 
   const openCatalogSession = useCallback(
@@ -274,6 +282,7 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
       conversation: conv,
       selectedCatalogSessionId,
       sessionAlerts,
+      markSessionRead,
       openCatalogSession,
       startNewSession,
       compactCurrentSession,
@@ -291,6 +300,7 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
       conv,
       selectedCatalogSessionId,
       sessionAlerts,
+      markSessionRead,
       openCatalogSession,
       startNewSession,
       compactCurrentSession,

@@ -4,6 +4,7 @@
 import type { SessionSummary } from "@/api/types";
 import { t } from "@/i18n";
 import { shortId } from "@/lib/format";
+import { compareSessionActivity, compareSessionActivity as compareByRecency, sessionActivityTime } from "../../../shared/session-recency";
 import { isListMember } from "@/lib/listMember";
 import { isPathQuery, quickFindScore, quickFindTerms } from "../../../shared/quick-find";
 
@@ -140,11 +141,7 @@ export function sessionTitle(
   return `${marker} · ${base}`;
 }
 
-export function compareByRecency(a: SessionSummary, b: SessionSummary): number {
-  const aTime = new Date(a.lastPromptAcceptedAt || a.createdAt || 0).getTime();
-  const bTime = new Date(b.lastPromptAcceptedAt || b.createdAt || 0).getTime();
-  return bTime - aTime || b.sessionId.localeCompare(a.sessionId, undefined, { numeric: true });
-}
+export { compareSessionActivity as compareByRecency } from "../../../shared/session-recency";
 
 /** Every currently loaded member of the selected conversation family. */
 export function familyMembersOf(
@@ -374,7 +371,7 @@ export function sortRelatedRows(
     sort === "created" ? (a: RelatedRow, b: RelatedRow) => time(a.createdAt) - time(b.createdAt)
       : sort === "name" ? (a: RelatedRow, b: RelatedRow) => titleOf(a.session).localeCompare(titleOf(b.session))
         : (a: RelatedRow, b: RelatedRow) =>
-            time(b.session.updatedAt ?? b.createdAt) - time(a.session.updatedAt ?? a.createdAt);
+            compareSessionActivity(a.session, b.session);
   return [...rows.filter((row) => row.kind === null), ...rows.filter((row) => row.kind !== null).sort(compare)];
 }
 
@@ -622,9 +619,7 @@ export function buildWorkspaceTree(
       scores.set(session.sessionId, score);
       familyScores.set(key, Math.max(familyScores.get(key) ?? 0, score));
     }
-    const time = new Date(
-      session.lastPromptAcceptedAt || session.createdAt || 0,
-    ).getTime();
+    const time = sessionActivityTime(session);
     familyActivity.set(key, Math.max(familyActivity.get(key) ?? 0, time));
   }
   const ownComparator = (a: SessionSummary, b: SessionSummary) =>

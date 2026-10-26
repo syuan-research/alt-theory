@@ -35,6 +35,8 @@ import { hasNativeBridge, revealPath } from "@/lib/native";
 import { paneMemory, usePaneMemory } from "@/lib/paneMemory";
 import { downloadMarkdown, markdownFileName, sessionTranscriptToMarkdown } from "@/lib/sessionMarkdown";
 import { useFindTarget } from "@/lib/find";
+import { conversationState } from "@/lib/listActivity";
+import { ConversationState } from "@/components/conversation/ConversationState";
 
 const RAIL_META: Record<RailKey, { title: string; icon: string; adv?: boolean }> = {
   chats: { title: t("Related conversations"), icon: "ph-chats" },
@@ -55,17 +57,14 @@ export function InspectorPanel() {
   const open = shell.rightPanel !== null;
   const active = shell.rightPanel;
 
-  // Side-chat notification dot: any live child hanging off this conversation.
-  const hasSideChats = useMemo(
-    () =>
-      app.sessions.some(
-        (s) =>
-          s.forkedFrom?.sessionId === conv.sessionId &&
-          s.forkedFrom.purpose !== "ab-arm" &&
-          !s.deletedAt
-      ),
-    [app.sessions, conv.sessionId]
-  );
+  const related = useMemo(() => conv.sessionId
+    ? relatedRowsFor(conv.sessionId, app.sessions, "family").filter((row) => row.session.sessionId !== conv.sessionId)
+    : [], [app.sessions, conv.sessionId]);
+  const attentionCount = related.filter((row) => {
+    const state = conversationState(row.runStatus);
+    return state === "approval" || state === "failed";
+  }).length;
+  const relatedRunning = related.some((row) => conversationState(row.runStatus) === "running");
 
   const title = (shell.target && targetTitle(shell.target)) ?? (active ? RAIL_META[active].title : "");
 
@@ -196,11 +195,13 @@ export function InspectorPanel() {
           <button
             key={key}
             className={active === key ? "on" : ""}
-            data-tip={RAIL_META[key].title}
+            data-tip={key === "chats" && attentionCount
+              ? t("{count} conversations need your attention", { count: attentionCount })
+              : RAIL_META[key].title}
             onClick={() => shell.toggleRail(key)}
           >
-            <i className={`ph ${RAIL_META[key].icon}`} />
-            {key === "chats" && hasSideChats ? <span className="dot" /> : null}
+            <i className={`ph ${RAIL_META[key].icon}${key === "chats" && relatedRunning ? " activity-shimmer" : ""}`} />
+            {key === "chats" && attentionCount > 0 ? <span className="attention-count">{attentionCount}</span> : null}
           </button>
         ))}
         {advanced
@@ -227,6 +228,9 @@ function RelatedConversations() {
   const shell = useShell();
   const menu = useContextMenu();
   const activeChildId = shell.openConversationId;
+  useEffect(() => {
+    if (activeChildId) main.markSessionRead(activeChildId);
+  }, [activeChildId, main.sessionAlerts, main.markSessionRead]);
   const [controlsOpen, setControlsOpen] = useState(false);
 
   // Filter state outlives the pane (proto E; pane memory per conversation).
@@ -416,10 +420,9 @@ function RelatedConversations() {
             }}
           >
             <i className={`ph ${row.icon}`} />
-            <span>{titleOf(row.session)}</span>
-            {row.runStatus === "running" || row.runStatus === "awaiting-approval" ? (
-              <span className="dot" />
-            ) : null}
+            <span className={conversationState(row.runStatus) === "running" ? "activity-shimmer" : undefined}>
+              {titleOf(row.session)}</span>
+            <ConversationState state={conversationState(row.runStatus, main.sessionAlerts[row.session.sessionId])} />
           </button>
         ))}
       </div>
@@ -484,10 +487,9 @@ function RelatedConversations() {
     >
       <div className="t">
         <i className={`ph ${row.icon}`} />
-        {titleOf(row.session)}
-        {row.runStatus === "running" || row.runStatus === "awaiting-approval" ? (
-          <span className="badge-run">{t("running")}</span>
-        ) : null}
+        <span className={conversationState(row.runStatus) === "running" ? "activity-shimmer" : undefined}>
+          {titleOf(row.session)}</span>
+        <ConversationState state={conversationState(row.runStatus, main.sessionAlerts[row.session.sessionId])} />
       </div>
       <div className="d">{detailOf(row)}</div>
       {row.session.workspacePrimaryDir && row.session.workspacePrimaryDir !== ownFolder ? (

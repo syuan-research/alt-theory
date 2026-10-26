@@ -555,9 +555,30 @@
   .family-fold i { transition: transform 0.12s; font-size: var(--fs-micro); }
   .family-fold.folded i { transform: rotate(-90deg); }
   .badge-run { margin-left: auto; font-size: var(--fs-micro); color: var(--text-3); background: var(--card); border-radius: 999px; padding: 1px var(--space-tight); flex-shrink: 0; }
-  .badge-run.ok { color: var(--color-success); }
-  .badge-run.warn { color: var(--color-warning); }
-  .badge-run.danger { color: var(--color-danger); }
+  .conversation-state { display: inline-flex; align-items: center; flex: 0 0 auto; margin-left: auto; }
+  .conversation-state.ok { color: var(--color-success); }
+  .conversation-state.warn { color: var(--color-warning); }
+  .conversation-state.danger { color: var(--color-danger); }
+  .child-switch button .conversation-state { overflow: visible; }
+  .child-switch button.on { --activity-ink: var(--on-ink); }
+  .child-switch button.on .conversation-state.warn { color: color-mix(in srgb, var(--color-warning) 65%, var(--on-ink)); }
+  .child-switch button.on .conversation-state.danger { color: color-mix(in srgb, var(--color-danger) 65%, var(--on-ink)); }
+  .child-switch button.on .conversation-state.ok { color: color-mix(in srgb, var(--color-success) 65%, var(--on-ink)); }
+  .activity-shimmer { background: linear-gradient(105deg, var(--activity-ink, var(--ink)) 30%, var(--focus-ring) 48%, var(--activity-ink, var(--ink)) 65%); background-size: 300% 100%; background-clip: text; -webkit-background-clip: text; color: transparent; animation: activity-shimmer 3.6s linear infinite; }
+  @keyframes activity-shimmer { from { background-position: 150% 0; } to { background-position: -150% 0; } }
+  @media (prefers-reduced-motion: reduce) { .activity-shimmer { animation: none; background: none; color: var(--focus-ring); } }
+  .versions-entry { position: relative; }
+  .version-update { margin-left: auto; color: var(--focus-ring); display: inline-flex; align-items: center; gap: var(--space-hair); font-size: var(--fs-micro); }
+  .mini .versions-entry .version-update { position: absolute; right: 0; top: 0; }
+  .versions-dialog { width: min(560px, 90vw); max-height: 80vh; margin: auto; overflow: auto; padding: var(--space-column); color: var(--ink); }
+  .versions-dialog::backdrop { background: rgb(0 0 0 / .25); }
+  .versions-dialog header, .versions-dialog footer, .versions-dialog nav { display: flex; align-items: center; gap: var(--space-control); }
+  .versions-dialog header h2 { flex: 1; margin: 0; }
+  .versions-dialog nav { border-bottom: 1px solid var(--hairline); padding: var(--space-control) 0; margin-bottom: var(--space-control); }
+  .versions-dialog nav button { border: 0; background: transparent; padding: var(--space-tight); cursor: pointer; }
+  .versions-dialog nav button.on { background: var(--selected); border-radius: var(--r-sm); }
+  .versions-dialog .version-notes { max-height: 48vh; overflow-y: auto; overscroll-behavior: contain; }
+  .versions-dialog footer { justify-content: flex-end; margin-top: var(--space-control); }
   /* "N running" in the conversations header — the only place that knows about
      work happening in a conversation you are not looking at (alpha.3) */
   .running-count { display: inline-flex; align-items: center; gap: var(--space-hair); margin-left: var(--space-tight); font-size: var(--fs-micro); color: var(--text-3); background: none; border: none; padding: 0; font-family: inherit; cursor: pointer; }
@@ -575,7 +596,6 @@
   .search-box .s-result:hover { background: var(--hover); }
   .search-box .recent { padding: var(--space-hair) var(--space-control) var(--space-control); font-size: var(--fs-secondary); color: var(--text-3); }
 
-  .update-line { border-top: 1px solid var(--hairline); padding: var(--space-tight) var(--space-control); display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-tight); font-size: var(--fs-secondary); color: var(--text-2); }
   .update-line .link-btn { background: none; border: none; padding: 0; color: var(--ink-soft); cursor: pointer; font: inherit; text-decoration: underline; text-underline-offset: 2px; }
   .update-line .link-btn:hover { color: var(--ink); }
   .left-foot { border-top: 1px solid var(--hairline); padding: var(--space-control) var(--space-control); display: flex; align-items: center; gap: var(--space-control); }
@@ -934,7 +954,8 @@
   .ctx-item:hover { color: var(--ink); }
   .ctx-item i.caret { font-size: 0.7rem; color: var(--text-3); }
 
-  .approval-note { margin-left: var(--space-tight); color: var(--text-3); font-size: var(--fs-secondary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .approval-mark { color: var(--text-3); margin-left: var(--space-tight); flex-shrink: 0; cursor: help; }
+  .approval-mark.danger { color: var(--color-danger); }
   /* Approval dock (smart-approval M4): the command gets the width; the kind is a small head, buttons sit under it. */
   .approval-dock { background: var(--card); border: none; border-radius: var(--r-md); padding: var(--space-control); margin-bottom: var(--space-tight); display: flex; flex-direction: column; gap: var(--space-tight); font-size: var(--fs-primary); min-width: 0; }
   .approval-dock .dock-head { display: flex; align-items: center; gap: var(--space-tight); color: var(--text-2); font-size: var(--fs-secondary); }
@@ -1119,7 +1140,7 @@
   .rail button { width: 36px; height: 36px; border: none; background: transparent; border-radius: var(--r-sm); color: var(--text-2); cursor: pointer; position: relative; font-size: 1.1rem; display: inline-flex; align-items: center; justify-content: center; }
   .rail button:hover { background: var(--hover); }
   .rail button.on { background: var(--selected); color: var(--ink); }
-  .rail button .dot { position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--ink); }
+  .rail .attention-count { position: absolute; top: 0; right: 0; min-width: 16px; padding: 0 3px; height: 16px; border-radius: 9px; background: var(--focus-ring); color: white; font-size: 10px; line-height: 16px; }
   .rpanel { width: 0; min-width: 0; flex-shrink: 1; overflow: hidden; transition: width 0.18s ease; display: flex; flex-direction: column; }
   .right.open .rpanel { width: var(--right-width); }
   /* Tight on purpose: the left column keeps only ~4px under its brand row,
@@ -1366,7 +1387,6 @@
   .child-switch button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .child-switch button:hover { background: var(--hover); }
   .child-switch button.on { background: var(--ink); color: var(--on-ink); }
-  .child-switch button .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--ink); flex: 0 0 auto; }
 
   .child-conv { height: 100%; min-height: 0; display: flex; flex-direction: column; background: var(--canvas); }
   .related-open { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }

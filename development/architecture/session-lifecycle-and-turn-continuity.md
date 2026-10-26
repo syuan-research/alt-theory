@@ -63,6 +63,26 @@ Prompt-cache behavior for copied session history is constrained by
 
 ## Materialization and managed runtime
 
+### Activity shown in conversation lists
+
+`web-server/session-activity.ts` derives summary `updatedAt` from actual Pi
+user/assistant/tool-result message timestamps and run acceptance/completion.
+Filesystem modification times, open/resume/config events and the time a crashed
+run is discovered do not advance it. It reads transcript entries backward in
+blocks rather than loading whole conversations for list timestamps.
+`shared/session-recency.ts` provides the timestamp/comparator used by backend
+listing, left-list and right-Related activity order. Family order takes the
+maximum member activity; explicit name/creation and lineage order remain distinct.
+
+The existing pushed list activity is also the source for left/right state icons
+(`frontend/src/lib/listActivity.ts`). Current running/approval/failure wins over
+historical marks; reading clears a completion mark, while live failure/approval
+remains. Running uses a restrained shimmer, completion a green check. The Related
+entry aggregates approval/failure conversation counts, excluding running and
+completion; running is indicated separately by shimmer. Desktop notifications
+use the same activity changes, including the center's conversation when the app
+is in the background; focused windows suppress desktop notifications.
+
 A WebSocket connection holds no draft: it greets with the new-conversation
 defaults (`session_draft`), and the draft itself — text, files and settings —
 lives in the client (`lib/draft.ts`, see the information architecture). The

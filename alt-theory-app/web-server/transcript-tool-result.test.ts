@@ -27,6 +27,11 @@ test("a tool result row keeps a bounded head and tail and says it was cut", () =
 });
 
 test("a smart-approval denial is read from the blocked result into the row's approval", () => {
+  const allowed = { by: "smart", outcome: "allow", reason: "requested by user", model: "reviewer", reused: true };
+  const successfulResult = { ...result("r0", "c0", "ok"), message: {
+    ...result("r0", "c0", "ok").message, details: { altApproval: allowed },
+  } };
+  assert.deepEqual(buildTranscriptFromEntries([call("a0", "c0"), successfulResult])[0].approval, allowed);
   const [row] = buildTranscriptFromEntries([
     call("a1", "c1"),
     result("r1", "c1", `${SMART_DENIAL_PREFIX}deletes data outside the project`, true),

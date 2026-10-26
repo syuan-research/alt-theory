@@ -45,17 +45,17 @@ export function relativeTimeLabel(
   const ms = Math.max(now - then, 0);
   const hours = Math.floor(ms / 3_600_000);
   if (hours < 1) return t("Just now");
-  if (hours < 24) return t("{count} hours ago", { count: hours });
+  if (hours < 24) return t("{count}h ago", { count: hours });
   const start = new Date(then);
   const end = new Date(now);
   const months = completeMonths(start, end);
   if (months < 1) {
     const days = Math.floor(ms / 86_400_000);
-    if (days < 7) return t("{count} days ago", { count: days });
-    return t("{count} weeks ago", { count: Math.floor(days / 7) });
+    if (days < 7) return t("{count}d ago", { count: days });
+    return t("{count}w ago", { count: Math.floor(days / 7) });
   }
-  if (months < 12) return t("{count} months ago", { count: months });
-  return t("{count} years ago", { count: completeYears(start, end) });
+  if (months < 12) return t("{count}mo ago", { count: months });
+  return t("{count}y ago", { count: completeYears(start, end) });
 }
 
 /** Whole calendar months between start and end: the probe clamps overflows

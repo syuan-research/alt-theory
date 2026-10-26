@@ -11,6 +11,7 @@ const update = require(
   isPrerelease(version: string): boolean;
   compareSemver(left: string, right: string): number;
   parseRepo(pkg: unknown): { owner: string; repo: string } | null;
+  shouldShowReleaseNotes(current: string, previous: string | undefined, existing: boolean): boolean;
   githubEndpoints(current: string, owner: string, repo: string): string;
   pickNewer(
     current: string,
@@ -61,6 +62,11 @@ test("stable running uses releases/latest; prerelease running uses the list", ()
 });
 
 test("repository url on package.json names the GitHub repo", () => {
+  assert.equal(update.shouldShowReleaseNotes("1.9.2", undefined, false), false);
+  assert.equal(update.shouldShowReleaseNotes("1.9.2", undefined, true), true);
+  assert.equal(update.shouldShowReleaseNotes("1.9.2", "1.9.1", true), true);
+  assert.equal(update.shouldShowReleaseNotes("1.9.2", "1.9.2", true), false);
+  assert.equal(update.shouldShowReleaseNotes("1.9.1", "1.9.2", true), false);
   assert.deepEqual(
     update.parseRepo({
       repository: {
