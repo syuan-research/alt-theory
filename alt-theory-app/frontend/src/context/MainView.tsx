@@ -141,9 +141,7 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Background visibility (alpha.3). A conversation that finished, failed,
-  // or stopped for an approval while you were elsewhere leaves a mark that
-  // survives until it is opened. From the pushed activity's transitions (WP-4).
+  // Unseen failures survive idle snapshots; approval ends when no longer pending.
   const raiseAlerts = (changes: ActivityChange[]) => {
     // An open conversation can still finish while the app is in the background.
     for (const [id, alert] of Object.entries(alertsFor(changes, null))) {
@@ -155,7 +153,9 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
     const raised: Record<string, SessionAlert> = alertsFor(changes, sessionId);
     setSessionAlerts((prev) => {
       const next = { ...prev };
-      for (const { sessionId: id } of changes) delete next[id];
+      for (const { sessionId: id, now } of changes) {
+        if (now !== "idle" || next[id] !== "failed") delete next[id];
+      }
       return { ...next, ...raised };
     });
   };

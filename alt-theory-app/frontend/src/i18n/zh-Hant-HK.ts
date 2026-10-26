@@ -4,6 +4,7 @@
  * hand-edit policy as zh-Hans.ts.
  */
 const catalog: Record<string, string> = {
+  "Major updates": "重要更新",
   "Versions": "版本",
   "Update available": "有新版",
   "New version": "新版更新",
@@ -11,6 +12,7 @@ const catalog: Record<string, string> = {
   "Release notes are available on the release page.": "更新說明可在發佈頁面查看。",
   "Could not check for updates.": "暫時無法檢查更新。",
   "{count} conversations need your attention": "{count} 條對話需要你留意",
+  "1 conversation needs your attention": "1 條對話需要你留意",
   "Smart approval: allowed": "智能審批：允許",
   "Smart approval: denied": "智能審批：拒絕",
   "Reused an earlier approval in this conversation.": "沿用此對話先前的審批。",
@@ -920,8 +922,6 @@ const catalog: Record<string, string> = {
   "Experimental": "實驗",
   "Reviews with {model}": "審批模型：{model}",
   "Reviews with this conversation's model at low thinking; each review is an extra call to it": "以本對話的模型（低思考檔位）審批；每次審批都會多調用一次",
-  "Smart approval: allowed · {reason}": "智能審批：放行 · {reason}",
-  "Smart approval: denied · {reason}": "智能審批：拒絕 · {reason}",
   "A small model is recommended — cheaper and faster. If it fails, the fallbacks are tried in order, then the conversation's own model.": "建議用小模型，更便宜也更快。它失敗時會依次嘗試後備模型，最後用對話自己的模型。",
   "This conversation's model": "本對話的模型",
   "Smart approval reviewer": "智能審批模型",

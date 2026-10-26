@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useShell } from "@/context/ShellContext";
-import { currentLang, t } from "@/i18n";
+import { localizedContent, t } from "@/i18n";
 import { hasNativeBridge, openExternal } from "@/lib/native";
 import { releaseNotes } from "@/lib/versions";
 import { renderMarkdown } from "@/lib/markdown";
@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/Button";
 import en from "../../../../../CHANGELOG.md?raw";
 import hans from "../../../../../CHANGELOG.zh-Hans.md?raw";
 import hant from "../../../../../CHANGELOG.zh-Hant-HK.md?raw";
+import timelineEn from "../../../../../docs/en/major-updates.md?raw";
+import timelineHans from "../../../../../docs/zh-Hans/major-updates.md?raw";
 
 export function VersionsEntry() {
   const { versions } = useShell();
@@ -25,16 +27,18 @@ export function VersionsDialog() {
   const { versions } = useShell();
   const { status, open, close } = versions;
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const [latest, setLatest] = useState(false);
+  const [page, setPage] = useState<"current" | "latest" | "timeline">("current");
   useEffect(() => {
     if (open) {
-      setLatest(Boolean(status?.newer && !status.showReleaseNotes));
+      setPage(status?.newer && !status.showReleaseNotes ? "latest" : "current");
       dialogRef.current?.showModal();
     } else dialogRef.current?.close();
   }, [open]);
+  const latest = page === "latest";
   const version = latest && status?.latestVersion ? status.latestVersion : status?.currentVersion || __ALT_THEORY_VERSION__;
-  const local = { en, "zh-Hans": hans, "zh-Hant-HK": hant }[currentLang()];
-  const notes = releaseNotes(latest ? status?.releaseNotes ?? "" : local, version);
+  const local = localizedContent({ en, "zh-Hans": hans, "zh-Hant-HK": hant });
+  const notes = page === "timeline" ? localizedContent({ en: timelineEn, "zh-Hans": timelineHans })
+    : releaseNotes(latest ? status?.releaseNotes ?? "" : local, version);
   return <dialog ref={dialogRef} className="ui-dialog versions-dialog" aria-labelledby="versions-title"
     onCancel={(event) => { event.preventDefault(); close(); }}
     onClick={(event) => { if (event.target === dialogRef.current) {
@@ -44,8 +48,9 @@ export function VersionsDialog() {
     <header><h2 id="versions-title">Alt Theory {version}</h2>
       <Button variant="ghost" onClick={close} aria-label={t("Close")}><i className="ph ph-x" /></Button></header>
     <nav>
-      {status?.newer ? <button className={latest ? "on" : ""} onClick={() => setLatest(true)}>{t("New version")}</button> : null}
-      <button className={!latest ? "on" : ""} onClick={() => setLatest(false)}>{t("What's new")}</button>
+      {status?.newer ? <button className={latest ? "on" : ""} onClick={() => setPage("latest")}>{t("New version")}</button> : null}
+      <button className={page === "current" ? "on" : ""} onClick={() => setPage("current")}>{t("What's new")}</button>
+      <button className={page === "timeline" ? "on" : ""} onClick={() => setPage("timeline")}>{t("Major updates")}</button>
     </nav>
     {notes ? <div className="markdown-body version-notes" dangerouslySetInnerHTML={{ __html: renderMarkdown(notes) }}
       onClick={(event) => {

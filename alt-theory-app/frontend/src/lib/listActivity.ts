@@ -14,11 +14,11 @@ export interface ActivityChange {
   now: ListActivity;
 }
 
-/** A mark a list row keeps until its conversation is opened. */
+/** Completion/failure stay unread; approval describes a current pending action. */
 export type ListAlert = "done" | "failed" | "approval";
 export type ConversationState = "running" | ListAlert;
 
-/** Current activity wins; historical marks only describe completed work. */
+/** Live activity wins; unseen completion/failure can survive an idle snapshot. */
 export function conversationState(
   activity: ListActivity | undefined,
   alert?: ListAlert,
@@ -26,7 +26,7 @@ export function conversationState(
   if (activity === "running") return "running";
   if (activity === "awaiting-approval") return "approval";
   if (activity === "failed") return "failed";
-  return alert === "done" ? "done" : null;
+  return alert === "done" || alert === "failed" ? alert : null;
 }
 
 /**

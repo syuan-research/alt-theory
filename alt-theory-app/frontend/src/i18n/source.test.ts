@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { t } from "./index.ts";
+import { localizedContent, t } from "./index.ts";
 import { englishOf } from "./source.ts";
+
+test("long content prefers its language, with Chinese and English fallbacks", () => {
+  const content = { en: "English", "zh-Hans": "简体" };
+  assert.equal(localizedContent(content, "en"), "English");
+  assert.equal(localizedContent(content, "zh-Hant-HK"), "简体");
+  assert.equal(localizedContent({ ...content, "zh-Hant-HK": "繁體" }, "zh-Hant-HK"), "繁體");
+  assert.equal(localizedContent({ en: "English" }, "zh-Hans"), "English");
+});
 
 test("a // token suffix is stripped in English and kept as the catalog key", () => {
   assert.equal(englishOf("Edit"), "Edit");

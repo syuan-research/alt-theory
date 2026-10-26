@@ -4,7 +4,7 @@
 import type { SessionSummary } from "@/api/types";
 import { t } from "@/i18n";
 import { shortId } from "@/lib/format";
-import { compareSessionActivity, compareSessionActivity as compareByRecency, sessionActivityTime } from "../../../shared/session-recency";
+import { compareSessionActivity, sessionActivityTime } from "../../../shared/session-recency";
 import { isListMember } from "@/lib/listMember";
 import { isPathQuery, quickFindScore, quickFindTerms } from "../../../shared/quick-find";
 
@@ -140,8 +140,6 @@ export function sessionTitle(
 
   return `${marker} · ${base}`;
 }
-
-export { compareSessionActivity as compareByRecency } from "../../../shared/session-recency";
 
 /** Every currently loaded member of the selected conversation family. */
 export function familyMembersOf(
@@ -574,7 +572,7 @@ function buildEdges(members: SessionSummary[]): {
     }
   }
   // Stray-family heads were appended; restore the list's recency order.
-  roots.sort(compareByRecency);
+  roots.sort(compareSessionActivity);
   return { roots, childrenByParent };
 }
 
@@ -606,7 +604,7 @@ export function buildWorkspaceTree(
   displayNames: DisplayNames = {},
   searchQuery = "",
 ): WorkspaceTree {
-  const members = sessions.filter(isListMember).sort(compareByRecency);
+  const members = sessions.filter(isListMember).sort(compareSessionActivity);
   const { roots, childrenByParent } = buildEdges(members);
   const byId = new Map(sessions.map((session) => [session.sessionId, session]));
   const familyActivity = new Map<string, number>();
@@ -629,7 +627,7 @@ export function buildWorkspaceTree(
       ? sessionTitle(a, displayNames, sessions).localeCompare(
           sessionTitle(b, displayNames, sessions),
         ) || a.sessionId.localeCompare(b.sessionId)
-      : compareByRecency(a, b);
+      : compareSessionActivity(a, b);
   for (const children of childrenByParent.values()) children.sort(ownComparator);
   const familyComparator = (a: SessionSummary, b: SessionSummary) =>
     searchQuery && (familyScores.get(familyKeyOf(a, byId)) ?? 0) !== (familyScores.get(familyKeyOf(b, byId)) ?? 0)

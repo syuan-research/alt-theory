@@ -66,7 +66,6 @@ import {
 } from "./config-events.js";
 import {
   latestRunSnapshots,
-  latestPromptAcceptedAt,
   readRunRecords,
   type RunRecord,
 } from "./run-records.js";
@@ -90,8 +89,6 @@ export interface SessionSummary {
   snippet?: string;
   visibility: SessionVisibility;
   createdAt: string | null;
-  /** Historical prompt acceptance, distinct from actual activity below. */
-  lastPromptAcceptedAt: string | null;
   /** Actual message/execution activity; opening and config writes do not advance it. */
   updatedAt: string | null;
   deletedAt: string | null;
@@ -1394,12 +1391,6 @@ function buildSummary(sessionId: string, parts: SessionParts): SessionSummary {
     snippet,
     visibility: parts.v4Session?.visibility ?? "no-export",
     createdAt,
-    lastPromptAcceptedAt:
-      latestPromptAcceptedAt(parts.recordsDir) ??
-      parts.v4Session?.lastActivityAt ??
-      parts.manifest?.createdAt ??
-      parts.v4Session?.createdAt ??
-      null,
     ...(parts.v4Session?.delisted ? { delisted: true } : {}),
     ...(parts.v4Session?.delistedFor
       ? { delistedFor: parts.v4Session.delistedFor }

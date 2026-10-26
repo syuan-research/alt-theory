@@ -53,18 +53,17 @@ export function InspectorPanel() {
   const app = useApp();
   const conv = useConversationContext();
   const shell = useShell();
+  const main = useMainView();
+  const related = useRelatedList();
   const advanced = app.viewMode === "researcher";
   const open = shell.rightPanel !== null;
   const active = shell.rightPanel;
 
-  const related = useMemo(() => conv.sessionId
-    ? relatedRowsFor(conv.sessionId, app.sessions, "family").filter((row) => row.session.sessionId !== conv.sessionId)
-    : [], [app.sessions, conv.sessionId]);
-  const attentionCount = related.filter((row) => {
-    const state = conversationState(row.runStatus);
+  const attentionCount = related.visible.filter((row) => {
+    const state = conversationState(row.runStatus, main.sessionAlerts[row.session.sessionId]);
     return state === "approval" || state === "failed";
   }).length;
-  const relatedRunning = related.some((row) => conversationState(row.runStatus) === "running");
+  const relatedRunning = related.visible.some((row) => conversationState(row.runStatus) === "running");
 
   const title = (shell.target && targetTitle(shell.target)) ?? (active ? RAIL_META[active].title : "");
 
@@ -164,7 +163,7 @@ export function InspectorPanel() {
               paneMemory.set(scrollKey, t.scrollTop);
           }}
         >
-          {active === "chats" ? <RelatedConversations /> : null}
+          {active === "chats" ? <RelatedConversations list={related} /> : null}
           {active === "changes" ? <ChangesPanel /> : null}
           {active === "workspace" ? shell.target?.kind === "page" ? <LocalPage /> : <WorkspaceTree /> : null}
           {active === "records" ? (
@@ -196,7 +195,8 @@ export function InspectorPanel() {
             key={key}
             className={active === key ? "on" : ""}
             data-tip={key === "chats" && attentionCount
-              ? t("{count} conversations need your attention", { count: attentionCount })
+              ? attentionCount === 1 ? t("1 conversation needs your attention")
+                : t("{count} conversations need your attention", { count: attentionCount })
               : RAIL_META[key].title}
             onClick={() => shell.toggleRail(key)}
           >
@@ -221,7 +221,30 @@ export function InspectorPanel() {
   );
 }
 
-function RelatedConversations() {
+// Kept above the pane so the collapsed entry and open list share filters and rows.
+function useRelatedList() {
+  const app = useApp();
+  const conv = useConversationContext();
+  const memoryKey = `${conv.sessionId}:related`;
+  const [scope, setScope] = usePaneMemory<RelatedScope>(`${memoryKey}:scope`, "conversation");
+  const [kinds, setKinds] = usePaneMemory<Set<RelatedKind>>(`${memoryKey}:kinds`, () => new Set(RELATED_KINDS));
+  const [query, setQuery] = usePaneMemory(`${memoryKey}:query`, "");
+  const [sort, setSort] = usePaneMemory<RelatedSort>(`${memoryKey}:sort`, "activity");
+  const [onlyRunning, setOnlyRunning] = usePaneMemory(`${memoryKey}:running`, false);
+  const rows = useMemo(
+    () => (conv.sessionId ? relatedRowsFor(conv.sessionId, app.sessions, scope) : []),
+    [app.sessions, conv.sessionId, scope],
+  );
+  const visible = useMemo(() => {
+    const title = (s: (typeof app.sessions)[number]) => sessionTitle(s, app.sessionDisplayNames, app.sessions);
+    const matched = filterRelatedRows(rows, { kinds, query, titleOf: title }).filter((row) =>
+      !onlyRunning || row.kind === null || row.runStatus === "running" || row.runStatus === "awaiting-approval");
+    return query.trim() ? matched : sortRelatedRows(matched, sort, title);
+  }, [rows, kinds, query, sort, onlyRunning, app.sessionDisplayNames, app.sessions]);
+  return { rows, visible, scope, setScope, kinds, setKinds, query, setQuery, sort, setSort, onlyRunning, setOnlyRunning };
+}
+
+function RelatedConversations({ list }: { list: ReturnType<typeof useRelatedList> }) {
   const app = useApp();
   const conv = useConversationContext();
   const main = useMainView();
@@ -235,14 +258,10 @@ function RelatedConversations() {
 
   // Filter state outlives the pane (proto E; pane memory per conversation).
   const memoryKey = `${conv.sessionId}:related`;
-  const [scope, setScope] = usePaneMemory<RelatedScope>(`${memoryKey}:scope`, "conversation");
-  const [kinds, setKinds] = usePaneMemory<Set<RelatedKind>>(`${memoryKey}:kinds`, () => new Set(RELATED_KINDS));
+  const { rows, visible, scope, setScope, kinds, setKinds, query, setQuery, sort, setSort, onlyRunning, setOnlyRunning } = list;
   const [filterOpen, setFilterOpen] = useState(false);
   const [searchOpen, setSearchOpen] = usePaneMemory(`${memoryKey}:searchOpen`, false);
-  const [query, setQuery] = usePaneMemory(`${memoryKey}:query`, "");
   const [closedKinds, setClosedKinds] = usePaneMemory<Set<RelatedKind>>(`${memoryKey}:closed`, () => new Set());
-  const [sort, setSort] = usePaneMemory<RelatedSort>(`${memoryKey}:sort`, "activity");
-  const [onlyRunning, setOnlyRunning] = usePaneMemory(`${memoryKey}:running`, false);
   const filterRowRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   useFindTarget(filterRowRef, {
@@ -257,23 +276,6 @@ function RelatedConversations() {
 
   const titleOf = (s: (typeof app.sessions)[number]) =>
     sessionTitle(s, app.sessionDisplayNames, app.sessions);
-  // One row projection carries relation, icon, run state, role (card 9);
-  // the membership rule stays in sessionList.ts (§6).
-  const rows = useMemo(
-    () => (conv.sessionId ? relatedRowsFor(conv.sessionId, app.sessions, scope) : []),
-    [app.sessions, conv.sessionId, scope],
-  );
-  const visible = useMemo(
-    () => {
-      const title = (s: (typeof app.sessions)[number]) => sessionTitle(s, app.sessionDisplayNames, app.sessions);
-      const matched = filterRelatedRows(rows, { kinds, query, titleOf: title }).filter((row) =>
-        !onlyRunning || row.kind === null || row.runStatus === "running" || row.runStatus === "awaiting-approval");
-      // A search ranks by relevance; otherwise the chosen order.
-      return query.trim() ? matched : sortRelatedRows(matched, sort, title);
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows, kinds, query, sort, onlyRunning, app.sessionDisplayNames, app.sessions],
-  );
   const sortLabels: Record<RelatedSort, string> = {
     activity: t("Recent activity"), created: t("Creation order"), name: t("Name"),
   };

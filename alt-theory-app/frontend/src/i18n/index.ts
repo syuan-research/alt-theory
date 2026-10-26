@@ -55,6 +55,11 @@ export function currentLang(): Lang {
   return current;
 }
 
+/** Long content uses its own translation, then Simplified Chinese or English. */
+export function localizedContent<T>(content: { en: T } & Partial<Record<Lang, T>>, lang = current): T {
+  return content[lang] ?? (lang.startsWith("zh") ? content["zh-Hans"] : undefined) ?? content.en;
+}
+
 /** Translate an English source string; missing entries return the English. */
 export function t(
   text: string,

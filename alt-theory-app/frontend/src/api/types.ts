@@ -306,7 +306,6 @@ export interface SessionSummary {
   snippet?: string;
   visibility: SessionVisibility;
   createdAt: string | null;
-  lastPromptAcceptedAt?: string | null;
   updatedAt: string | null;
   deletedAt: string | null;
   trashDueAt?: string | null;

@@ -412,7 +412,11 @@ surfaces remain designation-gated and absent for everyone else.
     records, including a managed import-source copy, but not attachments or
     working files.
   - Versions: a persistent left-rail entry (also an icon when collapsed) opens
-    one window for bundled release notes, available updates and manual checks.
+    one window for bundled release notes, major-update history, available updates
+    and manual checks. Major-update history is bundled Markdown under docs/en
+    and docs/zh-Hans, rendered with the existing notes styles and scroll area.
+    Long-content selection uses i18n.localizedContent: exact language first,
+    then Simplified Chinese for missing Chinese translations, then English.
     About links to that same window and keeps storage information. Upgrades show
     the installed version's bundled notes once; fresh installs establish a
     baseline without opening notes. The acknowledged version lives in the

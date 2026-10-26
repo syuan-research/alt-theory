@@ -6,7 +6,6 @@ import { join } from "path";
 import {
   appendRunRecord,
   latestRunSnapshots,
-  latestPromptAcceptedAt,
   readRunRecords,
 } from "./run-records.js";
 
@@ -43,5 +42,4 @@ test("run records retain append-only status and supersession snapshots", () => {
 
   assert.equal(readRunRecords(recordsDir).length, 3);
   assert.equal(latestRunSnapshots(recordsDir)[0].status, "superseded");
-  assert.equal(latestPromptAcceptedAt(recordsDir), base.acceptedAt);
 });

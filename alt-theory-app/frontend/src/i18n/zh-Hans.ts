@@ -5,6 +5,7 @@
  * wording here AND noting it in the glossary so regeneration keeps it.
  */
 const catalog: Record<string, string> = {
+  "Major updates": "重要更新",
   "Versions": "版本",
   "Update available": "有新版",
   "New version": "新版更新",
@@ -12,6 +13,7 @@ const catalog: Record<string, string> = {
   "Release notes are available on the release page.": "更新说明可在发布页面查看。",
   "Could not check for updates.": "暂时无法检查更新。",
   "{count} conversations need your attention": "{count} 条对话需要你关注",
+  "1 conversation needs your attention": "1 条对话需要你关注",
   "Smart approval: allowed": "智能审批：允许",
   "Smart approval: denied": "智能审批：拒绝",
   "Reused an earlier approval in this conversation.": "沿用此对话此前的审批。",
@@ -921,8 +923,6 @@ const catalog: Record<string, string> = {
   "Experimental": "实验",
   "Reviews with {model}": "审批模型：{model}",
   "Reviews with this conversation's model at low thinking; each review is an extra call to it": "用本对话的模型（低思考档位）审批；每次审批都会多调用一次",
-  "Smart approval: allowed · {reason}": "智能审批：放行 · {reason}",
-  "Smart approval: denied · {reason}": "智能审批：拒绝 · {reason}",
   "A small model is recommended — cheaper and faster. If it fails, the fallbacks are tried in order, then the conversation's own model.": "推荐用小模型，更便宜也更快。它失败时会依次尝试备用模型，最后用对话自己的模型。",
   "This conversation's model": "本对话的模型",
   "Smart approval reviewer": "智能审批模型",
