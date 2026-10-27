@@ -22,6 +22,7 @@ export function ListTools({
   onExpandAll,
   onCollapseAll,
   controls,
+  endControls,
   toolsOpen,
   onToggleTools,
 }: {
@@ -36,6 +37,7 @@ export function ListTools({
   onExpandAll?: () => void;
   onCollapseAll?: () => void;
   controls?: ReactNode;
+  endControls?: ReactNode;
   toolsOpen?: boolean;
   onToggleTools?: () => void;
 }) {
@@ -78,6 +80,7 @@ export function ListTools({
         <div className="files-tree-toolbar">
           {controls}
           <span className="fspacer" />
+          {endControls}
           {onExpandAll && onCollapseAll ? (
             <>
               <button type="button" className="flat" aria-label={t("Expand all")} data-tip={t("Expand all")} onClick={onExpandAll}>
@@ -103,6 +106,7 @@ export function FolderHead({
   closed = false,
   onToggle,
   available = true,
+  showMeta = true,
 }: {
   /** Shown instead of the path's last segment (a conversation's title). */
   name?: string;
@@ -114,13 +118,15 @@ export function FolderHead({
   onToggle?: () => void;
   /** False = the folder is missing on this device: path shown, not revealable. */
   available?: boolean;
+  /** False hides the role and path while keeping the structural folder title. */
+  showMeta?: boolean;
 }) {
   const name = nameOverride ?? path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
   const head = (
     <>
       <i className="ph ph-folder" aria-hidden="true" />
       <span className="group-name">{name}</span>
-      <span className="folder-head-role">{role}</span>
+      {showMeta ? <span className="folder-head-role">{role}</span> : null}
       {onToggle ? <i className="ph ph-caret-down tw" aria-hidden="true" /> : null}
     </>
   );
@@ -138,7 +144,7 @@ export function FolderHead({
       ) : (
         <div className="group-label folder-head-title">{head}</div>
       )}
-      {available && hasNativeBridge() ? (
+      {showMeta && available && hasNativeBridge() ? (
         <button
           type="button"
           className="folder-head-path"
@@ -147,9 +153,9 @@ export function FolderHead({
         >
           {path}
         </button>
-      ) : (
+      ) : showMeta ? (
         <div className="folder-head-path" data-tip={path}>{path}</div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -166,9 +172,10 @@ export interface MenuChoice {
  * A sort or filter control of the right pane's lists: a small card that
  * opens its choices under itself. `active` marks a filter that hides rows.
  */
-export function MenuButton({ icon, label, active = false, choices }: {
+export function MenuButton({ icon, label, tip, active = false, choices }: {
   icon: string;
   label: string;
+  tip?: string;
   active?: boolean;
   choices: MenuChoice[];
 }) {
@@ -185,6 +192,7 @@ export function MenuButton({ icon, label, active = false, choices }: {
         type="button"
         className={`fcard${active ? " on" : ""}`}
         aria-haspopup="menu"
+        data-tip={tip}
         onClick={(event) => {
           const rect = event.currentTarget.getBoundingClientRect();
           menu.openAt(rect.left, rect.bottom + 4, items, event.currentTarget);

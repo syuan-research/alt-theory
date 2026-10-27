@@ -257,7 +257,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             ) : null}
             {reviewerHint ? (
               <span>
-                {t("Smart approval is reviewing with this conversation's model, which can be slow or costly.")}{" "}
+                {t("Smart approval uses the conversation model by default.")}{" "}
                 <button
                   type="button"
                   className="flat"
@@ -267,7 +267,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                     window.setTimeout(() => document.getElementById("approval-reviewer")?.scrollIntoView({ block: "center" }), 300);
                   }}
                 >
-                  {t("Choose a reviewer")}
+                  {t("Set reviewer (recommended)")}
                 </button>
                 {" · "}
                 <button type="button" className="flat" onClick={dismissApprovalHint}>

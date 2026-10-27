@@ -64,6 +64,7 @@ export function ChangesPanel() {
   // things to open filter; opened content gets the Ctrl+F find bar).
   const [query, setQuery] = usePaneMemory(`${sessionId}:changes:query`, "");
   const [toolsOpen, setToolsOpen] = usePaneMemory("changes:toolsOpen", true);
+  const [showDetails, setShowDetails] = usePaneMemory("changes:details", true);
   const [sort, setSort] = usePaneMemory<ChangeSort>(`${sessionId}:changes:sort`, "folder");
   const [agentFilter, setAgentFilter] = usePaneMemory<AgentFilter>(`${sessionId}:changes:agents`, { kind: "all" });
   // The family's activity: a member's turn ending (or starting) re-reads the
@@ -159,15 +160,23 @@ export function ChangesPanel() {
     return next.length ? { kind: "agents", ids: next } : { kind: "all" };
   });
   const sortLabels: Record<ChangeSort, string> = {
+    folder: t("Folder"), time: t("Changed"), agent: t("Agent"), name: t("Name"),
+  };
+  const sortMenuLabels: Record<ChangeSort, string> = {
     folder: t("By folder"), time: t("Recently changed"), agent: t("By agent"), name: t("Name"),
+  };
+  const sortTips: Record<ChangeSort, string> = {
+    folder: t("Sort by folder"), time: t("Sort by most recent change"),
+    agent: t("Sort by agent"), name: t("Sort by name"),
   };
   const controls = (
     <>
       <MenuButton
         icon="ph-sort-ascending"
         label={sortLabels[sort]}
+        tip={sortTips[sort]}
         choices={(Object.keys(sortLabels) as ChangeSort[]).map((key) => ({
-          label: sortLabels[key], on: sort === key, onSelect: () => setSort(key),
+          label: sortMenuLabels[key], on: sort === key, onSelect: () => setSort(key),
         }))}
       />
       {/* Also while a filter is on: an author gone since must not leave it stuck. */}
@@ -224,6 +233,18 @@ export function ChangesPanel() {
         onEscape={() => setQuery("")}
         placeholder={t("Filter files")}
         controls={controls}
+        endControls={
+          <button
+            type="button"
+            className={`fcard${showDetails ? " on" : ""}`}
+            aria-pressed={showDetails}
+            data-tip={t("Show folder and editor details")}
+            onClick={() => setShowDetails((shown) => !shown)}
+          >
+            <i className="ph ph-list-dashes" aria-hidden="true" />
+            <span className="details-label">{t("Details")}</span>
+          </button>
+        }
         toolsOpen={toolsOpen}
         onToggleTools={() => setToolsOpen((open) => !open)}
         {...(sort === "folder" || sort === "agent"
@@ -247,6 +268,7 @@ export function ChangesPanel() {
               <FolderHead
                 path={group.title}
                 role={roleText(group)}
+                showMeta={showDetails}
                 closed={isClosed}
                 onToggle={() => toggle(foldKey)}
               />
@@ -280,7 +302,7 @@ export function ChangesPanel() {
                     {/* The name wraps in full; who wrote it sits on its own line under it. */}
                     <span className="change-name" data-tip={file.touchedAt ? `${file.resolvedPath} · ${fmtTime(file.touchedAt)}` : file.resolvedPath}>
                       <span className="s-title">{file.displayPath}</span>
-                      {showAuthors && !agentId ? (
+                      {showDetails && showAuthors && !agentId ? (
                         <span className="change-authors">
                           {file.sessionIds.map((id) => (
                             <span key={id} className={`change-author${id === sessionId ? " own" : ""}`}>{nameOf(id)}</span>
@@ -301,7 +323,7 @@ export function ChangesPanel() {
           </div>
         );
       })}
-      <div className="wb-note">{t("Lists files agents wrote with their edit and write tools. Files made by commands show under Files.")}</div>
+      <div className="wb-note">{t("Files directly edited by agents are shown here.")}</div>
       {menu.element}
     </div>
   );

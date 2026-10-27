@@ -277,7 +277,15 @@ function RelatedConversations({ list }: { list: ReturnType<typeof useRelatedList
   const titleOf = (s: (typeof app.sessions)[number]) =>
     sessionTitle(s, app.sessionDisplayNames, app.sessions);
   const sortLabels: Record<RelatedSort, string> = {
+    activity: t("Activity"), created: t("Created"), name: t("Name"),
+  };
+  const sortMenuLabels: Record<RelatedSort, string> = {
     activity: t("Recent activity"), created: t("Creation order"), name: t("Name"),
+  };
+  const sortTips: Record<RelatedSort, string> = {
+    activity: t("Sort by recent activity"),
+    created: t("Sort by creation order"),
+    name: t("Sort by name"),
   };
   const countOf = (kind: RelatedKind) => rows.filter((row) => row.kind === kind).length;
   const presentKinds = RELATED_KINDS.filter((kind) => countOf(kind) > 0);
@@ -304,7 +312,7 @@ function RelatedConversations({ list }: { list: ReturnType<typeof useRelatedList
   };
   const filterSummary =
     presentKinds.every((kind) => kinds.has(kind))
-      ? t("All types")
+      ? t("Type")
       : presentKinds.filter((kind) => kinds.has(kind)).map(relatedKindLabel).join(" · ") || t("No types");
 
   // parentRow ("Where this branch started — go back anytime") is intentionally
@@ -523,8 +531,9 @@ function RelatedConversations({ list }: { list: ReturnType<typeof useRelatedList
         <MenuButton
           icon="ph-sort-ascending"
           label={sortLabels[sort]}
+          tip={sortTips[sort]}
           choices={(Object.keys(sortLabels) as RelatedSort[]).map((key) => ({
-            label: sortLabels[key], on: sort === key, onSelect: () => setSort(key),
+            label: sortMenuLabels[key], on: sort === key, onSelect: () => setSort(key),
           }))}
         />
         <span className="flabel">{t("Filter")}</span>
@@ -537,6 +546,7 @@ function RelatedConversations({ list }: { list: ReturnType<typeof useRelatedList
             type="button"
             className="fcard fsummary"
             aria-expanded={filterOpen}
+            data-tip={t("Filter by type")}
             onClick={() => setFilterOpen((open) => !open)}
           >
             {filterSummary}
@@ -561,15 +571,17 @@ function RelatedConversations({ list }: { list: ReturnType<typeof useRelatedList
           type="button"
           className={`fcard${scope === "family" ? " on" : ""}`}
           aria-pressed={scope === "family"}
+          data-tip={t("Include the whole conversation family")}
           onClick={() => setScope((prev) => (prev === "family" ? "conversation" : "family"))}
         >
           {scope === "family" ? <i className="ph ph-check" /> : null}
-          {t("Whole family")}
+          {t("Family")}
         </button>
         <button
           type="button"
           className={`fcard${onlyRunning ? " on" : ""}`}
           aria-pressed={onlyRunning}
+          data-tip={t("Show only running conversations")}
           onClick={() => setOnlyRunning((prev) => !prev)}
         >
           {onlyRunning ? <i className="ph ph-check" /> : null}

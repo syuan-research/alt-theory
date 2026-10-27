@@ -591,9 +591,9 @@
   .search-box .s-result:hover { background: var(--hover); }
   .search-box .recent { padding: var(--space-hair) var(--space-control) var(--space-control); font-size: var(--fs-secondary); color: var(--text-3); }
 
-  .left-foot { border-top: 1px solid var(--hairline); padding: var(--space-control) var(--space-tight); display: flex; align-items: center; gap: var(--space-control); }
+  .left-foot { border-top: 1px solid var(--hairline); padding: var(--space-tight); display: flex; align-items: center; gap: var(--space-control); }
   .left-foot-tools { margin-left: auto; display: flex; align-items: center; gap: var(--space-tight); flex-shrink: 0; }
-  .left-foot .gear { display: flex; align-items: center; gap: var(--space-tight); color: var(--ink-soft); cursor: pointer; padding: var(--space-tight); border-radius: var(--r-sm); font-size: var(--fs-primary); background: none; border: none; }
+  .left-foot .gear { display: flex; align-items: center; gap: var(--space-tight); height: var(--rail-row-h); color: var(--ink-soft); cursor: pointer; padding: 0 calc(var(--space-tight) + 2px); border-radius: var(--r-sm); font-size: var(--fs-primary); background: none; border: none; }
   .left-foot .gear:hover { background: var(--hover); }
   .help-menu { position: relative; }
   .help-menu > summary { list-style: none; display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; color: var(--ink-soft); cursor: pointer; border-radius: var(--r-sm); font-size: 1rem; }
@@ -917,7 +917,7 @@
   /* composer */
   .composer-wrap { padding: var(--space-block) var(--space-column) var(--space-block); }
   .composer-col { max-width: 660px; margin: 0 auto; }
-  .ctx-line { position: relative; display: flex; align-items: center; gap: 16px; min-width: 0; padding: 0 6px 6px; font-size: var(--fs-secondary); color: var(--text-2); }
+  .ctx-line { position: relative; display: flex; align-items: center; gap: 16px; min-width: 0; min-height: 32px; padding: 0 6px 6px; font-size: var(--fs-secondary); color: var(--text-2); }
   .ctx-picker { display: inline-block; min-width: 0; max-width: 45%; }
   .ctx-picker.role-picker { max-width: min(45%, 11em); }
   .ctx-item { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; cursor: pointer; background: none; border: none; color: inherit; font: inherit; padding: 0; }
@@ -1268,7 +1268,8 @@
   .files-search-action { flex: 0 0 auto; border: 0; border-radius: var(--r-sm); padding: var(--space-hair); background: transparent; color: var(--text-2); cursor: pointer; }
   .files-search-action:hover { background: var(--selected); color: var(--ink); }
   @container (max-width: 440px) {
-    .files-tree-toolbar .batch-label { display: none; }
+    .files-tree-toolbar .batch-label,
+    .files-tree-toolbar .details-label { display: none; }
   }
   .tree-copy { position: relative; margin-left: auto; padding: var(--space-hair); border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-3); cursor: pointer; opacity: 0; }
   .ti:hover .tree-copy, .ti:focus-within .tree-copy { opacity: 1; }
@@ -1454,7 +1455,7 @@
   /* Settings nav rows live in the shared left rail (.set-rail in LeftNav);
      same row styling the old in-page set-nav used. */
   .set-rail { flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-control) var(--space-tight); display: flex; flex-direction: column; }
-  .set-item { display: flex; flex: 0 0 var(--rail-row-h); align-items: center; gap: var(--space-control); height: var(--rail-row-h); padding: var(--space-tight); border-radius: var(--r-sm); font-size: var(--fs-primary); color: var(--ink-soft); cursor: pointer; width: 100%; text-align: left; background: none; border: none; }
+  .set-item { display: flex; flex: 0 0 var(--rail-row-h); align-items: center; gap: var(--space-control); height: var(--rail-row-h); padding: 0 calc(var(--space-tight) + 2px); border-radius: var(--r-sm); font-size: var(--fs-primary); color: var(--ink-soft); cursor: pointer; width: 100%; text-align: left; background: none; border: none; }
   .set-item:hover { background: var(--hover); }
   .set-item.on { background: var(--selected); font-weight: 500; }
   .set-item i { color: var(--text-2); }

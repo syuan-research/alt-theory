@@ -142,13 +142,16 @@ export function WorkspaceTree() {
   }, [shell.workspaceRevealPath, shell.clearWorkspaceRevealPath, setQuery]);
 
   const normalizedQuery = browsing ? "" : query.trim();
-  const orderLabels = { name: t("Name"), recent: t("Recently modified") };
+  const orderLabels = { name: t("Name"), recent: t("Recent") };
+  const orderMenuLabels = { name: t("Name"), recent: t("Recently modified") };
+  const orderTips = { name: t("Sort by name"), recent: t("Sort by most recently modified") };
   const orderControl = (
     <MenuButton
       icon="ph-sort-ascending"
       label={orderLabels[order]}
+      tip={orderTips[order]}
       choices={(["name", "recent"] as const).map((key) => ({
-        label: orderLabels[key], on: order === key, onSelect: () => { setBrowsing(null); setOrder(key); },
+        label: orderMenuLabels[key], on: order === key, onSelect: () => { setBrowsing(null); setOrder(key); },
       }))}
     />
   );
