@@ -5,17 +5,31 @@
 
 ---
 
-## v1.9.2 — 2026-10-26
+## v1.10.0 — 2026-10-27
 
-This small update improves everyday use.
+This update improves imports, conversation controls and diagram reading.
 
-- [Projects and folders] Opening a conversation no longer changes its activity time or list position.
-- [Permissions and safety] Commands checked by the approval model show a shield with the result and reason on hover.
-- [Interface] The Versions entry provides release notes, major updates and update downloads.
-- [Interface] When the app is in the background, a completion notification now also appears for the centered conversation.
-- [Interface] Diagrams open in a dedicated viewer with zoom, pan, and an optional white background for screenshots.
-- [Interface] Files and Changes controls can collapse; Changes can hide folder and editor labels.
-- [Interface] Other visual and wording clarity improvements.
+### Imports
+
+- Imported conversations now reuse a matching project by main or companion folder.
+
+### Projects and folders
+
+- Opening a conversation no longer changes its activity time or list position.
+
+### Conversations
+
+- The right-hand conversation composer now includes role and knowledge-base selection, skills, file attachments and context usage; labels fold to icons in a narrow pane.
+- Running, completed and attention states use one set of indicators in the conversation list and Related panel.
+- Commands checked by the approval model show a shield with the result and reason on hover.
+
+### Interface
+
+- The Versions entry provides release notes, major updates, update checks and new-version downloads.
+- When the app is in the background, a completion notification now also appears for the centered conversation.
+- Diagrams open in a dedicated viewer with zoom, pan, and an optional white background for screenshots.
+- Files and Changes controls can collapse; Changes can hide folder and editor labels.
+- Other visual and wording clarity improvements.
 
 ## v1.9.1 — 2026-10-23
 
