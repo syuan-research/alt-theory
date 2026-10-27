@@ -15,7 +15,7 @@ This update improves project imports, interface design and the experience.
 
 ### Conversations
 
-- Opening a conversation leaves its activity time and list position unchanged.
+- Merely opening a conversation leaves its activity time and list position unchanged.
 - The conversation composer on the right now lets you choose the role and knowledge base, add skills and files, and see how much context the conversation has used.
 - When the pane is narrow, the composer's labels collapse into icons.
 - The conversation list and the Related conversations panel now use the same status marks for running, finished, and needs-attention conversations.
