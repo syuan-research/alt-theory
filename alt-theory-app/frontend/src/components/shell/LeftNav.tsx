@@ -172,20 +172,21 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
 
   return (
     <aside ref={railRef} className="left" hidden={hidden}>
-      {/* Clicking empty space expands the collapsed rail. */}
       <div
         className="mini"
         onClick={(event) => {
           if (!(event.target as HTMLElement).closest("button, details")) shell.setLeftCollapsed(false);
         }}
       >
-        <button
-          className="mono"
-          data-tip={t("Expand")}
-          onClick={() => shell.setLeftCollapsed(false)}
-        >
-          <img className="brand-mark" src={altTheoryMark} alt="" />
-        </button>
+        <div className="left-head">
+          <button
+            className="brand-btn"
+            data-tip={t("Expand")}
+            onClick={() => shell.setLeftCollapsed(false)}
+          >
+            <img className="brand-mark" src={altTheoryMark} alt="" />
+          </button>
+        </div>
         <button
           className="mini-new"
           data-tip={t("New conversation")}
@@ -263,7 +264,7 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
         <div className="left-foot">
           <button className="gear" onClick={() => shell.openSettings()}>
             <i className="ph ph-gear" />
-            {t("Settings")}
+            <span className="lbl">{t("Settings")}</span>
           </button>
           <div className="left-foot-tools">
             <VersionsEntry />
@@ -378,7 +379,7 @@ function SettingsRail({ hidden }: { hidden?: boolean }) {
         <div className="left-foot">
           <button className="gear" onClick={() => shell.openApp()}>
             <i className="ph ph-arrow-left" />
-            {t("Back to app")}
+            <span className="lbl">{t("Back to app")}</span>
           </button>
         </div>
       </div>
@@ -878,6 +879,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
             <button
               className="btn-new split-plus"
               data-tip={t("New conversation")}
+              aria-label={t("New conversation")}
               onClick={() =>
                 startConversationIn(conv.workspacePrimaryDir || null)
               }
@@ -960,11 +962,12 @@ function UserNav({ onImport }: { onImport: () => void }) {
                       type="button"
                       className={`workspace-list-title${looseCollapsed ? " closed" : ""}`}
                       aria-expanded={!looseCollapsed}
+                      aria-label={looseLabel}
                       data-tip={looseLabel}
                       onClick={() => setLooseCollapsed((value) => !value)}
                     >
                       <i className="ph ph-chat section-icon" aria-hidden="true" />
-                      {t("Standalone")}
+                      <span className="lbl">{t("Standalone")}</span>
                       <i className="ph ph-caret-down tw" aria-hidden="true" />
                     </button>
                     <div className="workspace-list-actions">
@@ -1010,15 +1013,18 @@ function UserNav({ onImport }: { onImport: () => void }) {
                 type="button"
                 className={`workspace-list-title${projectsCollapsed ? " closed" : ""}`}
                 aria-expanded={!projectsCollapsed}
+                aria-label={t("Projects")}
+                data-tip={t("Projects")}
                 onClick={() => setProjectsCollapsed((value) => !value)}
               >
                 <i className="ph ph-stack section-icon" aria-hidden="true" />
-                {t("Projects")}
+                <span className="lbl">{t("Projects")}</span>
                 <i className="ph ph-caret-down tw" aria-hidden="true" />
               </button>
               <div className="workspace-list-actions">
                 <button
                   type="button"
+                  className="collapse-all-projects"
                   data-tip={t("Collapse all projects")}
                   aria-label={t("Collapse all projects")}
                   onClick={() => setClosedGroups(new Set(projectGroups.map((group) => group.dir)))}
@@ -1027,6 +1033,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                 </button>
                 <button
                   type="button"
+                  className="expand-all-projects"
                   data-tip={t("Expand all projects")}
                   aria-label={t("Expand all projects")}
                   onClick={() => setClosedGroups(new Set())}

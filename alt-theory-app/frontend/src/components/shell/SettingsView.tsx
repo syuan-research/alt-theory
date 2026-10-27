@@ -50,6 +50,7 @@ import { setApprovalReviewer, setShowAllApprovalModes, useApprovalReviewer } fro
 import { ModelConfigPage } from "@/pages/ModelConfigPage";
 import { authConnectEntryStep } from "@/lib/authConnect";
 import { MenuSelect } from "@/components/ui/MenuSelect";
+import { Button } from "@/components/ui/Button";
 import {
   applyTitlebarVar,
   getViewSize,
@@ -1897,6 +1898,7 @@ function RoleKbPanel() {
   return (
     <div className="set-panel">
       <h2>{t("Role & Knowledge")}</h2>
+      <p className="sub">{t("Customize response styles (roles) and domain knowledge.")}</p>
       {notice ? <p className="sub">{notice}</p> : null}
       <div className="set-card">
         <div className="row2">
@@ -1982,8 +1984,11 @@ function AboutPanel() {
       {hasNativeBridge() ? (
         <div className="set-card">
           <div className="row2">
-            <p>{t("View release notes and check for updates.")}</p>
-            <button className="add-btn" onClick={() => versions.setOpen(true)}>{t("Versions")}</button>
+            <div>
+              <h4>{t("Versions")}</h4>
+              <p>{t("View release notes and check for updates.")}</p>
+            </div>
+            <Button onClick={() => versions.setOpen(true)}>{t("Versions")}</Button>
           </div>
         </div>
       ) : null}
@@ -1994,8 +1999,7 @@ function AboutPanel() {
               <h4>{t("Your data folder")}</h4>
               <p>{t("Conversations and settings are stored on this machine at {dataDir}.", { dataDir })}</p>
             </div>
-            <button
-              className="add-btn"
+            <Button
               onClick={() => {
                 if (hasNativeBridge()) void revealPath(dataDir);
                 else void navigator.clipboard?.writeText(dataDir);
@@ -2003,7 +2007,7 @@ function AboutPanel() {
             >
               <i className={`ph ${hasNativeBridge() ? "ph-folder-open" : "ph-copy"}`} />
               {hasNativeBridge() ? t("Show in file manager") : t("Copy path")}
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}
@@ -2017,8 +2021,9 @@ function FeaturesPanel() {
   return (
     <div className="set-panel">
       <h2>{t("Help center")}</h2>
-      <button
-        className="add-btn help-ask"
+      <p className="sub">{t("Browse guides and other resources.")}</p>
+      <Button
+        className="help-ask"
         onClick={() => {
           shell.openApp();
           main.askAboutAlt();
@@ -2026,7 +2031,7 @@ function FeaturesPanel() {
       >
         <i className="ph ph-chats-circle" />
         {t("Ask Alt")}
-      </button>
+      </Button>
       <div className="set-card">
         <h4>{t("Do concrete work on your materials")}</h4>
         <p>
@@ -2194,6 +2199,7 @@ function WorkingFoldersPanel() {
   return (
     <div className="set-panel">
       <h2>{t("Projects and global folders")}</h2>
+      <p className="sub">{t("Set the folders conversations can read or write.")}</p>
       {notice ? <p className="sub">{notice}</p> : null}
 
       <div className="set-card">

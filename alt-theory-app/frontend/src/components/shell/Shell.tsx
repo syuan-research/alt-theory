@@ -139,6 +139,7 @@ export function Shell() {
   const rootClass = [
     "app-root",
     shell.leftCollapsed ? "leftCol" : "",
+    leftWidth <= 240 ? "leftNarrow" : "",
     app.viewMode === "researcher" ? "researcher" : "",
   ]
     .filter(Boolean)

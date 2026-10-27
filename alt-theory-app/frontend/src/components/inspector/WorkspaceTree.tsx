@@ -68,6 +68,7 @@ export function WorkspaceTree() {
   const [query, setQuery] = usePaneMemory(`${sessionId}:files:query`, "");
   // Name = the folder trees; recent = each folder's files flat, newest first.
   const [order, setOrder] = usePaneMemory<"name" | "recent">(`${sessionId}:files:order`, "name");
+  const [toolsOpen, setToolsOpen] = usePaneMemory("files:toolsOpen", true);
   const recent = order === "recent";
   const [browsing, setBrowsing] = usePaneMemory<{ folderId: string; path: string } | null>(`${sessionId}:files:browsing`, null);
   const resultScroll = useRef({ outer: 0, inner: 0, folderId: "" });
@@ -271,6 +272,8 @@ export function WorkspaceTree() {
         onClear={clearSearch}
         placeholder={t("Filter files")}
         controls={orderControl}
+        toolsOpen={toolsOpen}
+        onToggleTools={() => setToolsOpen((open) => !open)}
         {...(!recent && (workingFolders.some((folder) => folder.available && !folder.managed) || (entries?.length ?? 0) > 0)
           ? {
               onExpandAll: () => {

@@ -4,10 +4,9 @@
 **v1.8.0 · 2026-10 · first official release**
 - [Permissions and safety] Four permission levels replaced the Understand/Work modes; Smart approval is the default for new conversations, with an approval model confirming actions on your behalf
 - [Permissions and safety] Deletion protection: your home folder, Desktop, Documents, whole disks and the project itself cannot simply be deleted
-- [Coordination] Conversations can message each other; dedicated agents — one that reads the literature, one that reviews writing style — can be kept and consulted by you and the main agent, reused across stages or projects
-- [Files] New Conversation files page for managing content in conversation-specific folders outside project folders
-- [Conversation] Select text to annotate: highlight, underline, strikethrough
-- [Conversation] Every conversation keeps its own unsent draft, surviving switches and restarts
+- [Coordination] Conversations can message each other; dedicated agents for reading literature, reviewing writing style, and other recurring work can be kept and consulted by users and the main agent across stages or projects
+- [Files] New Conversation files page
+- [Conversation] Select text to annotate; every conversation keeps its own unsent draft, surviving switches and restarts
 - [Smoothness] Long conversations scroll, hold memory, and install noticeably lighter
 - [Skills] Bundled skills and the agent's worldview rewritten with the permission system
 
@@ -39,13 +38,26 @@
 **v1.4.0 · 2026-08**
 - [Smoothness] Long conversations stopped slowing down with history
 
-**Before v1.4 · existing features (no version records)**
-- [Conversation] Conversations can branch; side conversations (BTW) open a small topic anytime
-- [System prompt] Roles and Souls shape each conversation's agent
-- [Domain knowledge] Knowledge bases (KB): domain knowledge retrieved on demand
-- [Models] Multiple model providers: subscription sign-in and custom endpoints, thinking levels
-- [Imports] Bring existing conversations from Codex, Claude Code, Grok, Pi, OpenCode
-- [Skills] The initial bundled skill set: workspace conventions, retrieval, document conversion
+**v1.3.1 · 2026-08**
 - [Skills] Steer: one-click entry to the skills that best support understanding and alignment
-- [Permissions and safety] The approval boundary: the agent asks before acting outside your folders
-- [Permissions and safety] Trash with 30-day recovery
+
+**v1.3.0.x · 2026-07 ~ 08**
+- [Skills] The initial bundled skill set: workspace conventions, retrieval, document conversion
+- [Models] Model subscription sign-in (Claude and others); custom endpoint configuration
+- [Coordination] Tasks can be handed to several agents running in parallel
+- [Conversation] Chinese interface (Simplified and Traditional)
+- [Interface] Dark mode
+- [Permissions and safety] Trash: 30-day recovery and permanent delete
+
+**v1.2.0 · 2026-07**
+- [Conversation] Any earlier turn can be edited; a branch can start from any point
+
+**v1.0–1.1 · 2026-07 (alpha)**
+- [Conversation] The desktop app took shape: branching conversations (Branch), side conversations (BTW), draggable panels
+- [Permissions and safety] Changes outside the working folders require approval first
+- [Imports] Bring existing conversations from Pi, OpenCode, Codex, Grok Build
+
+**pre-v1 (v0.x · 2026-03 to 06)**
+- [System prompt] Soul: defines the principles Alt follows for social-science research discussion, including honesty and avoiding premature convergence
+- [System prompt] Role: scenario-based presets of tone and speaking style; new scenarios can be added
+- [Domain knowledge] Knowledge bases: material a conversation can look things up in, making up for gaps in how representative and accurate social-science knowledge is in the model's training data

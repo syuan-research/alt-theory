@@ -63,6 +63,7 @@ export function ChangesPanel() {
   // The same always-visible filter as Files (owner 2026-09-24: lists of
   // things to open filter; opened content gets the Ctrl+F find bar).
   const [query, setQuery] = usePaneMemory(`${sessionId}:changes:query`, "");
+  const [toolsOpen, setToolsOpen] = usePaneMemory("changes:toolsOpen", true);
   const [sort, setSort] = usePaneMemory<ChangeSort>(`${sessionId}:changes:sort`, "folder");
   const [agentFilter, setAgentFilter] = usePaneMemory<AgentFilter>(`${sessionId}:changes:agents`, { kind: "all" });
   // The family's activity: a member's turn ending (or starting) re-reads the
@@ -223,6 +224,8 @@ export function ChangesPanel() {
         onEscape={() => setQuery("")}
         placeholder={t("Filter files")}
         controls={controls}
+        toolsOpen={toolsOpen}
+        onToggleTools={() => setToolsOpen((open) => !open)}
         {...(sort === "folder" || sort === "agent"
           ? {
               onExpandAll: () => setClosed([]),

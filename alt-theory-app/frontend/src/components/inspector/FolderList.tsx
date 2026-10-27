@@ -5,11 +5,11 @@ import { useContextMenu, type ContextMenuItem } from "@/components/shell/Context
 
 /**
  * Shared chrome for the right pane's folder lists, Changes and Files (owner
- * 2026-09-24): one always-visible filter plus Expand all / Collapse all on
- * top, and one folder header — name + quiet role on the first line (click
- * folds the folder), the full path on the second (click reveals it in the
- * file manager). `controls` (sort / filter menus) sit on the left of the
- * Expand / Collapse row — the same row shape in Changes, Files and Related.
+ * 2026-09-24): one always-visible filter with a disclosure for the default-
+ * expanded tool row. Each folder header has name + quiet role on the first
+ * line (click folds the folder), the full path on the second (click reveals
+ * it in the file manager). `controls` (sort / filter menus) sit on the left
+ * of the Expand / Collapse row.
  */
 export function ListTools({
   filterRef,
@@ -22,6 +22,8 @@ export function ListTools({
   onExpandAll,
   onCollapseAll,
   controls,
+  toolsOpen,
+  onToggleTools,
 }: {
   filterRef: RefObject<HTMLDivElement | null>;
   query: string;
@@ -34,41 +36,57 @@ export function ListTools({
   onExpandAll?: () => void;
   onCollapseAll?: () => void;
   controls?: ReactNode;
+  toolsOpen?: boolean;
+  onToggleTools?: () => void;
 }) {
   return (
     <>
-      <div className={`files-search${onBack ? " browsing" : ""}`} ref={filterRef}>
-        <i className="ph ph-magnifying-glass" aria-hidden="true" />
-        <input
-          type="search"
-          value={query}
-          placeholder={placeholder}
-          aria-label={placeholder}
-          onFocus={() => onBack?.()}
-          onChange={(event) => onQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key !== "Escape" || event.nativeEvent.isComposing) return;
-            event.preventDefault();
-            event.stopPropagation();
-            onEscape?.();
-          }}
-        />
-        {onBack ? <button type="button" className="files-search-action" aria-label={t("Back to search results")} data-tip={t("Back to search results")} onClick={onBack}><i className="ph ph-arrow-left" aria-hidden="true" /></button> : null}
-        {query ? <button type="button" className="files-search-action" aria-label={t("Clear")} data-tip={t("Clear")} onClick={() => onClear ? onClear() : onQuery("")}><i className="ph ph-x" aria-hidden="true" /></button> : null}
+      <div className={`files-tools-search-row${onBack ? " browsing" : ""}`}>
+        <div className={`files-search${onBack ? " browsing" : ""}`} ref={filterRef}>
+          <i className="ph ph-magnifying-glass" aria-hidden="true" />
+          <input
+            type="search"
+            value={query}
+            placeholder={placeholder}
+            aria-label={placeholder}
+            onFocus={() => onBack?.()}
+            onChange={(event) => onQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape" || event.nativeEvent.isComposing) return;
+              event.preventDefault();
+              event.stopPropagation();
+              onEscape?.();
+            }}
+          />
+          {onBack ? <button type="button" className="files-search-action" aria-label={t("Back to search results")} data-tip={t("Back to search results")} onClick={onBack}><i className="ph ph-arrow-left" aria-hidden="true" /></button> : null}
+          {query ? <button type="button" className="files-search-action" aria-label={t("Clear")} data-tip={t("Clear")} onClick={() => onClear ? onClear() : onQuery("")}><i className="ph ph-x" aria-hidden="true" /></button> : null}
+        </div>
+        {onToggleTools ? (
+          <button
+            type="button"
+            className="files-tools-toggle"
+            aria-label={t("Sort and filter")}
+            data-tip={t("Sort and filter")}
+            aria-expanded={toolsOpen}
+            onClick={onToggleTools}
+          >
+            <i className={`ph ph-caret-${toolsOpen ? "up" : "down"}`} aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
-      {controls || (onExpandAll && onCollapseAll) ? (
+      {(toolsOpen ?? true) && (controls || (onExpandAll && onCollapseAll)) ? (
         <div className="files-tree-toolbar">
           {controls}
           <span className="fspacer" />
           {onExpandAll && onCollapseAll ? (
             <>
-              <button className="flat" onClick={onExpandAll}>
+              <button type="button" className="flat" aria-label={t("Expand all")} data-tip={t("Expand all")} onClick={onExpandAll}>
                 <i className="ph ph-arrows-out-line-vertical" aria-hidden="true" />
-                {t("Expand all")}
+                <span className="batch-label">{t("Expand all")}</span>
               </button>
-              <button className="flat" onClick={onCollapseAll}>
+              <button type="button" className="flat" aria-label={t("Collapse all")} data-tip={t("Collapse all")} onClick={onCollapseAll}>
                 <i className="ph ph-arrows-in-line-vertical" aria-hidden="true" />
-                {t("Collapse all")}
+                <span className="batch-label">{t("Collapse all")}</span>
               </button>
             </>
           ) : null}
