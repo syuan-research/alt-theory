@@ -1175,10 +1175,10 @@
     max-height: min(340px, calc(100vh - 180px));
     overflow-wrap: anywhere;
   }
+  .ctx-line .menu { left: 0; right: auto; top: auto; bottom: calc(100% + var(--space-hair)); }
   .perm-anchor { display: inline-flex; }
   .perm-anchor > .menu { left: 0; bottom: 40px; }
   .composer .row > .model-picker { right: 0; bottom: 36px; left: auto; }
-  .child-ctx-line .menu { left: 0; top: 100%; bottom: auto; }
   .model-provider-section + .model-provider-section { border-top: 1px solid var(--hairline); margin-top: var(--space-hair); padding-top: var(--space-hair); }
   .model-provider-label { padding: var(--space-hair) var(--space-control) var(--space-hair); }
   /* MenuSelect: native-select replacement reusing the .menu pattern above.

@@ -40,7 +40,6 @@ export function CtxPicker({
       </button>
       <div
         className={`menu${open ? " on" : ""}`}
-        style={{ left: 0, bottom: "auto", top: 22 }}
         onClick={(event) => event.stopPropagation()}
       >
         {children}
