@@ -415,11 +415,11 @@
     top: 0;
     left: 0;
     transform-origin: 0 0;
-    will-change: transform;
   }
 
   .mermaid-viewer-stage.animate {
     transition: transform 0.2s cubic-bezier(0.22, 0.61, 0.36, 1);
+    will-change: transform;
   }
 
   .mermaid-viewer-stage svg {
@@ -727,7 +727,7 @@
   .wb-row .k { color: var(--text-2); }
   .wb-row .v { font-weight: 500; text-align: right; }
   .wb-note { font-size: var(--fs-secondary); color: var(--text-3); margin-top: var(--space-tight); }
-  .wb-note-action { display: block; width: 100%; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; }
+  .wb-note-action { display: block; width: 100%; padding: 0; border: 0; background: none; text-align: center; cursor: pointer; }
   .wb-note-action:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
   .wb-input { width: 100%; border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: var(--space-tight) var(--space-control); font: inherit; font-size: var(--fs-primary); outline: none; margin-top: var(--space-tight); background: var(--surface); }
   .wb-input:disabled { opacity: 0.6; }
