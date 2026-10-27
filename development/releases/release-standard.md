@@ -23,11 +23,22 @@ installation material defined below.
   the release's scale in plain terms (for example, "the biggest update
   since v1.7", or that this is the first official release) and nothing
   beyond that.
-- Organize the main changes under two to four `### Topic` headings named for
+- Choose the format first by version increment: patch releases (+0.0.1)
+  default to per-item tags; minor releases (+0.1) default to heading sections.
+  These are defaults, not hard limits: a patch with enough content to repeat
+  the same tag across several items may use sections instead.
+- For heading sections, organize the main changes under two to four `### Topic` headings named for
   the user's purpose or work area (for example, Find and organize work, Help
   without leaving the app, Approvals and continuity). Prefer a small number
   of coherent themes over separate headings for every feature or
-  implementation area.
+  implementation area. Most headings should come from the recurring
+  vocabulary in [`release-headings.md`](release-headings.md) (Chinese and
+  English); a release may occasionally carry a one-off heading or the
+  `### Other new and fixed` catch-all when something genuinely does not fit.
+- For per-item tags, prefix each bullet with a bracketed topic:
+  `[Interface]` in English, `[界面]` in Chinese. Tags use the same heading
+  vocabulary. Put a space between the closing bracket and the item text;
+  avoid adding mostly one-item heading sections.
 - Each topic normally has one or two bullets. Combine changes when they
   support the same user outcome; do not turn commit history, individual
   fixes, or every UI adjustment into separate release-note entries. A

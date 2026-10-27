@@ -28,7 +28,7 @@ All items are equal; there is no core/optional split.
    old behavior.
 3. **Complete sentences.** No telegraph fragments, no label-plus-colon
    stacks of noun phrases standing in for sentences.
-4. **Nothing obvious, nothing inert.** Behavior a reader would take for
+4. **Low-value content.** Behavior a reader would take for
    granted stays out; numbers the reader cannot act on (MB, milliseconds)
    stay out.
 5. **No verb-narrated chains, no contrasts.** "No longer X" chains and
@@ -36,7 +36,7 @@ All items are equal; there is no core/optional split.
 6. **One theme, one item.** A single theme is not split across bullets;
    the unit of organization is an entity the reader understands (one
    feature, one change in experience).
-7. **Selling budget.** Apart from the opening sentence, no laudatory
+7. **Promotion-wording budget.** Apart from the opening sentence, no laudatory
    adjectives or adverbs and no inflated implications.
 8. **Worked examples: provenance only.** An example may come only from
    the user's own wording, a purpose obvious from the feature itself, or
