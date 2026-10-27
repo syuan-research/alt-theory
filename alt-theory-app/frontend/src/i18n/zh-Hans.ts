@@ -735,6 +735,7 @@ const catalog: Record<string, string> = {
   "Subagent · {role} · {count} messages": "子代理 · {role} · {count}条消息",
   "Subagent name": "子代理名称",
   "Subagents": "子代理",
+  "Subagents can be configured in Settings.": "子代理可在设置中配置。",
   "Submit": "提交",
   "Switch models mid-conversation from the model chip — the conversation continues.": "在对话中途从模型标签切换模型——对话会继续。",
   "Switching role preset…": "正在切换角色…",

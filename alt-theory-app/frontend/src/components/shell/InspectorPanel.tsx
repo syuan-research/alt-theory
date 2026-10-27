@@ -632,6 +632,15 @@ function RelatedConversations({ list }: { list: ReturnType<typeof useRelatedList
       {visible.length === 0 ? (
         <div className="rp-empty">{t("No matching related conversations.")}</div>
       ) : null}
+      {visible.length > 0 ? (
+        <button
+          type="button"
+          className="wb-note wb-note-action"
+          onClick={() => shell.openSettings("agents")}
+        >
+          {t("Subagents can be configured in Settings.")}
+        </button>
+      ) : null}
       </>}
       {menu.element}
     </div>

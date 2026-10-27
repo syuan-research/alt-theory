@@ -729,6 +729,7 @@
   .wb-note { font-size: var(--fs-secondary); color: var(--text-3); margin-top: var(--space-tight); }
   .wb-note-action { display: block; width: 100%; padding: 0; border: 0; background: none; text-align: center; cursor: pointer; }
   .wb-note-action:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+  .wb-note-center { text-align: center; }
   .wb-input { width: 100%; border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: var(--space-tight) var(--space-control); font: inherit; font-size: var(--fs-primary); outline: none; margin-top: var(--space-tight); background: var(--surface); }
   .wb-input:disabled { opacity: 0.6; }
   .wb-apply { margin-top: var(--space-tight); width: 100%; border: 1px solid var(--ink); background: var(--surface); color: var(--ink); border-radius: var(--r-sm); padding: var(--space-tight) 0; font-size: var(--fs-primary); cursor: pointer; }

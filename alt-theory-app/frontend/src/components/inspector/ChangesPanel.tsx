@@ -323,7 +323,7 @@ export function ChangesPanel() {
           </div>
         );
       })}
-      <div className="wb-note">{t("Files directly edited by agents are shown here.")}</div>
+      <div className="wb-note wb-note-center">{t("Files directly edited by agents are shown here.")}</div>
       {menu.element}
     </div>
   );
