@@ -2,7 +2,8 @@
 - [Conversation] Messages can be edited and branches created while a reply is running, in side conversations too
 
 **v1.8.0 · 2026-10 · first official release**
-- [Permissions and safety] Four permission levels replaced the Understand/Work modes; Smart approval is the default for new conversations, with an approval model confirming actions on your behalf
+- [Permissions and safety] Four permission levels replaced the Understand/Work modes
+- [Permissions and safety] Smart approval is on by default; an approval model confirms actions on your behalf
 - [Permissions and safety] Deletion protection: your home folder, Desktop, Documents, whole disks and the project itself cannot simply be deleted
 - [Coordination] Conversations can message each other; dedicated agents for reading literature, reviewing writing style, and other recurring work can be kept and consulted by users and the main agent across stages or projects
 - [Files] New Conversation files page
@@ -43,9 +44,9 @@
 
 **v1.3.0.x · 2026-07 ~ 08**
 - [Skills] The initial bundled skill set: workspace conventions, retrieval, document conversion
-- [Models] Model subscription sign-in (Claude and others); custom endpoint configuration
+- [Models] Model subscription sign-in (ChatGPT and others); custom endpoint configuration
 - [Coordination] Tasks can be handed to several agents running in parallel
-- [Conversation] Chinese interface (Simplified and Traditional)
+- [Interface] Chinese interface (Simplified and Traditional)
 - [Interface] Dark mode
 - [Permissions and safety] Trash: 30-day recovery and permanent delete
 
