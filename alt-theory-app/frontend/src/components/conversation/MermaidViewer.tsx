@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { Button } from "@/components/ui/Button";
 import { t } from "@/i18n";
 
 type Point = { x: number; y: number };
@@ -7,7 +8,9 @@ type View = { scale: number; x: number; y: number };
 
 const MIN_SCALE = 0.05;
 const MAX_SCALE = 12;
-const FIT_PAD = 56;
+const FIT_SIDE = 56;
+const FIT_TOP = 104;
+const FIT_BOTTOM = 32;
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
@@ -15,7 +18,7 @@ const clamp = (value: number, min: number, max: number) =>
 export function MermaidViewer({ svg, onClose }: { svg: string; onClose: () => void }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
-  const closeRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const sizeRef = useRef({ width: 0, height: 0 });
   const viewRef = useRef<View>({ scale: 1, x: 0, y: 0 });
   const dragRef = useRef<{ pointerId: number; point: Point } | null>(null);
@@ -38,16 +41,24 @@ export function MermaidViewer({ svg, onClose }: { svg: string; onClose: () => vo
 
   const fitView = useCallback((): View => {
     const viewport = viewportRef.current;
-    const { width, height } = sizeRef.current;
+    const stage = stageRef.current;
+    const width = stage?.offsetWidth || sizeRef.current.width;
+    const height = stage?.offsetHeight || sizeRef.current.height;
     if (!viewport || width === 0 || height === 0) return viewRef.current;
     const vw = viewport.clientWidth;
     const vh = viewport.clientHeight;
+    const availableWidth = Math.max(1, vw - FIT_SIDE * 2);
+    const availableHeight = Math.max(1, vh - FIT_TOP - FIT_BOTTOM);
     const scale = clamp(
-      Math.min((vw - FIT_PAD * 2) / width, (vh - FIT_PAD * 2) / height),
+      Math.min(availableWidth / width, availableHeight / height),
       MIN_SCALE,
       MAX_SCALE,
     );
-    return { scale, x: (vw - width * scale) / 2, y: (vh - height * scale) / 2 };
+    return {
+      scale,
+      x: (vw - width * scale) / 2,
+      y: FIT_TOP + (availableHeight - height * scale) / 2,
+    };
   }, []);
 
   const zoomAt = useCallback((point: Point, factor: number, transition = false) => {
@@ -75,22 +86,38 @@ export function MermaidViewer({ svg, onClose }: { svg: string; onClose: () => vo
     const svgEl = stage?.querySelector("svg");
     if (!stage || !viewport || !svgEl) return;
 
-    const box = svgEl.viewBox?.baseVal;
+    svgEl.style.maxWidth = "none";
+    svgEl.style.height = "auto";
+    let content: { x: number; y: number; width: number; height: number } | null = null;
+    try {
+      const box = svgEl.getBBox();
+      if (box.width > 0 && box.height > 0) {
+        content = { x: box.x, y: box.y, width: box.width, height: box.height };
+        svgEl.setAttribute("viewBox", `${box.x} ${box.y} ${box.width} ${box.height}`);
+      }
+    } catch {
+      /* A non-graphical SVG falls back to its declared dimensions. */
+    }
+    const declared = svgEl.viewBox?.baseVal;
     const rect = svgEl.getBoundingClientRect();
-    const width = box?.width || rect.width;
-    const height = box?.height || rect.height;
+    const width = content?.width || declared?.width || rect.width;
+    const height = content?.height || declared?.height || rect.height;
     sizeRef.current = { width, height };
     svgEl.setAttribute("width", String(width));
     svgEl.setAttribute("height", String(height));
-    svgEl.style.maxWidth = "none";
-    svgEl.style.height = "auto";
 
+    const fitNow = () => apply(fitView(), false);
+    fitNow();
+    setFitMode(true);
     const frame = requestAnimationFrame(() => {
-      apply(fitView(), false);
-      setFitMode(true);
-      closeRef.current?.focus();
+      fitNow();
+      dialogRef.current?.querySelector<HTMLButtonElement>(".mermaid-viewer-close")?.focus();
     });
-    return () => cancelAnimationFrame(frame);
+    const settle = window.setTimeout(fitNow, 80);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(settle);
+    };
   }, [apply, fitView, svg]);
 
   useEffect(() => {
@@ -139,7 +166,13 @@ export function MermaidViewer({ svg, onClose }: { svg: string; onClose: () => vo
 
   useEffect(() => {
     window.addEventListener("resize", resizeFit);
-    return () => window.removeEventListener("resize", resizeFit);
+    const viewport = viewportRef.current;
+    const observer = viewport ? new ResizeObserver(resizeFit) : null;
+    if (viewport && observer) observer.observe(viewport);
+    return () => {
+      window.removeEventListener("resize", resizeFit);
+      observer?.disconnect();
+    };
   }, [resizeFit]);
 
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -175,34 +208,33 @@ export function MermaidViewer({ svg, onClose }: { svg: string; onClose: () => vo
 
   return createPortal(
     <div
+      ref={dialogRef}
       className={`mermaid-viewer${white ? " is-white" : ""}${fromDark ? " from-dark" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label={t("Diagram")}
     >
       <div className="mermaid-viewer-toolbar">
-        <button type="button" onClick={() => { apply(fitView(), true); setFitMode(true); }}>
+        <Button variant="secondary" onClick={() => { apply(fitView(), true); setFitMode(true); }}>
           {t("Fit")}
-        </button>
-        <button type="button" aria-label={t("Zoom out")} data-tip={t("Zoom out")} onClick={() => zoomCentered(1 / 1.35)}>
+        </Button>
+        <Button variant="ghost" aria-label={t("Zoom out")} data-tip={t("Zoom out")} onClick={() => zoomCentered(1 / 1.35)}>
           <i className="ph ph-minus" aria-hidden="true" />
-        </button>
+        </Button>
         <span className="mermaid-viewer-zoom">{Math.round(view.scale * 100)}%</span>
-        <button type="button" aria-label={t("Zoom in")} data-tip={t("Zoom in")} onClick={() => zoomCentered(1.35)}>
+        <Button variant="ghost" aria-label={t("Zoom in")} data-tip={t("Zoom in")} onClick={() => zoomCentered(1.35)}>
           <i className="ph ph-plus" aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className={white ? "on" : ""}
+        </Button>
+        <Button
+          variant={white ? "primary" : "secondary"}
           aria-pressed={white}
           onClick={() => setWhite((value) => !value)}
         >
-          <i className="ph ph-circle" aria-hidden="true" />
           {t("White background")}
-        </button>
-        <button ref={closeRef} type="button" aria-label={t("Close")} data-tip={t("Close")} onClick={onClose}>
+        </Button>
+        <Button className="mermaid-viewer-close" variant="ghost" aria-label={t("Close")} data-tip={t("Close")} onClick={onClose}>
           <i className="ph ph-x" aria-hidden="true" />
-        </button>
+        </Button>
       </div>
       <div
         ref={viewportRef}

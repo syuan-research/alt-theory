@@ -339,17 +339,18 @@
   .mermaid-figure {
     margin: 0 0 var(--space-control);
     overflow-x: auto;
-    cursor: zoom-in;
-  }
-
-  .mermaid-figure:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: 2px;
   }
 
   .mermaid-figure svg {
     max-width: 100%;
     height: auto;
+  }
+
+  .mermaid-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-hair);
+    margin: 0 0 var(--space-hair);
   }
 
   .mermaid-viewer {
@@ -377,7 +378,7 @@
 
   .mermaid-viewer-toolbar {
     position: absolute;
-    top: var(--space-control);
+    top: calc(var(--titlebar-h) + var(--space-tight));
     right: var(--space-control);
     z-index: 2;
     display: flex;
@@ -388,28 +389,6 @@
     border-radius: var(--r-md);
     background: var(--surface);
     box-shadow: var(--shadow-popup);
-  }
-
-  .mermaid-viewer-toolbar button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-hair);
-    min-height: 28px;
-    padding: 0 var(--space-tight);
-    border: 0;
-    border-radius: var(--r-sm);
-    background: transparent;
-    color: var(--text-2);
-    font: inherit;
-    font-size: var(--fs-secondary);
-    cursor: pointer;
-  }
-
-  .mermaid-viewer-toolbar button:hover,
-  .mermaid-viewer-toolbar button.on {
-    background: var(--hover);
-    color: var(--ink);
   }
 
   .mermaid-viewer-zoom {
@@ -474,17 +453,16 @@
     stroke: #595752 !important;
   }
 
-  /* One diagram + its fenced source, swapped by the small toggle. The
-     toggle sits in its own row ABOVE the diagram — a screenshot of the
-     figure must not contain the control. */
+  /* One diagram with explicit Open and Source controls above it. */
   .mermaid-block .mermaid-toggle {
-    display: block;
-    margin: 0 0 var(--space-hair) auto;
+    display: inline-flex;
+    align-items: center;
     padding: var(--space-hair) var(--space-tight);
     border: 1px solid var(--hairline);
     border-radius: var(--r-sm);
     background: var(--panel);
     color: var(--text-2);
+    font: inherit;
     font-size: var(--fs-secondary);
     cursor: pointer;
   }
@@ -1050,6 +1028,7 @@
   .ctx-line { position: relative; display: flex; align-items: center; gap: 16px; min-width: 0; min-height: 32px; padding: 0 6px 6px; font-size: var(--fs-secondary); color: var(--text-2); }
   .ctx-picker { display: inline-block; min-width: 0; max-width: 45%; }
   .ctx-picker.role-picker { max-width: min(45%, 11em); }
+  .ctx-picker.kb-picker { max-width: min(45%, 14em); }
   .ctx-item { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; cursor: pointer; background: none; border: none; color: inherit; font: inherit; padding: 0; }
   .ctx-item > i { flex-shrink: 0; }
   /* Steer bar (v1.4 round 1): tinted band + filled CTA buttons — the same
@@ -1400,6 +1379,11 @@
   @container (max-width: 440px) {
     .files-tree-toolbar .batch-label,
     .files-tree-toolbar .details-label { display: none; }
+  }
+
+  @container (max-width: 360px) {
+    .child-ctx-line .ctx-label { display: none; }
+    .child-ctx-line .ctx-picker { max-width: none; }
   }
   .tree-copy { position: relative; margin-left: auto; padding: var(--space-hair); border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-3); cursor: pointer; opacity: 0; }
   .ti:hover .tree-copy, .ti:focus-within .tree-copy { opacity: 1; }

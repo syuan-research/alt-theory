@@ -236,7 +236,7 @@ export function ChangesPanel() {
         endControls={
           <button
             type="button"
-            className={`fcard${showDetails ? " on" : ""}`}
+            className="flat"
             aria-pressed={showDetails}
             data-tip={t("Show folder and editor details")}
             onClick={() => setShowDetails((shown) => !shown)}

@@ -18,12 +18,15 @@ import { ApprovalDock } from "@/components/conversation/ApprovalDock";
 import { SettledMessages, StreamPartsView, useTranscriptActions } from "@/components/conversation/MessageList";
 import { updateDraft } from "@/lib/draft";
 import { ModelChip } from "@/components/conversation/ModelChip";
+import { ContextRing } from "@/components/conversation/ContextRing";
+import { CtxPicker } from "@/components/conversation/CtxPicker";
 import { PermissionChip } from "@/components/conversation/PermissionChip";
 import { useComposerRow } from "@/components/conversation/useComposerRow";
 import { QueuedCards } from "@/components/conversation/QueuedCards";
 import { ContinueButton, hasRunNotes, NoticeLine, RunStatusSlot } from "@/components/conversation/RunNotes";
 import { SlashPalette, SkillDraftChip, useSlashCommands, useSlashPalette } from "@/components/conversation/SlashPalette";
-import { PendingMark } from "@/components/ui/PendingMark";
+import { DEFAULT_KB_DOMAIN, KB_OFF_VALUE } from "@/lib/constants";
+import { stageAttachmentFile } from "@/api/session-files";
 
 /**
  * A conversation other than the one in the center: a branch shown beside it for
@@ -85,15 +88,20 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
   // Grow with content like the main composer (CSS max-height caps it).
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   useAutosizeTextarea(textareaRef, draft);
-  const [menu, setMenu] = useState<"role" | "model" | "perm" | null>(null);
+  const [menu, setMenu] = useState<"role" | "kb" | "model" | "perm" | null>(null);
   const ctxLineRef = useRef<HTMLDivElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
   const rowClassName = useComposerRow(rowRef);
   const { messages, isRunning: running } = conversation;
-  // A role chosen mid-run renders as the chosen value plus the pending mark
-  // (same rule as the main composer).
+  // A role or knowledge base chosen mid-run renders the new value with the
+  // same pending mark as the main composer.
   const childRoleSlug = conversation.selectors.rolePresetSlug;
   const pendingChildRole = conversation.pendingChanges.rolePresetSlug !== undefined;
+  const kbDomain = conversation.selectors.currentDomain;
+  const pendingChildKb = conversation.pendingChanges.kbDomain !== undefined;
+  const kbOff = kbDomain === KB_OFF_VALUE;
+  const altControlsDisabled = app.runtimeMode === "native-pi";
   const approval = conversation.approvals.find((request) => request.sessionId === sessionId);
   const { containerRef: messagesRef, onScroll } = useStickToBottom([messages, parts]);
   const earlier = useEarlierRows(messagesRef, messages, conversation);
@@ -104,7 +112,7 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
   useEffect(() => {
     if (!menu) return;
     const onDoc = (event: MouseEvent) => {
-      const anchor = menu === "role" ? ctxLineRef.current : rowRef.current;
+      const anchor = menu === "role" || menu === "kb" ? ctxLineRef.current : rowRef.current;
       if (!anchor?.contains(event.target as Node)) setMenu(null);
     };
     document.addEventListener("click", onDoc);
@@ -170,6 +178,31 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
 
   const commands = useSlashCommands({ live: true });
   const palette = useSlashPalette({ draft, commands, setDraft });
+
+  const roleLabel = childRoleSlug
+    ? (app.discovery?.rolePresets.find((role) => role.slug === childRoleSlug)?.userLabel ??
+      app.discovery?.rolePresets.find((role) => role.slug === childRoleSlug)?.displayName ??
+      childRoleSlug)
+    : t("No role");
+  const kbLabel = kbOff
+    ? t("No knowledge base")
+    : (app.discovery?.kbDomains.find((domain) => domain.slug === kbDomain)?.displayName ??
+      t("Knowledge base"));
+  const attachCopies = (files: File[]) => {
+    for (const file of files) {
+      void stageAttachmentFile(file)
+        .then(({ path, extractError }) => {
+          conversation.stage(path);
+          if (extractError) {
+            window.alert(t("{name} was attached, but its text could not be read: {error}", {
+              name: file.name,
+              error: extractError,
+            }));
+          }
+        })
+        .catch((error) => window.alert(error instanceof Error ? error.message : String(error)));
+    }
+  };
 
   const latestUserIndex = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -250,30 +283,96 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
       <QueuedCards />
 
       <div className="ctx-line child-ctx-line" ref={ctxLineRef}>
-        <div className="ctx-picker">
-          <button className="ctx-item" onClick={() => setMenu(menu === "role" ? null : "role")}>
-            <i className="ph ph-user-circle" />
-            {childRoleSlug
-              ? (app.discovery?.rolePresets.find((role) => role.slug === childRoleSlug)?.userLabel ?? childRoleSlug)
-              : t("No role")}
-            <PendingMark when={pendingChildRole} />
+        <CtxPicker
+          className="role-picker"
+          icon="ph-user-circle"
+          label={roleLabel}
+          open={menu === "role"}
+          onToggle={() => setMenu(menu === "role" ? null : "role")}
+          disabled={altControlsDisabled}
+          pending={pendingChildRole}
+        >
+          <button
+            type="button"
+            className="mi"
+            onClick={() => (conversation.switchRolePreset(null), setMenu(null))}
+          >
+            <span>{t("No role")}</span>
+            {!childRoleSlug ? <i className="ph ph-check check" /> : null}
           </button>
-          <div className={`menu${menu === "role" ? " on" : ""}`}>
-            <div className="mi" onClick={() => (conversation.switchRolePreset(null), setMenu(null))}>
-              <span>{t("No role")}</span>
-              {!childRoleSlug ? <i className="ph ph-check check" /> : null}
-            </div>
-            {(app.discovery?.rolePresets ?? []).map((role) => (
-              <div key={role.slug} className="mi" onClick={() => (conversation.switchRolePreset(role.slug), setMenu(null))}>
-                <span>{role.userLabel || role.displayName}</span>
-                {childRoleSlug === role.slug ? <i className="ph ph-check check" /> : null}
-              </div>
+          {(app.discovery?.rolePresets ?? []).map((role) => (
+            <button
+              type="button"
+              key={role.slug}
+              className="mi"
+              onClick={() => (conversation.switchRolePreset(role.slug), setMenu(null))}
+            >
+              <span>{role.userLabel || role.displayName}</span>
+              {childRoleSlug === role.slug ? <i className="ph ph-check check" /> : null}
+            </button>
+          ))}
+        </CtxPicker>
+        <CtxPicker
+          className="kb-picker"
+          icon="ph-book-open"
+          label={kbLabel}
+          open={menu === "kb"}
+          onToggle={() => setMenu(menu === "kb" ? null : "kb")}
+          disabled={altControlsDisabled}
+          pending={pendingChildKb}
+        >
+          <button
+            type="button"
+            className="mi"
+            onClick={() => (conversation.switchKb(DEFAULT_KB_DOMAIN), setMenu(null))}
+          >
+            <span>{t("EP knowledge base")}</span>
+            {!kbOff ? <i className="ph ph-check check" /> : null}
+          </button>
+          {(app.discovery?.kbDomains ?? [])
+            .filter((domain) => domain.slug !== DEFAULT_KB_DOMAIN)
+            .map((domain) => (
+              <button
+                type="button"
+                key={domain.slug}
+                className="mi"
+                onClick={() => (conversation.switchKb(domain.slug), setMenu(null))}
+              >
+                <span>{domain.displayName}</span>
+                {kbDomain === domain.slug ? <i className="ph ph-check check" /> : null}
+              </button>
             ))}
-          </div>
-        </div>
+          <div className="sep" />
+          <button
+            type="button"
+            className="mi"
+            onClick={() => (conversation.switchKb(KB_OFF_VALUE), setMenu(null))}
+          >
+            <span>{t("No knowledge base")}</span>
+            {kbOff ? <i className="ph ph-check check" /> : null}
+          </button>
+        </CtxPicker>
       </div>
       <SlashPalette palette={palette} className="slash-palette child-slash-palette" />
       <SkillDraftChip palette={palette} />
+      {conversation.stagedWorkspacePaths.length > 0 ? (
+        <div className="staged-attachments" aria-label={t("Attached files")}>
+          {conversation.stagedWorkspacePaths.map((path) => (
+            <span className="attachment-chip" key={path} data-tip={path}>
+              <i className="ph ph-paperclip" aria-hidden="true" />
+              <span>{path.split(/[\\/]/).pop() || path}</span>
+              <button
+                type="button"
+                onClick={() => conversation.unstage([path])}
+                data-tip={t("Remove attached file")}
+                aria-label={t("Remove attached file")}
+              >
+                <i className="ph ph-x" aria-hidden="true" />
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
       {hasRunNotes(conversation) ? (
         <div className="composer-notes">
           <RunStatusSlot />
@@ -309,12 +408,44 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
           }}
         />
         <div className={rowClassName} ref={rowRef}>
+          <button
+            className="flat"
+            data-tip={t("Commands and skills…")}
+            onClick={(event) => {
+              event.stopPropagation();
+              setMenu(null);
+              palette.browse();
+              textareaRef.current?.focus();
+            }}
+          >
+            <i className="ph ph-magic-wand" />
+          </button>
           <PermissionChip
             open={menu === "perm"}
             onToggle={() => setMenu(menu === "perm" ? null : "perm")}
             onClose={() => setMenu(null)}
           />
+          <button
+            className="flat"
+            data-tip={t("Add a file: copied into this conversation's folder and converted to text")}
+            aria-label={t("Add a file")}
+            disabled={!conversation.sessionReady}
+            onClick={() => fileInput.current?.click()}
+          >
+            <i className="ph ph-paperclip" />
+          </button>
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            hidden
+            onChange={(event) => {
+              attachCopies([...(event.target.files ?? [])]);
+              event.target.value = "";
+            }}
+          />
           <ModelChip open={menu === "model"} onToggle={() => setMenu(menu === "model" ? null : "model")} />
+          <ContextRing />
           <button
             className="send"
             disabled={!(draft.trim() || conversation.stagedWorkspacePaths.length) || !conversation.sessionReady}

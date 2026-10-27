@@ -137,16 +137,17 @@ export function MarkdownBody({
           if (cancelled) return;
           const figure = document.createElement("div");
           figure.className = "mermaid-figure";
-          figure.tabIndex = 0;
-          figure.setAttribute("role", "button");
-          figure.setAttribute("aria-label", t("Open diagram"));
-          figure.setAttribute("data-tip", t("Open diagram"));
           figure.innerHTML = svg;
-          // Diagram + fenced source in one block, with a small control that
-          // swaps between them (the rendered HTML is set via innerHTML, so
-          // the flip is a class toggle handled by onClick on the root below).
+          // Diagram + fenced source in one block. Open and source are explicit
+          // controls so selecting text inside the diagram keeps working.
           const wrap = document.createElement("div");
           wrap.className = "mermaid-block";
+          const actions = document.createElement("div");
+          actions.className = "mermaid-actions";
+          const open = document.createElement("button");
+          open.type = "button";
+          open.className = "mermaid-toggle mermaid-open";
+          open.textContent = t("Open diagram");
           const toggle = document.createElement("button");
           toggle.type = "button";
           toggle.className = "mermaid-toggle";
@@ -154,7 +155,8 @@ export function MarkdownBody({
           const sourcePre = target.cloneNode(true) as HTMLElement;
           sourcePre.classList.add("mermaid-source");
           // The fenced code already contains the original text for copying.
-          wrap.append(toggle, figure, sourcePre);
+          actions.append(open, toggle);
+          wrap.append(actions, figure, sourcePre);
           target.replaceWith(wrap);
         } catch {
           // Leave the source visible — a broken diagram is still readable text.
@@ -188,18 +190,10 @@ export function MarkdownBody({
       return;
     }
     const figure = (event.target as Element).closest<HTMLElement>(".mermaid-figure");
-    if (figure) {
-      setViewerSvg(figure.innerHTML);
+    if (figure && !(event.target as Element).closest(".mermaid-open")) {
       return;
     }
     onMermaidToggle(event);
-  };
-  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    const figure = (event.target as Element).closest<HTMLElement>(".mermaid-figure");
-    if (!figure || event.target !== figure) return;
-    event.preventDefault();
-    setViewerSvg(figure.innerHTML);
   };
   // A middle click would open a file link as a window of the app's own address.
   const onAuxClick = (event: MouseEvent<HTMLDivElement>) => {
@@ -253,6 +247,11 @@ export function MarkdownBody({
     if (!button) return;
     const block = button.closest(".mermaid-block");
     if (!block) return;
+    if (button.classList.contains("mermaid-open")) {
+      const figure = block.querySelector<HTMLElement>(".mermaid-figure");
+      if (figure) setViewerSvg(figure.innerHTML);
+      return;
+    }
     const showingSource = block.classList.toggle("show-source");
     button.textContent = showingSource ? t("Rendered") : t("Source code");
   }
@@ -262,7 +261,6 @@ export function MarkdownBody({
       className={cn("markdown-body", className)}
       data-mark-row={markRow}
       onClick={onClick}
-      onKeyDown={onKeyDown}
       onAuxClick={onAuxClick}
       onContextMenu={onContextMenu}
       onCopy={onCopy}

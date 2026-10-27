@@ -8,6 +8,7 @@ import { ModelChip } from "@/components/conversation/ModelChip";
 import { PermissionChip } from "@/components/conversation/PermissionChip";
 import { useComposerRow } from "@/components/conversation/useComposerRow";
 import { ContextRing } from "@/components/conversation/ContextRing";
+import { CtxPicker } from "@/components/conversation/CtxPicker";
 import { QueuedCards } from "@/components/conversation/QueuedCards";
 import { ContinueButton, hasRunNotes, NoticeLine, RunStatusSlot } from "@/components/conversation/RunNotes";
 import { RunTips } from "@/components/conversation/RunTips";
@@ -706,52 +707,5 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
         </div>
       </div>
     </div>
-  );
-}
-
-function CtxPicker({
-  className = "",
-  icon,
-  label,
-  open,
-  onToggle,
-  disabled = false,
-  pending = false,
-  children,
-}: {
-  className?: string;
-  icon: string;
-  label: string;
-  open: boolean;
-  onToggle: () => void;
-  disabled?: boolean;
-  /** Show the mid-run pending mark beside the label. */
-  pending?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <span className={`ctx-picker ${className}`}>
-      <button
-        className="ctx-item"
-        data-tip={label}
-        disabled={disabled}
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggle();
-        }}
-      >
-        <i className={`ph ${icon}`} />
-        <span className="ctx-label">{label}</span>
-        <PendingMark when={pending} />
-        <i className="ph ph-caret-down caret" />
-      </button>
-      <div
-        className={`menu${open ? " on" : ""}`}
-        style={{ left: 0, bottom: "auto", top: 22 }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {children}
-      </div>
-    </span>
   );
 }
