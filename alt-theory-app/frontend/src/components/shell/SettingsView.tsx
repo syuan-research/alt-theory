@@ -709,7 +709,7 @@ function AgentsPanel() {
   return (
     <div className="set-panel agents-panel">
       <div className="agents-heading">
-        <div><h2>{t("Subagents")}</h2><p className="sub">{t("The lead agent delegates by the descriptions below. Choose models accordingly.")}</p></div>
+        <div><h2>{t("Subagents")}</h2><p className="sub">{t("Customize subagents and choose their models.")}</p></div>
       </div>
       <div className="set-card agent-default-card">
         <div className="row2">
@@ -1897,7 +1897,7 @@ function RoleKbPanel() {
 
   return (
     <div className="set-panel">
-      <h2>{t("Role & Knowledge")}</h2>
+      <h2>{t("Role & knowledge")}</h2>
       <p className="sub">{t("Customize behavior for different scenarios (roles) and domain knowledge.")}</p>
       {notice ? <p className="sub">{notice}</p> : null}
       <div className="set-card">
@@ -2198,7 +2198,7 @@ function WorkingFoldersPanel() {
 
   return (
     <div className="set-panel">
-      <h2>{t("Projects and global folders")}</h2>
+      <h2>{t("Projects & folders")}</h2>
       <p className="sub">{t("Set the folders conversations can read or write.")}</p>
       {notice ? <p className="sub">{notice}</p> : null}
 
