@@ -13,23 +13,22 @@ This update improves project imports, interface design and the experience.
 
 - Imported conversations now reuse a matching project by main or companion folder.
 
-### Projects and folders
-
-- Opening a conversation no longer changes its activity time or list position.
-
 ### Conversations
 
-- The right-hand conversation composer now includes role and knowledge-base selection, skills, file attachments and context usage; labels fold to icons in a narrow pane.
-- Running, completed and attention states use one set of indicators in the conversation list and Related panel.
-- Commands checked by the approval model show a shield with the result and reason on hover.
+- Opening a conversation leaves its activity time and list position unchanged.
+- The conversation composer on the right now lets you choose the role and knowledge base, add skills and files, and see how much context the conversation has used.
+- When the pane is narrow, the composer's labels collapse into icons.
+- The conversation list and the Related conversations panel now use the same status marks for running, finished, and needs-attention conversations.
+- Commands screened by Smart approval show a shield icon; hover it to see whether the command was approved and the reason.
 
 ### Interface
 
-- The Versions entry provides release notes, major updates, update checks and new-version downloads.
-- When the app is in the background, a completion notification now also appears for the centered conversation.
-- Diagrams open in a dedicated viewer with zoom, pan, and an optional white background for screenshots.
-- Files and Changes controls can collapse; Changes can hide folder and editor labels.
-- Other visual and wording clarity improvements.
+- The Versions menu shows the release notes for this version and for earlier major ones, checks for updates, and downloads new versions when available.
+- When the app is in the background, a completion notification appears for the conversation open in the center of the window.
+- Diagrams open in a viewer with zoom, pan, and an optional white background for screenshots.
+- The Files and Changes controls can now be collapsed.
+- The Changes panel can hide folder and editor labels.
+- Other visual and wording details are clearer across the app.
 
 ## v1.9.1 — 2026-10-23
 
