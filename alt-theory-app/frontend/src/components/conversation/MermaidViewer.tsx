@@ -2,6 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/Button";
 import { t } from "@/i18n";
+import { syncTitlebarTheme } from "@/lib/native";
+import { renderMermaidSvg, type MermaidTheme } from "@/lib/mermaidRenderer";
 
 type Point = { x: number; y: number };
 type View = { scale: number; x: number; y: number };
@@ -15,7 +17,17 @@ const FIT_BOTTOM = 32;
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
-export function MermaidViewer({ svg, onClose }: { svg: string; onClose: () => void }) {
+export function MermaidViewer({
+  svg,
+  source,
+  theme,
+  onClose,
+}: {
+  svg: string;
+  source: string;
+  theme: MermaidTheme;
+  onClose: () => void;
+}) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -23,11 +35,36 @@ export function MermaidViewer({ svg, onClose }: { svg: string; onClose: () => vo
   const viewRef = useRef<View>({ scale: 1, x: 0, y: 0 });
   const dragRef = useRef<{ pointerId: number; point: Point } | null>(null);
   const [view, setView] = useState<View>(viewRef.current);
+  const [activeSvg, setActiveSvg] = useState(svg);
   const [white, setWhite] = useState(false);
-  const [fromDark] = useState(() => document.documentElement.dataset.theme === "dark");
   const [animate, setAnimate] = useState(false);
   const [fitMode, setFitMode] = useState(true);
   const animateTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!white) {
+      setActiveSvg(svg);
+      return;
+    }
+    if (!source) return;
+    let cancelled = false;
+    setActiveSvg("");
+    void renderMermaidSvg(source, "light")
+      .then((lightSvg) => {
+        if (!cancelled) setActiveSvg(lightSvg);
+      })
+      .catch(() => {
+        if (!cancelled) setActiveSvg(svg);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [source, svg, white]);
+
+  useEffect(() => {
+    syncTitlebarTheme(theme, white ? "white" : "canvas");
+    return () => syncTitlebarTheme(theme);
+  }, [theme, white]);
 
   const apply = useCallback((next: View, transition = false) => {
     viewRef.current = next;
@@ -118,7 +155,7 @@ export function MermaidViewer({ svg, onClose }: { svg: string; onClose: () => vo
       cancelAnimationFrame(frame);
       window.clearTimeout(settle);
     };
-  }, [apply, fitView, svg]);
+  }, [activeSvg, apply, fitView]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -209,7 +246,7 @@ export function MermaidViewer({ svg, onClose }: { svg: string; onClose: () => vo
   return createPortal(
     <div
       ref={dialogRef}
-      className={`mermaid-viewer${white ? " is-white" : ""}${fromDark ? " from-dark" : ""}`}
+      className={`mermaid-viewer${white ? " is-white" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label={t("Diagram")}
@@ -249,7 +286,7 @@ export function MermaidViewer({ svg, onClose }: { svg: string; onClose: () => vo
           ref={stageRef}
           className={`mermaid-viewer-stage${animate ? " animate" : ""}`}
           style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}
-          dangerouslySetInnerHTML={{ __html: svg }}
+          dangerouslySetInnerHTML={{ __html: activeSvg }}
         />
       </div>
     </div>,

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useShell } from "@/context/ShellContext";
 import { localizedContent, t } from "@/i18n";
-import { hasNativeBridge, openExternal } from "@/lib/native";
+import { hasNativeBridge, openExternal, syncTitlebarTheme } from "@/lib/native";
 import { releaseNotes } from "@/lib/versions";
 import { renderMarkdown } from "@/lib/markdown";
 import { Button } from "@/components/ui/Button";
@@ -33,6 +33,12 @@ export function VersionsDialog() {
       setPage(status?.newer && !status.showReleaseNotes ? "latest" : "current");
       dialogRef.current?.showModal();
     } else dialogRef.current?.close();
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const theme = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+    syncTitlebarTheme(theme, "modal");
+    return () => syncTitlebarTheme(theme);
   }, [open]);
   const latest = page === "latest";
   const version = latest && status?.latestVersion ? status.latestVersion : status?.currentVersion || __ALT_THEORY_VERSION__;

@@ -428,31 +428,6 @@
     height: auto;
   }
 
-  .mermaid-viewer.is-white.from-dark .mermaid-viewer-stage svg text,
-  .mermaid-viewer.is-white.from-dark .mermaid-viewer-stage svg .label,
-  .mermaid-viewer.is-white.from-dark .mermaid-viewer-stage svg .nodeLabel {
-    color: #1f1e1a !important;
-    fill: #1f1e1a !important;
-  }
-
-  .mermaid-viewer.is-white.from-dark .mermaid-viewer-stage svg .node rect,
-  .mermaid-viewer.is-white.from-dark .mermaid-viewer-stage svg .node polygon,
-  .mermaid-viewer.is-white.from-dark .mermaid-viewer-stage svg .node circle,
-  .mermaid-viewer.is-white.from-dark .mermaid-viewer-stage svg .node ellipse {
-    fill: #fff !important;
-    stroke: #6b8db5 !important;
-  }
-
-  .mermaid-viewer.is-white.from-dark .mermaid-viewer-stage svg .edgePath path,
-  .mermaid-viewer.is-white.from-dark .mermaid-viewer-stage svg .flowchart-link {
-    stroke: #595752 !important;
-  }
-
-  .mermaid-viewer.is-white.from-dark .mermaid-viewer-stage svg marker path {
-    fill: #595752 !important;
-    stroke: #595752 !important;
-  }
-
   /* One diagram with explicit Open and Source controls above it. */
   .mermaid-block .mermaid-toggle {
     display: inline-flex;

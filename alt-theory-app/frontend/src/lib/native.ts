@@ -11,6 +11,8 @@ export interface AppUpdateStatus {
   showReleaseNotes?: boolean;
 }
 
+export type TitlebarSurface = "panel" | "canvas" | "modal" | "white";
+
 interface AltElectron {
   platform?: string;
   pickDirectory(): Promise<string | null>;
@@ -26,7 +28,7 @@ interface AltElectron {
   onUpdateStatus?(callback: (status: AppUpdateStatus) => void): () => void;
   getViewSize?(): Promise<number>;
   setViewSize?(stop: number): Promise<number>;
-  setTheme?(theme: "light" | "dark"): Promise<void>;
+  setTheme?(theme: "light" | "dark", surface?: TitlebarSurface): Promise<void>;
 }
 
 function bridge(): AltElectron | null {
@@ -78,8 +80,11 @@ export function applyTitlebarVar(stop: number): void {
  * Keep the OS overlay-button band in step with the app theme (Electron only;
  * the plain-browser preview has no overlay to recolor).
  */
-export function syncTitlebarTheme(theme: "light" | "dark"): void {
-  void bridge()?.setTheme?.(theme);
+export function syncTitlebarTheme(
+  theme: "light" | "dark",
+  surface: TitlebarSurface = "panel",
+): void {
+  void bridge()?.setTheme?.(theme, surface);
 }
 
 /** Pick a working folder — native dialog in Electron, path prompt otherwise. */

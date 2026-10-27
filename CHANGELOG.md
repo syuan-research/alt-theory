@@ -7,7 +7,7 @@
 
 ## v1.10.0 — 2026-10-27
 
-This update improves imports, conversation controls and diagram reading.
+This update improves project imports, interface design and the experience.
 
 ### Imports
 

@@ -8,38 +8,10 @@ import { useContentLinks } from "@/components/conversation/useContentLinks";
 import { MermaidViewer } from "@/components/conversation/MermaidViewer";
 import { contentLink, selectionMarkdown } from "@/lib/contentLinks";
 import type { FileRef } from "@/lib/fileContent";
+import { renderMermaidSvg, type MermaidTheme } from "@/lib/mermaidRenderer";
 
-let mermaidReady: Promise<typeof import("mermaid").default> | null = null;
-let diagramSeq = 0;
-
-/** Mermaid is ~1MB; load it only once a conversation actually shows a diagram. */
-function loadMermaid() {
-  if (!mermaidReady) {
-    mermaidReady = import("mermaid").then((module) => {
-      const palette = getComputedStyle(document.documentElement);
-      const blue = palette.getPropertyValue("--selection").trim();
-      const ink = palette.getPropertyValue("--color-ink").trim();
-      const border = palette.getPropertyValue("--focus-ring").trim();
-      module.default.initialize({
-        startOnLoad: false,
-        securityLevel: "strict",
-        // A broken diagram throws instead of drawing mermaid's error graphic;
-        // the fenced source stays visible (perf plan WP 1.7).
-        suppressErrorRendering: true,
-        theme: "base",
-        themeVariables: {
-          primaryColor: blue, secondaryColor: blue, tertiaryColor: blue,
-          primaryTextColor: ink, secondaryTextColor: ink, tertiaryTextColor: ink,
-          primaryBorderColor: border, secondaryBorderColor: border, tertiaryBorderColor: border,
-          lineColor: ink,
-          ...Object.fromEntries(Array.from({ length: 12 }, (_, index) => [`cScale${index}`, blue])),
-          ...Object.fromEntries(Array.from({ length: 12 }, (_, index) => [`cScaleLabel${index}`, ink])),
-        },
-      });
-      return module.default;
-    });
-  }
-  return mermaidReady;
+function currentMermaidTheme(): MermaidTheme {
+  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
 }
 
 /**
@@ -117,7 +89,18 @@ export function MarkdownBody({
     source: string;
     rendered: string;
   } | null>(null);
-  const [viewerSvg, setViewerSvg] = useState<string | null>(null);
+  const [viewerDiagram, setViewerDiagram] = useState<{
+    source: string;
+    svg: string;
+  } | null>(null);
+  const [mermaidTheme, setMermaidTheme] = useState<MermaidTheme>(currentMermaidTheme);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const observer = new MutationObserver(() => setMermaidTheme(currentMermaidTheme()));
+    observer.observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!renderMermaid || streaming) return;
@@ -126,14 +109,13 @@ export function MarkdownBody({
     const blocks = host.querySelectorAll<HTMLElement>("code.language-mermaid");
     if (blocks.length === 0) return;
     let cancelled = false;
-    void loadMermaid().then(async (mermaid) => {
+    void (async () => {
       for (const block of blocks) {
         if (cancelled) return;
         const source = block.textContent ?? "";
         const target = block.parentElement ?? block;
-        const id = `d${(diagramSeq += 1)}`;
         try {
-          const { svg } = await mermaid.render(id, source);
+          const svg = await renderMermaidSvg(source, mermaidTheme);
           if (cancelled) return;
           const figure = document.createElement("div");
           figure.className = "mermaid-figure";
@@ -160,19 +142,16 @@ export function MarkdownBody({
           target.replaceWith(wrap);
         } catch {
           // Leave the source visible — a broken diagram is still readable text.
-          // Mermaid's scratch nodes for a failed render can stay in <body>.
-          document.getElementById(id)?.remove();
-          document.getElementById(`d${id}`)?.remove();
         }
       }
       if (!cancelled) {
         setDiagramHtml({ source: sourceHtml, rendered: host.innerHTML });
       }
-    });
+    })();
     return () => {
       cancelled = true;
     };
-  }, [renderMermaid, sourceHtml, streaming]);
+  }, [renderMermaid, sourceHtml, streaming, mermaidTheme]);
 
   const html =
     renderMermaid && diagramHtml?.source === sourceHtml
@@ -249,7 +228,8 @@ export function MarkdownBody({
     if (!block) return;
     if (button.classList.contains("mermaid-open")) {
       const figure = block.querySelector<HTMLElement>(".mermaid-figure");
-      if (figure) setViewerSvg(figure.innerHTML);
+      const source = block.querySelector<HTMLElement>(".mermaid-source")?.textContent ?? "";
+      if (figure) setViewerDiagram({ source, svg: figure.innerHTML });
       return;
     }
     const showingSource = block.classList.toggle("show-source");
@@ -267,6 +247,13 @@ export function MarkdownBody({
       dangerouslySetInnerHTML={innerHtml}
     />
     {links.menu}
-    {viewerSvg ? <MermaidViewer svg={viewerSvg} onClose={() => setViewerSvg(null)} /> : null}
+    {viewerDiagram ? (
+      <MermaidViewer
+        svg={viewerDiagram.svg}
+        source={viewerDiagram.source}
+        theme={mermaidTheme}
+        onClose={() => setViewerDiagram(null)}
+      />
+    ) : null}
   </>);
 }

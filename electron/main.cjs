@@ -244,19 +244,29 @@ ipcMain.handle("alt:openPath", async (_event, target) => {
   if (error) throw new Error(error);
 });
 
-// The OS overlay-button band must match the page behind it: the app shell
-// paints that strip with --color-panel (light #ebebec — the createWindow
-// default — and dark #1e1e22). The renderer pushes its theme on mount and on
-// every toggle; light values here match the titleBarOverlay defaults.
+// The OS overlay-button band must match the page behind it. Surface-specific
+// colors keep full-window viewers and modal backdrops from leaving a stale
+// panel-colored strip in the corner.
 const TITLEBAR_OVERLAY = {
-  light: { color: "#ebebec", symbolColor: "#1f1e1a" },
-  dark: { color: "#1e1e22", symbolColor: "#ececeb" },
+  light: {
+    panel: { color: "#ebebec", symbolColor: "#1f1e1a" },
+    canvas: { color: "#f8f8f9", symbolColor: "#1f1e1a" },
+    modal: { color: "#b0b0b1", symbolColor: "#1f1e1a" },
+    white: { color: "#ffffff", symbolColor: "#1f1e1a" },
+  },
+  dark: {
+    panel: { color: "#1e1e22", symbolColor: "#ececeb" },
+    canvas: { color: "#161619", symbolColor: "#ececeb" },
+    modal: { color: "#17171a", symbolColor: "#ececeb" },
+    white: { color: "#ffffff", symbolColor: "#1f1e1a" },
+  },
 };
-ipcMain.handle("alt:setTheme", (_event, theme) => {
+ipcMain.handle("alt:setTheme", (_event, theme, surface) => {
   // macOS draws its own traffic lights: no overlay band exists to recolor,
   // and setTitleBarOverlay throws there.
   if (isMac) return;
-  const overlay = TITLEBAR_OVERLAY[theme === "dark" ? "dark" : "light"];
+  const palette = TITLEBAR_OVERLAY[theme === "dark" ? "dark" : "light"];
+  const overlay = palette[surface] ?? palette.panel;
   try {
     mainWindow?.setTitleBarOverlay(overlay);
   } catch (err) {
