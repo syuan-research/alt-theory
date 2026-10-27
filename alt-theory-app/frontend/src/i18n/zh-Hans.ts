@@ -896,7 +896,7 @@ const catalog: Record<string, string> = {
   "Permission: {name}": "权限：{name}",
   "Add a file: copied into this conversation's folder and converted to text": "添加文件：复制到本对话的文件夹，并转换为文字",
   "Add a file": "添加文件",
-  "The permission changes what Alt may do, not where these files are stored.": "权限只改变 Alt 能做什么，不改变这些文件存放的位置。",
+  "Folders can be configured in Settings.": "文件夹可在设置中配置。",
   "Native Pi uses its normal tools and project and global folder access.": "Native Pi 使用它的常规工具，以及项目和全局文件夹访问。",
   "Commands that run without asking": "无需批准即可运行的命令",
   "One per line. Matching pushes, uploads and installs run without asking; under strict smart approval, matching commands skip the review. Destructive git, database files and changes outside your folders still ask.": "每行一条。匹配的推送、上传和安装不再询问；严格智能审批下，匹配的命令跳过模型审批。会丢弃改动的 git 命令、数据库文件和文件夹以外的改动仍会询问。",
@@ -986,7 +986,6 @@ const catalog: Record<string, string> = {
   "No conversation files yet.": "还没有对话文件。",
   "No files left by permanently deleted conversations.": "没有已永久删除对话留下的文件。",
   "Untitled conversation": "未命名对话",
-  "No attachments or conversation-folder files.": "无附件或对话文件夹文件。",
   "Also delete its files ({count})": "同时删除它的文件（{count} 个）",
   "Also delete their files ({count})": "同时删除它们的文件（{count} 个）",
   "Unless you tick the box, the files are kept and stay in Conversation files.": "不勾选则保留文件，保留的文件可在“对话文件”里找到。",
@@ -1024,6 +1023,12 @@ const catalog: Record<string, string> = {
   "Include the whole conversation family": "包含整个对话家族",
   "Show only running conversations": "仅显示运行中的对话",
   "Show folder and editor details": "显示文件夹与编辑者详情",
+  "Fit": "适应窗口",
+  "Zoom in": "放大",
+  "Zoom out": "缩小",
+  "White background": "白色背景",
+  "Open diagram": "查看图示",
+  "Diagram": "图示",
 };
 
 export default catalog;

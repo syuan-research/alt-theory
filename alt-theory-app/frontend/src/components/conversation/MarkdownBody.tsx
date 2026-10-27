@@ -5,6 +5,7 @@ import { cn } from "@/lib/cn";
 import { t } from "@/i18n";
 import { useConversationContext } from "@/context/ConversationContext";
 import { useContentLinks } from "@/components/conversation/useContentLinks";
+import { MermaidViewer } from "@/components/conversation/MermaidViewer";
 import { contentLink, selectionMarkdown } from "@/lib/contentLinks";
 import type { FileRef } from "@/lib/fileContent";
 
@@ -116,6 +117,7 @@ export function MarkdownBody({
     source: string;
     rendered: string;
   } | null>(null);
+  const [viewerSvg, setViewerSvg] = useState<string | null>(null);
 
   useEffect(() => {
     if (!renderMermaid || streaming) return;
@@ -135,6 +137,10 @@ export function MarkdownBody({
           if (cancelled) return;
           const figure = document.createElement("div");
           figure.className = "mermaid-figure";
+          figure.tabIndex = 0;
+          figure.setAttribute("role", "button");
+          figure.setAttribute("aria-label", t("Open diagram"));
+          figure.setAttribute("data-tip", t("Open diagram"));
           figure.innerHTML = svg;
           // Diagram + fenced source in one block, with a small control that
           // swaps between them (the rendered HTML is set via innerHTML, so
@@ -181,7 +187,19 @@ export function MarkdownBody({
       links.open(href);
       return;
     }
+    const figure = (event.target as Element).closest<HTMLElement>(".mermaid-figure");
+    if (figure) {
+      setViewerSvg(figure.innerHTML);
+      return;
+    }
     onMermaidToggle(event);
+  };
+  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const figure = (event.target as Element).closest<HTMLElement>(".mermaid-figure");
+    if (!figure || event.target !== figure) return;
+    event.preventDefault();
+    setViewerSvg(figure.innerHTML);
   };
   // A middle click would open a file link as a window of the app's own address.
   const onAuxClick = (event: MouseEvent<HTMLDivElement>) => {
@@ -244,11 +262,13 @@ export function MarkdownBody({
       className={cn("markdown-body", className)}
       data-mark-row={markRow}
       onClick={onClick}
+      onKeyDown={onKeyDown}
       onAuxClick={onAuxClick}
       onContextMenu={onContextMenu}
       onCopy={onCopy}
       dangerouslySetInnerHTML={innerHtml}
     />
     {links.menu}
+    {viewerSvg ? <MermaidViewer svg={viewerSvg} onClose={() => setViewerSvg(null)} /> : null}
   </>);
 }

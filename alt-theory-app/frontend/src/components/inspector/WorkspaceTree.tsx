@@ -342,18 +342,13 @@ export function WorkspaceTree() {
               ) : null}
             </div>
           ))}
-          <div className="wb-note">
-            {t("The permission changes what Alt may do, not where these files are stored.")}
-          </div>
         </div>
       ) : null}
       {error ? (
         <div className="rp-empty">{error}</div>
       ) : !entries ? (
         <div className="rp-empty">{t("Loading…")}</div>
-      ) : entries.length === 0 ? (
-        <div className="rp-empty">{t("No attachments or conversation-folder files.")}</div>
-      ) : (
+      ) : entries.length === 0 ? null : (
         <>
           {recent ? (
             <RecentList
@@ -405,6 +400,13 @@ export function WorkspaceTree() {
           ) : null}
         </>
       )}
+      <button
+        type="button"
+        className="wb-note wb-note-action"
+        onClick={() => shell.openSettings("folders")}
+      >
+        {t("Folders can be configured in Settings.")}
+      </button>
     </div>
   );
 }

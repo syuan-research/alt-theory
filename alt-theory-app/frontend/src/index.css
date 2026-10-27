@@ -339,11 +339,139 @@
   .mermaid-figure {
     margin: 0 0 var(--space-control);
     overflow-x: auto;
+    cursor: zoom-in;
+  }
+
+  .mermaid-figure:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
   }
 
   .mermaid-figure svg {
     max-width: 100%;
     height: auto;
+  }
+
+  .mermaid-viewer {
+    position: fixed;
+    inset: 0;
+    z-index: 300;
+    overflow: hidden;
+    background: var(--canvas);
+    color: var(--ink);
+  }
+
+  .mermaid-viewer.is-white {
+    --ink: #1f1e1a;
+    --ink-soft: #2a2823;
+    --text-2: #595752;
+    --text-3: #8e8b83;
+    --canvas: #ffffff;
+    --surface: #ffffff;
+    --hairline: #d9d9dc;
+    --hover: #eeedef;
+    --selected: #e8e7e8;
+    color-scheme: light;
+    background: #fff;
+  }
+
+  .mermaid-viewer-toolbar {
+    position: absolute;
+    top: var(--space-control);
+    right: var(--space-control);
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: var(--space-hair);
+    padding: var(--space-hair);
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-md);
+    background: var(--surface);
+    box-shadow: var(--shadow-popup);
+  }
+
+  .mermaid-viewer-toolbar button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-hair);
+    min-height: 28px;
+    padding: 0 var(--space-tight);
+    border: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-2);
+    font: inherit;
+    font-size: var(--fs-secondary);
+    cursor: pointer;
+  }
+
+  .mermaid-viewer-toolbar button:hover,
+  .mermaid-viewer-toolbar button.on {
+    background: var(--hover);
+    color: var(--ink);
+  }
+
+  .mermaid-viewer-zoom {
+    min-width: 3.5em;
+    color: var(--text-3);
+    font-size: var(--fs-secondary);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+  }
+
+  .mermaid-viewer-viewport {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+  }
+
+  .mermaid-viewer-viewport:active { cursor: grabbing; }
+
+  .mermaid-viewer-stage {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 0 0;
+    will-change: transform;
+  }
+
+  .mermaid-viewer-stage.animate {
+    transition: transform 0.2s cubic-bezier(0.22, 0.61, 0.36, 1);
+  }
+
+  .mermaid-viewer-stage svg {
+    display: block;
+    max-width: none !important;
+    height: auto;
+  }
+
+  .mermaid-viewer.is-white.from-dark .mermaid-viewer-stage svg text,
+  .mermaid-viewer.is-white.from-dark .mermaid-viewer-stage svg .label,
+  .mermaid-viewer.is-white.from-dark .mermaid-viewer-stage svg .nodeLabel {
+    color: #1f1e1a !important;
+    fill: #1f1e1a !important;
+  }
+
+  .mermaid-viewer.is-white.from-dark .mermaid-viewer-stage svg .node rect,
+  .mermaid-viewer.is-white.from-dark .mermaid-viewer-stage svg .node polygon,
+  .mermaid-viewer.is-white.from-dark .mermaid-viewer-stage svg .node circle,
+  .mermaid-viewer.is-white.from-dark .mermaid-viewer-stage svg .node ellipse {
+    fill: #fff !important;
+    stroke: #6b8db5 !important;
+  }
+
+  .mermaid-viewer.is-white.from-dark .mermaid-viewer-stage svg .edgePath path,
+  .mermaid-viewer.is-white.from-dark .mermaid-viewer-stage svg .flowchart-link {
+    stroke: #595752 !important;
+  }
+
+  .mermaid-viewer.is-white.from-dark .mermaid-viewer-stage svg marker path {
+    fill: #595752 !important;
+    stroke: #595752 !important;
   }
 
   /* One diagram + its fenced source, swapped by the small toggle. The
@@ -621,6 +749,8 @@
   .wb-row .k { color: var(--text-2); }
   .wb-row .v { font-weight: 500; text-align: right; }
   .wb-note { font-size: var(--fs-secondary); color: var(--text-3); margin-top: var(--space-tight); }
+  .wb-note-action { display: block; width: 100%; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; }
+  .wb-note-action:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
   .wb-input { width: 100%; border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: var(--space-tight) var(--space-control); font: inherit; font-size: var(--fs-primary); outline: none; margin-top: var(--space-tight); background: var(--surface); }
   .wb-input:disabled { opacity: 0.6; }
   .wb-apply { margin-top: var(--space-tight); width: 100%; border: 1px solid var(--ink); background: var(--surface); color: var(--ink); border-radius: var(--r-sm); padding: var(--space-tight) 0; font-size: var(--fs-primary); cursor: pointer; }
@@ -1281,7 +1411,7 @@
   .working-folders { margin-bottom: var(--space-control); padding: 0; }
   .working-folder-group + .working-folder-group { border-top: 1px solid var(--hairline); padding-top: var(--space-tight); }
   .working-folder-missing { margin: 0 var(--space-hair) var(--space-tight) 28px; color: var(--danger); font-size: var(--fs-secondary); }
-  .working-tree { max-height: 46.5vh; overflow: auto; margin: 0 0 var(--space-tight) 20px; border-left: 1px solid var(--hairline); padding-left: var(--space-hair); }
+  .working-tree { max-height: 46.5vh; overflow: auto; margin: 0 0 var(--space-tight) 20px; padding-left: var(--space-hair); }
   .working-tree .ti { display: flex; align-items: center; gap: var(--space-tight); width: 100%; border: none; background: transparent; color: var(--ink-soft); padding: var(--space-hair) var(--space-tight); text-align: left; font: inherit; font-size: var(--fs-primary); cursor: pointer; }
   .working-tree .ti span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .working-tree .ti:hover { background: var(--row-active); }
