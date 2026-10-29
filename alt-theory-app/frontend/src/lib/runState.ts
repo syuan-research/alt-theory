@@ -42,9 +42,10 @@ export function runPhaseLabels() {
 }
 
 /** What the in-flight turn is doing, in words — the band's status line only.
- *  Tool calls and thinking are deliberately absent: the body carries them
- *  permanently (MessageList ToolLine / think block), and the band line is
- *  reserved for request-level states (owner 2026-10-29). */
+ *  Tool calls, thinking and the inter-phase "processing" are deliberately
+ *  absent: the body carries the former two permanently (MessageList ToolLine /
+ *  think block), and the run itself is signaled by the slot's constant
+ *  spinner (owner 2026-10-29). */
 export function activityLabel(activity: TurnActivity): string {
   if (!activity) return "";
   if (activity.kind === "tool") return "";
@@ -56,7 +57,7 @@ export function activityLabel(activity: TurnActivity): string {
   }
   return {
     connecting: t("Connecting…"),
-    processing: t("Processing…"),
+    processing: "",
     thinking: "",
     tool: "",
     compacting: t("Compacting conversation…"),

@@ -682,7 +682,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 </button>
                 <button
                   className="send"
-                  style={{ background: "var(--danger)" }}
                   onClick={() => conv.abort()}
                   data-tip={t("Stop")}
                 >

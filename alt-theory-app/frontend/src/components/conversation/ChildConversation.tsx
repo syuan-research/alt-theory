@@ -457,7 +457,6 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
           {running ? (
             <button
               className="send"
-              style={{ background: "var(--danger)" }}
               onClick={abort}
               data-tip={t("Stop")}
             >

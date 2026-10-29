@@ -42,10 +42,12 @@ function useRotatingTip(active: boolean): string {
 }
 
 /**
- * The band's one status line (v1.10.x): fixed-height, content by ladder —
- * connection phase first, then the request/activity label, then a rotating
- * tip when the composer opts in, then the blank anti-jitter fill. Tool calls
- * and thinking never appear here; the body carries them permanently.
+ * The band's one status line (v1.10.x): fixed height, and the spinner is
+ * state-level — it stays up for the whole run (owner 2026-10-29), so the
+ * line never drops its run indicator mid-turn. Text is event-level by
+ * ladder: connection phase, then the request/activity label, then a
+ * rotating tip when the composer opts in. Tool calls and thinking never
+ * appear here; the body carries them permanently.
  */
 export function RunStatusSlot({ tips = false }: { tips?: boolean }) {
   const conversation = useConversationContext();
@@ -62,19 +64,15 @@ export function RunStatusSlot({ tips = false }: { tips?: boolean }) {
   const text = detail || (tips ? tip : "");
   return (
     <span className="run-phase-slot" data-tip={text || undefined}>
-      {text ? (
-        <span className="run-phase">
-          <i
-            className={`ph ${detail ? "ph-circle-notch run-spin" : "ph-lightbulb"}`}
-            aria-hidden="true"
-          />
-          <span className="run-phase-text">{text}</span>
-        </span>
-      ) : (
-        <span className="run-phase-slot-fill" aria-hidden="true">
-          &nbsp;
-        </span>
-      )}
+      <span className="run-phase">
+        <i className="ph ph-circle-notch run-spin" aria-hidden="true" />
+        {text ? (
+          <>
+            {detail ? null : <i className="ph ph-lightbulb" aria-hidden="true" />}
+            <span className="run-phase-text">{text}</span>
+          </>
+        ) : null}
+      </span>
     </span>
   );
 }

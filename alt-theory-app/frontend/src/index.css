@@ -958,9 +958,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .run-phase-slot-fill {
-    visibility: hidden;
-  }
   .run-phase {
     display: inline-flex;
     align-items: center;
