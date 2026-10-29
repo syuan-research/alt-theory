@@ -1533,7 +1533,10 @@
     margin-top: var(--space-tight);
     margin-bottom: var(--space-control);
   }
-  .child-ctx-line { padding: var(--space-hair) 18px 0; gap: var(--space-control); }
+  /* +8 from the card edge, same line as the status band's spinner and the
+     main composer's ctx-line (owner 2026-10-29, option B): the rows share
+     one content edge instead of the role row sitting 10px deeper. */
+  .child-ctx-line { padding: var(--space-hair) 8px 0; gap: var(--space-control); }
   .child-slash-palette { margin: var(--space-hair) var(--space-block) -4px; position: relative; }
   .child-composer textarea {
     min-height: 42px;
