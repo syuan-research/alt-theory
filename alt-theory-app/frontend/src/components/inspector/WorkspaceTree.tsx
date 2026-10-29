@@ -292,7 +292,7 @@ export function WorkspaceTree() {
       />
       {folders.length > 0 ? (
         <div className="working-folders">
-          {folders.map((folder) => (
+          {folders.filter(folder => !folder.managed || folder.role === "primary").map((folder) => (
             <div className="working-folder-group" key={folder.id} data-folder-id={folder.id}>
               <FolderHead
                 path={folder.path}

@@ -4,6 +4,9 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { readAppSettings, writeAppSettings } from "./app-settings.js";
+import { describeWorkingFolders } from "./workspace-files.js";
+import { readSessionTextFile, writeSessionTextFile } from "./session-store.js";
 import {
   familyMemberIds,
   groupChanges,
@@ -26,6 +29,50 @@ function toolCallEntry(name: string, args: unknown, id?: string) {
 function toolResultEntry(toolCallId: string, isError: boolean) {
   return { message: { role: "toolResult", toolCallId, isError } };
 }
+
+test("project changes retain editable parent/child workspace files and use the Files folder policy", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-change-folders-"));
+  const project = join(dataDir, "project");
+  const global = join(dataDir, "shared");
+  mkdirSync(project); mkdirSync(global);
+  const settings = readAppSettings(dataDir);
+  settings.workingFolders = { global: [{ path: global, writable: false }], projects: [] };
+  writeAppSettings(dataDir, settings);
+  try {
+    for (const id of ["lead", "child"]) {
+      const sessionRoot = join(dataDir, "sessions", id);
+      const records = join(sessionRoot, "records");
+      const workspace = join(sessionRoot, "workspace");
+      mkdirSync(records, { recursive: true }); mkdirSync(workspace);
+      writeFileSync(join(records, "session.json"), JSON.stringify({
+        schemaVersion: 1, recordType: "session", recordModel: "v0.4", sessionId: id,
+        createdAt: "2026-10-30T00:00:00Z", workspace: { primaryDir: project },
+        ...(id === "child" ? { forkedFrom: { sessionId: "lead", purpose: "subagent" } } : {}),
+      }));
+      const manager = SessionManager.create(project, join(sessionRoot, "history"));
+      for (const path of [join(workspace, "notes.md"), ...(id === "lead" ? [join(global, "shared.md")] : [])]) {
+        writeFileSync(path, "# Original");
+        manager.appendMessage({ role: "assistant", content: [{ type: "toolCall", id: path, name: "write", arguments: { path, content: "# Original" } }], timestamp: Date.now() } as any);
+        manager.appendMessage({ role: "toolResult", toolCallId: path, toolName: "write", isError: false, content: [{ type: "text", text: "ok" }], timestamp: Date.now() });
+      }
+      assert.ok(describeWorkingFolders(dataDir, id).some(folder => folder.managed));
+    }
+    const groups = readSessionChanges(dataDir, "lead")!.groups;
+    assert.equal(groups.filter(group => group.role === "session").length, 2);
+    assert.ok(groups.some(group => group.role === "global"));
+    for (const owner of ["lead", "child"]) {
+      const file = groups.flatMap(group => group.files).find(file => file.resolvedPath === join(dataDir, "sessions", owner, "workspace", "notes.md"))!;
+      assert.deepEqual(file.contentRef, { sessionId: owner, root: "workspace", path: "notes.md" });
+      const current = readSessionTextFile(dataDir, owner, file.contentRef!.root, file.contentRef!.path);
+      writeSessionTextFile(dataDir, owner, file.contentRef!.root, file.contentRef!.path, "# Edited", { expectedUpdatedAt: current.updatedAt! });
+      assert.equal(readSessionTextFile(dataDir, owner, "workspace", "notes.md").content, "# Edited");
+    }
+    settings.workingFolders.global = [];
+    writeAppSettings(dataDir, settings);
+    const removed = readSessionChanges(dataDir, "lead")!.groups.flatMap(group => group.files).find(file => file.resolvedPath === join(global, "shared.md"))!;
+    assert.equal(removed.contentRef, undefined, "folder-policy changes invalidate cached file addresses");
+  } finally { rmSync(dataDir, { recursive: true, force: true }); }
+});
 
 test("write tool counts content lines as additions", () => {
   const { files } = projectChangesFromEntries([

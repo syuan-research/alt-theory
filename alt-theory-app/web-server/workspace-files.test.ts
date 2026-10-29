@@ -127,7 +127,7 @@ test("describeWorkingFolders lists the global list after the project folders", (
   const folders = describeWorkingFolders(dataDir, sessionId);
   assert.deepEqual(
     folders.map((folder) => [folder.id, folder.role, folder.available]),
-    [["primary", "primary", true], ["global-1", "global", true]]
+    [["primary", "primary", true], ["global-1", "global", true], ["managed", "secondary", true]]
   );
   const sharedEntries = listWorkingFolderChildren(
     dataDir,

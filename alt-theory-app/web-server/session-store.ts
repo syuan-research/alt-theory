@@ -28,7 +28,7 @@ import { canonicalPathKey, isPathInside, verdict } from "../core/path-verdict.js
 import { approvalFromResult } from "../core/approval-ask.js";
 import { TOOL_RESULT_HEAD, TOOL_RESULT_TAIL } from "./limits.js";
 import type { Root } from "../core/root-policy.js";
-import { folderPolicyFor, readAppSettings } from "./app-settings.js";
+import { describeWorkingFolders } from "./workspace-files.js";
 import {
   applyTextFlags,
   checkStale,
@@ -1688,7 +1688,7 @@ export interface FileChange {
   /** Display-oriented diff, capped for transport. */
   diff: string;
   /** How the content route reaches the current file; absent when it is outside every root. */
-  contentRef?: { root: "workspace" | "working"; path: string };
+  contentRef?: { root: "workspace" | "working"; path: string; sessionId?: string };
   /** Family members that touched it. */
   sessionIds: string[];
   /** When the last successful write to it was recorded; null when the transcript has no time. */
@@ -1700,7 +1700,7 @@ export interface ChangeGroup {
   title: string;
   /** The root folder (project groups) or the capped anchor (outside groups). */
   path: string;
-  role: "primary" | "companion" | "outside";
+  role: "primary" | "companion" | "global" | "session" | "outside";
   /** Some files sat below the depth cap and were pulled up to this group. */
   capped: boolean;
   files: FileChange[];
@@ -1750,32 +1750,14 @@ export function readSessionChanges(
 ): SessionChanges | null {
   const parts = primaryParts ?? readSessionParts(dataDir, sessionId);
   if (!parts) return null;
-  const primaryDir = parts.v4Session?.workspace?.primaryDir ?? null;
-  // Companion folders belong to the project (v1.5.1): read them from app
-  // settings by the session's main folder, exactly as the root policy does.
-  const companions = primaryDir
-    ? folderPolicyFor(readAppSettings(dataDir), primaryDir).projectSecondaryDirs
-    : [];
-  const roots: ChangeRoot[] = primaryDir
-    ? [
-        { path: primaryDir, reason: "cwd", contentRoot: "working", folderId: "primary" },
-        ...companions.map((path, index) => ({
-          path,
-          reason: "project-secondary" as const,
-          contentRoot: "working" as const,
-          folderId: `secondary-${index + 1}`,
-        })),
-      ]
-    : [{ path: join(parts.sessionRoot, "workspace"), reason: "session-write", contentRoot: "workspace", folderId: "" }];
-  // Family scope (card 7): a subagent's or branch's writes are this
-  // conversation's changes too; the family shares one folder (§7), so the
-  // open conversation's roots apply to every member.
-  const memberIds = [...new Set([...familyMemberIds(dataDir, sessionId), sessionId])];
-  // The roots above come from the header AND the live folder policy, so both
-  // belong in the cache key: a companion added or removed, or the project's
-  // main folder changed, must not serve the previous grouping (with stale
-  // working-folder contentRefs) until the next run writes history.
-  const cacheKey = `${resolve(dataDir)}|${primaryDir ?? ""}|${companions.join(";")}|${familyTranscriptStamp(dataDir, memberIds)}`;
+  const memberIds = [...new Set([sessionId, ...familyMemberIds(dataDir, sessionId)])];
+  const roots: ChangeRoot[] = memberIds.flatMap(id => describeWorkingFolders(dataDir, id).map(folder => ({
+    path: folder.path,
+    reason: folder.managed ? "session-write" as const : folder.role === "primary" ? "cwd" as const : folder.role === "global" ? "global-list" as const : "project-secondary" as const,
+    contentRoot: folder.managed ? "workspace" as const : "working" as const,
+    folderId: folder.id, sessionId: id,
+  })));
+  const cacheKey = JSON.stringify([resolve(dataDir), roots, familyTranscriptStamp(dataDir, memberIds)]);
   const cached = changesCache.get(cacheKey);
   if (cached) return cached;
   const perSession = [...memberIds.filter((id) => id !== sessionId), sessionId]
@@ -1802,6 +1784,7 @@ export function readSessionChanges(
 
 /** A workspace root plus how the content route addresses files under it. */
 export interface ChangeRoot extends Root {
+  sessionId?: string;
   contentRoot: "workspace" | "working";
   /** Working-folder id for `root=working` paths; empty for the managed workspace. */
   folderId: string;
@@ -1823,7 +1806,8 @@ export function mergeSessionChanges(
   const byPath = new Map<string, FileChange>();
   for (const { sessionId, files } of perSession) {
     for (const file of [...files].reverse()) {
-      const located = locateChangedFile(roots, file.path);
+      const ownRoots = roots.filter(root => root.sessionId === sessionId);
+      const located = locateChangedFile(ownRoots.length ? [...ownRoots, ...roots.filter(root => root.sessionId !== sessionId)] : roots, file.path);
       // One physical file is one row: two family members writing it through
       // different spellings (Windows case variants) or an in-root symlink
       // alias must not split the counts. The resolved path itself stays as
@@ -1877,6 +1861,7 @@ function locateChangedFile(
     return {
       resolvedPath: target,
       contentRef: {
+        ...(root.sessionId ? { sessionId: root.sessionId } : {}),
         root: root.contentRoot,
         path: root.contentRoot === "working" ? `${root.folderId}/${rel}` : rel,
       },
@@ -1917,7 +1902,7 @@ export function groupChanges(
     const group = groups.get(key) ?? {
       title: anchor,
       path: anchor,
-      role: !root ? "outside" : root.reason === "project-secondary" ? "companion" : "primary",
+      role: !root ? "outside" : root.reason === "project-secondary" ? "companion" : root.reason === "session-write" ? "session" : root.reason === "global-list" ? "global" : "primary",
       capped: false,
       files: [],
       dirs: [],
@@ -1947,7 +1932,7 @@ export function groupChanges(
 }
 
 function roleRank(role: ChangeGroup["role"]): number {
-  return role === "primary" ? 0 : role === "companion" ? 1 : 2;
+  return { primary: 0, companion: 1, global: 2, session: 3, outside: 4 }[role];
 }
 
 function cappedAncestor(dir: string, home: string): string {

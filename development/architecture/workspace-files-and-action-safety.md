@@ -218,6 +218,14 @@ writes keep going through the guarded write tool and its approval flow. See
 [`server.ts`](../../alt-theory-app/web-server/server.ts) (the session file
 content routes).
 
+Files and Changes use `describeWorkingFolders` for folder addresses: project,
+companion, global and the conversation's managed workspace are all retained.
+Changes resolves each family member against that member's folders; a content
+reference carries its owner session so preview and user edits use the correct
+content route. The Changes cache includes these folder addresses, so configuration
+changes do not leave old readable/editable references cached. Directory labels
+distinguish managed conversation folders and globals from outside-project paths.
+
 All three text roots share one size policy: preview reads stop at 5 MB
 (5 × 1024² bytes) and editing stops at 1 MiB. The Changes projection separately
 truncates generated diffs at 160 lines. These are product-selected limits rather

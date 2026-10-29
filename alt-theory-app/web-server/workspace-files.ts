@@ -106,7 +106,7 @@ export interface WorkingFolderDescriptor {
 function workingFolderRoot(folder: WorkingFolderDescriptor): Root {
   return {
     path: folder.path,
-    reason: folder.role === "primary"
+    reason: folder.managed ? "session-write" : folder.role === "primary"
       ? "cwd"
       : folder.role === "global"
         ? "global-list"
@@ -423,7 +423,7 @@ export function describeWorkingFolders(
     ? [primaryDir, ...policy.projectSecondaryDirs]
     : [managedDir];
   const globals = policy.globalFolders.map((folder) => folder.path);
-  return [...project, ...globals].map((path, index) => {
+  const folders = [...project, ...globals].map((path, index): WorkingFolderDescriptor => {
     const resolved = resolve(path);
     const global = index >= project.length;
     return {
@@ -438,6 +438,11 @@ export function describeWorkingFolders(
       available: statSync(resolved, { throwIfNoEntry: false })?.isDirectory() ?? false,
     };
   });
+  if (!folders.some(folder => folder.managed)) folders.push({
+    id: "managed", path: managedDir, role: "secondary", managed: true,
+    available: statSync(managedDir, { throwIfNoEntry: false })?.isDirectory() ?? false,
+  });
+  return folders;
 }
 
 export function listWorkingFolderChildren(

@@ -409,7 +409,7 @@ export interface FileChange {
   added: number;
   removed: number;
   diff: string;
-  contentRef?: { root: "workspace" | "working"; path: string };
+  contentRef?: { root: "workspace" | "working"; path: string; sessionId?: string };
   sessionIds: string[];
   touchedAt: string | null;
 }
@@ -417,7 +417,7 @@ export interface FileChange {
 export interface ChangeGroup {
   title: string;
   path: string;
-  role: "primary" | "companion" | "outside";
+  role: "primary" | "companion" | "global" | "session" | "outside";
   capped: boolean;
   files: FileChange[];
 }

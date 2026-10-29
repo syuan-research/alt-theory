@@ -122,7 +122,7 @@ export function ChangesPanel() {
   if (selected) {
     return (
       <FilePreview
-        sessionId={sessionId}
+        sessionId={selected.contentRef?.sessionId ?? sessionId}
         path={selected.displayPath}
         fileRef={selected.contentRef ?? null}
         diff={selected.diff}
@@ -201,7 +201,7 @@ export function ChangesPanel() {
     </>
   );
   const roleText = (group: ChangeGroup) =>
-    group.role === "primary" ? t("Main folder") : group.role === "companion" ? t("Companion folder") : t("Outside");
+    group.role === "primary" ? t("Main folder") : group.role === "companion" ? t("Companion folder") : group.role === "global" ? t("Global folder") : group.role === "session" ? t("conversation folder") : t("Outside");
   const normalizedQuery = query.trim();
   const fileQuery = parseFileQuery(normalizedQuery);
   const agentContext = { currentId: sessionId, running };
