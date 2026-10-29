@@ -40,7 +40,7 @@ import {
   saveSessionListSort,
   type SessionListSort,
 } from "@/api/config";
-import altTheoryMark from "@/assets/alt-theory-mark.svg";
+import { BrandMark } from "@/components/shell/BrandMark";
 import {
   downloadMarkdown,
   markdownFileName,
@@ -63,32 +63,6 @@ function originTitle(session: SessionSummary): string | undefined {
     "From subagent": t("Came from a subagent"),
     "From BTW": t("Came from a BTW side conversation"),
   }[label];
-}
-
-/**
- * How much work is in flight across every conversation, not just this one.
- * Clicking scrolls the list to the first running conversation.
- */
-function RunningCount({ sessions }: { sessions: SessionSummary[] }) {
-  const running = sessions.filter(
-    (session) =>
-      session.runStatus === "running" || session.runStatus === "awaiting-approval",
-  );
-  if (running.length === 0) return null;
-  return (
-    <button
-      className="running-count"
-      data-tip={t("Conversations working right now")}
-      onClick={() => {
-        document
-          .querySelector(`[data-session-id="${running[0].sessionId}"]`)
-          ?.scrollIntoView({ block: "center" });
-      }}
-    >
-      <i className="ph ph-circle-notch" aria-hidden />
-      {t("{count} running", { count: running.length })}
-    </button>
-  );
 }
 
 /** A <details> menu never closes itself when an item is clicked — close it here. */
@@ -127,8 +101,11 @@ function unanchorMenu(details: HTMLDetailsElement) {
 }
 
 export function LeftNav({ hidden = false }: { hidden?: boolean }) {
+  const app = useApp();
   const main = useMainView();
   const shell = useShell();
+  const runningCount = app.sessions.filter((session) =>
+    session.runStatus === "running" || session.runStatus === "awaiting-approval").length;
   const railRef = useRef<HTMLElement>(null);
   useEffect(() => {
     const closeOpenMenus = (event: PointerEvent) => {
@@ -167,7 +144,7 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
   // Settings surface: same persistent rail instance, content swapped for the
   // settings nav (foot is only "Back to app"; collapsed strip is logo + ←).
   if (shell.surface === "settings") {
-    return <SettingsRail hidden={hidden} />;
+    return <SettingsRail hidden={hidden} runningCount={runningCount} />;
   }
 
   return (
@@ -184,7 +161,7 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
             data-tip={t("Expand")}
             onClick={() => shell.setLeftCollapsed(false)}
           >
-            <img className="brand-mark" src={altTheoryMark} alt="" />
+            <BrandMark count={runningCount} />
           </button>
         </div>
         <button
@@ -244,7 +221,7 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
       >
         <div className="left-head">
           <span className="brand-lockup">
-            <img className="brand-mark" src={altTheoryMark} alt="" />
+            <BrandMark count={runningCount} />
             <span className="wordmark">{t("Alt Theory")}</span>
           </span>
           <div className="icons">
@@ -286,7 +263,7 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
  * with only "Back to app". Collapsed: the logo (expands) and ← (back to app),
  * nothing else.
  */
-function SettingsRail({ hidden }: { hidden?: boolean }) {
+function SettingsRail({ hidden, runningCount }: { hidden?: boolean; runningCount: number }) {
   const shell = useShell();
 
   const items = [
@@ -316,7 +293,7 @@ function SettingsRail({ hidden }: { hidden?: boolean }) {
               data-tip={t("Expand")}
               onClick={() => shell.setLeftCollapsed(false)}
             >
-              <img className="brand-mark" src={altTheoryMark} alt="" />
+              <BrandMark count={runningCount} />
             </button>
           </div>
           <nav className="set-rail">
@@ -351,7 +328,7 @@ function SettingsRail({ hidden }: { hidden?: boolean }) {
       >
         <div className="left-head">
           <span className="brand-lockup">
-            <img className="brand-mark" src={altTheoryMark} alt="" />
+            <BrandMark count={runningCount} />
             <span className="wordmark">{t("Alt Theory")}</span>
           </span>
           <div className="icons">
@@ -922,7 +899,6 @@ function UserNav({ onImport }: { onImport: () => void }) {
             </select>
           </div>
         ) : null}
-        <RunningCount sessions={app.sessions} />
       </div>
       <div className="sessions">
         {app.sessionsLoading && app.sessions.length === 0 ? (

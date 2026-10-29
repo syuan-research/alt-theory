@@ -70,6 +70,12 @@ surfaces remain designation-gated and absent for everyone else.
     Settings surfaces. Settings replaces the center/right work area; Review is
     full width. The conversation subtree remains mounted but hidden while
     either surface is open, preserving drafts, DOM editing state, and undo.
+  - The brand logo shows global work in flight: the existing blue shimmer and a
+    quiet count badge include running and awaiting-approval conversations. One
+    BrandMark renderer serves expanded/collapsed conversation and Settings rails,
+    using pushed list activity without another subscription. The badge does not
+    change header geometry; zero clears both effects. Reduced motion uses a
+    static blue mark. The former separate running-count row is removed.
   - The desktop bundle uses a hidden window title bar. Windows/Linux draw the
     system window buttons into the app's top band and have no application menu;
     macOS keeps its traffic lights and a trimmed localized system menu for the

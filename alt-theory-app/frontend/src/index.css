@@ -592,7 +592,9 @@
   .app-root.leftCol .left-foot .gear { justify-content: center; width: var(--rail-row-h); height: var(--rail-row-h); padding: 0; }
   .left-head { display: flex; flex: none; align-items: center; height: var(--rail-head-h); padding: var(--space-control) var(--space-control) var(--space-hair); }
   .brand-lockup { display: inline-flex; align-items: center; gap: var(--space-tight); min-width: 0; }
-  .brand-mark { display: block; width: 24px; height: 24px; flex: none; object-fit: contain; }
+  .brand-activity { display: block; position: relative; width: 24px; height: 24px; flex: none; }
+  .brand-mark { display: block; width: 24px; height: 24px; background: var(--ink); mask-size: contain; mask-repeat: no-repeat; mask-position: center; }
+  .brand-count { position: absolute; top: -5px; right: -6px; min-width: 14px; padding: 0 3px; border-radius: 999px; background: color-mix(in srgb, var(--focus-ring) 12%, var(--panel)); color: var(--ink-soft); font: 500 10px/14px var(--font-ui); text-align: center; }
   .wordmark { font-family: var(--brand); font-weight: 600; font-size: var(--fs-title); }
   .left-head .icons { margin-left: auto; display: flex; gap: var(--space-hair); }
   .icon-btn { width: 30px; height: 30px; border: none; background: transparent; border-radius: var(--r-sm); color: var(--ink-soft); cursor: pointer; font-size: 1rem; display: inline-flex; align-items: center; justify-content: center; }
@@ -640,9 +642,11 @@
   .child-switch button.on .conversation-state.warn { color: color-mix(in srgb, var(--color-warning) 65%, var(--on-ink)); }
   .child-switch button.on .conversation-state.danger { color: color-mix(in srgb, var(--color-danger) 65%, var(--on-ink)); }
   .child-switch button.on .conversation-state.ok { color: color-mix(in srgb, var(--color-success) 65%, var(--on-ink)); }
-  .activity-shimmer { background: linear-gradient(105deg, var(--activity-ink, var(--ink)) 30%, var(--focus-ring) 48%, var(--activity-ink, var(--ink)) 65%); background-size: 300% 100%; background-clip: text; -webkit-background-clip: text; color: transparent; animation: activity-shimmer 3.6s linear infinite; }
+  .activity-shimmer, .brand-mark-active { background: linear-gradient(105deg, var(--activity-ink, var(--ink)) 30%, var(--focus-ring) 48%, var(--activity-ink, var(--ink)) 65%); background-size: 300% 100%; animation: activity-shimmer 3.6s linear infinite; }
+  .activity-shimmer { background-clip: text; -webkit-background-clip: text; color: transparent; }
   @keyframes activity-shimmer { from { background-position: 150% 0; } to { background-position: -150% 0; } }
   @media (prefers-reduced-motion: reduce) { .activity-shimmer { animation: none; background: none; color: var(--focus-ring); } }
+  @media (prefers-reduced-motion: reduce) { .brand-mark-active { animation: none; background: var(--focus-ring); } }
   .versions-entry { position: relative; }
   .version-update { margin-left: auto; color: var(--focus-ring); display: inline-flex; align-items: center; gap: var(--space-hair); font-size: var(--fs-micro); }
   .versions-entry .version-update { position: absolute; right: 0; top: 0; }
@@ -655,11 +659,6 @@
   .versions-dialog nav button.on { background: var(--selected); border-radius: var(--r-sm); }
   .versions-dialog .version-notes { max-height: 48vh; overflow-y: auto; overscroll-behavior: contain; }
   .versions-dialog footer { justify-content: flex-end; margin-top: var(--space-control); }
-  /* "N running" in the conversations header — the only place that knows about
-     work happening in a conversation you are not looking at (alpha.3) */
-  .running-count { display: inline-flex; align-items: center; gap: var(--space-hair); margin-left: var(--space-tight); font-size: var(--fs-micro); color: var(--text-3); background: none; border: none; padding: 0; font-family: inherit; cursor: pointer; }
-  .running-count:hover { color: var(--ink); }
-  .running-count i { animation: spin 1.4s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
   /* search overlay */
