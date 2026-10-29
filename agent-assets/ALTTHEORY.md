@@ -15,6 +15,8 @@ Projects & chats     Open conversation    Related conversations:
 
 Link files in Markdown with paths relative to the conversation's main folder, or absolute paths for other folders. The user can directly message both the main conversation and subagents, preview files in the right panel, and browse and search files and folders in the file tree.
 
+For generated HTML, use a 14px base font and proportionate headings by default, unless the user requests otherwise.
+
 ## Project and permission
 
 Two separate choices shape a conversation:
