@@ -1,3 +1,4 @@
+import { WebPageView } from "./WebPageView";
 import { useShell } from "@/context/ShellContext";
 import { useContentLinks } from "@/components/conversation/useContentLinks";
 import { t } from "@/i18n";
@@ -8,15 +9,10 @@ export function LocalPage() {
   const links = useContentLinks(target?.sessionId ?? null);
   if (target?.kind !== "page") return null;
   const openDefault = () => links.openDefault(target.url);
-  return (
-    <div className="local-page">
-      <div className="local-page-actions" onContextMenu={event => links.context(event, target.url)}>
-        <button className="flat" onClick={openDefault}>{t("Open with default app")}</button>
-      </div>
-      {target.image ? <img className="artifact-image" src={target.url} alt={target.url} /> : <iframe key={`${target.url}:${target.revision ?? 0}`} src={target.url} title={target.url}
-        sandbox="allow-scripts allow-forms allow-same-origin allow-downloads allow-popups"
-        onError={openDefault} />}
-      {links.menu}
-    </div>
-  );
+  const actions = <button className="flat" onClick={openDefault} onContextMenu={event => links.context(event, target.url)}>{t("Open with default app")}</button>;
+  return <div className="local-page">
+    {target.image ? <><div className="local-page-actions">{actions}</div><img className="artifact-image" src={target.url} alt={target.url} /></>
+      : <WebPageView key={target.url + ":" + (target.revision ?? 0)} url={target.url} title={target.url} actions={actions} onError={openDefault} />}
+    {links.menu}
+  </div>;
 }

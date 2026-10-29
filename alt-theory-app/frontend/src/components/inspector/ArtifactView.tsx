@@ -1,3 +1,4 @@
+import { WebPageView } from "./WebPageView";
 import { useEffect, useState } from "react";
 import { sessionArtifactUrl } from "@/api/session-files";
 import type { FileRef } from "@/lib/fileContent";
@@ -19,5 +20,5 @@ export function ArtifactView({ sessionId, file }: { sessionId: string; file: Fil
   if (!url) return <div className="rp-empty">{t("Loading…")}</div>;
   return isImagePath(file.path)
     ? <img className="artifact-image" src={url} alt={file.path} onError={() => setError(t("The current file is not available."))} />
-    : <iframe className="file-html" src={url} sandbox="allow-scripts allow-same-origin allow-forms allow-downloads allow-popups" title={file.path} />;
+    : <WebPageView url={url} title={file.path} />;
 }

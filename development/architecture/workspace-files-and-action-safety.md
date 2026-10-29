@@ -248,6 +248,12 @@ Explicitly reopening an image, HTML file or page reloads it. Agent completion do
 not reload an interactive HTML page and discard its in-progress inputs. TIFF and
 automatic hosting/restarting of agent-created servers are not implemented.
 
+`WebPageView` supplies one live iframe and the shared, initially collapsed inline
+reading controls for HTML files and localhost tools. Page-only scaling and expanded
+reading change geometry without navigating/remounting the document. Window-wide
+Electron zoom remains a separate, existing setting; these controls add a local
+adjustment rather than changing application font preferences.
+
 Preview edits save themselves (owner ruling 2026-09-28): one second after
 typing stops, and at once on blur, Ctrl+S, or leaving the file; there is no
 save button and no leave guard. Text not yet on disk lives in an in-process
