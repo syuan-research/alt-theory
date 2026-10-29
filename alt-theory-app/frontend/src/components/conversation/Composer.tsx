@@ -139,7 +139,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     // A help question carries no files: staged ones stay for the next message.
     const attachments = helpQuestionArmed ? [] : [...conv.stagedWorkspacePaths];
     const sent = helpQuestionArmed
-      ? conv.invokeSkill("alt-theory-help", draft)
+      ? conv.invokeSkill("at-alt-theory-help", draft)
       : sendDraft();
     if (sent) {
       conv.clearDraft(attachments);
@@ -312,12 +312,14 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                     : null;
                 // Tooltip = this skill's own job (owner 2026-08-05); what
                 // "steer" means lives on the Steer toggle, not on every chip.
-                const description = (app.discovery?.skills ?? []).find(
+                const skill = (app.discovery?.skills ?? []).find(
                   (skill) => skill.name === name,
-                )?.description;
+                );
+                const label = skill?.displayName ?? name;
+                const description = skill?.description;
                 const skillLine = description
-                  ? `${name} — ${description}`
-                  : name;
+                  ? `${label} — ${description}`
+                  : label;
                 return (
                   <button
                     key={name}
@@ -342,7 +344,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                     }
                     onClick={() => conv.sessionId && app.pressPreset(conv.sessionId, name)}
                   >
-                    <span className="preset-label">{name}</span>
+                    <span className="preset-label">{label}</span>
                     {active?.locked ? (
                       <i className="ph ph-lock-simple" aria-hidden="true" />
                     ) : null}
@@ -378,7 +380,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                           )
                         }
                       >
-                        <span>{skill.name}</span>
+                        <span>{skill.displayName ?? skill.name}</span>
                         {picked ? <i className="ph ph-check check" /> : null}
                       </button>
                     );

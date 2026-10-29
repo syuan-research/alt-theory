@@ -421,11 +421,13 @@ const TOOL_TONE: Record<ToolOutcome, "danger" | "ok" | "running" | "pending"> = 
 };
 
 function ToolLine({ tool }: { tool: ActiveToolState }) {
+  const { discovery } = useApp();
   const outcome = toolOutcome({ running: tool.status === "running", success: tool.success });
   return (
     <SysLine tool detail={outcome === "running" ? null : tool.detail} tone={TOOL_TONE[outcome]}>
       <i className={TOOL_ICON[outcome]} />
-      {toolLabel(tool.toolName, tool.path, tool.detail, outcome)}
+      {toolLabel(tool.toolName, tool.path, tool.detail, outcome,
+        discovery?.skills.find((skill) => skill.name === tool.detail?.skillName)?.displayName)}
       {tool.progressText ? ` — ${tool.progressText}` : ""}
       <ApprovalMark approval={tool.approval} />
     </SysLine>
@@ -561,6 +563,7 @@ export function TranscriptEntry({
 }) {
   const shell = useShell();
   const { thinkingExpanded } = shell;
+  const { discovery } = useApp();
   // Only rows the server has saved take marks (not a pending or steered one).
   const markRow = message.entryId ? message.rowId : undefined;
 
@@ -624,6 +627,7 @@ export function TranscriptEntry({
           message.toolPath,
           message.toolDetail,
           outcome,
+          discovery?.skills.find((skill) => skill.name === message.toolDetail?.skillName)?.displayName,
         )}
         <ApprovalMark approval={approval} />
       </SysLine>
@@ -699,6 +703,7 @@ function UserBubble({
   replacementEdit: boolean;
 }) {
   const trimmed = (text || "").trim();
+  const { discovery } = useApp();
   const invocation = trimmed.match(/^\/skill:([^\s]+)(?:\s+([\s\S]*))?$/);
   const body = invocation ? invocation[2] ?? "" : trimmed;
   const [editing, setEditing] = useState(false);
@@ -733,7 +738,7 @@ function UserBubble({
             onChange={(event) => setDraft(event.target.value)}
           />
         ) : <>
-          {invocation ? <CollapseAnywhereDetails className="sys-detail" summary={<><i className="ph ph-cube" /> {invocation[1]}</>}>
+          {invocation ? <CollapseAnywhereDetails className="sys-detail" summary={<><i className="ph ph-cube" /> {discovery?.skills.find((skill) => skill.name === invocation[1])?.displayName ?? invocation[1]}</>}>
             {skill ? <MarkdownBody text={skill.content} /> : null}
           </CollapseAnywhereDetails> : null}
           {body ? <MarkdownBody text={body} markRow={entryId && rowId ? rowId : undefined} /> : null}

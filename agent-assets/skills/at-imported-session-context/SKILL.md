@@ -1,5 +1,5 @@
 ---
-name: imported-session-context
+name: at-imported-session-context
 description: How to work inside an Alt Theory session that was imported from another harness (Codex, Grok Build, OpenCode, Pi). Activate when the current session was created by session import — the session catalog/records mark it — or when the user says this conversation came from another tool. Explains what the import preserved, what it lost, and how to recover missing ground truth honestly.
 ---
 

@@ -40,9 +40,10 @@ export function toolLabel(
   path?: string | null,
   detail?: ToolDetail | null,
   state: ToolState = "finished",
+  skillDisplayName?: string,
 ): string {
   if (detail?.kind === "skill" && detail.skillName) {
-    return t("Using the {skillName} skill", { skillName: detail.skillName });
+    return t("Using the {skillName} skill", { skillName: skillDisplayName ?? detail.skillName });
   }
   const lines = (byState: Record<ToolState, string>) => byState[state];
   if (name === "bash" || name === "shell") {

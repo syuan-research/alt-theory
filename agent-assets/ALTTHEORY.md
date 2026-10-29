@@ -30,8 +30,6 @@ When synthesizing workspace material, say which files you actually read. Never i
 
 ## Skill and asset entry points
 
-- Before live lookup or citing material outside the workspace, use the search-policy skill.
-- Before creating workspace files or folders, use the workspace-conventions skill.
 - When asked where to put a skill, distinguish **bundled** skills in `agent-assets/skills/` (product-owned and read-only), **personal** skills in `~/.agents/skills/<skill-name>/` (enabled through Alt Theory's Skills settings), and **project** skills in an attached working folder's `.agents/skills/<skill-name>/` or `.pi/skills/<skill-name>/`. In local mode, Alt Theory also discovers app-private skills under `~/.alt-theory/pi-agent/skills/` unless its agent directory is overridden; the shared personal directory is the recommended install location. Do not install user skills into the bundled directory.
 
 ## Language

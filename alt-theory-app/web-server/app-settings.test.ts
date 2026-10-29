@@ -97,7 +97,7 @@ test("skill discovery lists alt bundled and pi-user locations with sources", () 
   mkdirSync(join(agentDir, "skills"), { recursive: true });
   writeFileSync(
     join(altSkillsDir, "summary.md"),
-    "---\nname: alt-summary\ndescription: Alt bundled\n---\nSummarize.",
+    "---\nname: at-pi-external\ndescription: Alt bundled\n---\nSummarize.",
     "utf-8"
   );
   writeFileSync(
@@ -110,8 +110,9 @@ test("skill discovery lists alt bundled and pi-user locations with sources", () 
   const bySource = new Map(
     result.skills.map((skill) => [`${skill.source}:${skill.name}`, skill])
   );
-  assert.ok(bySource.has("alt-theory:alt-summary"));
+  assert.equal(bySource.get("alt-theory:at-pi-external")?.displayName, "pi-external (Alt Theory)");
   assert.ok(bySource.has("pi-user:pi-external"));
+  assert.equal(bySource.get("pi-user:pi-external")?.displayName, "pi-external");
 });
 
 test("skill discovery includes skills nested under agent-assets/skills", () => {

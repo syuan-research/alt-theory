@@ -1983,7 +1983,7 @@ test("REST discovery lists assets; a connection holds no draft and greets with t
   writeFileSync(join(instructions, "study.rules"), "Stay bounded.", "utf-8");
   writeFileSync(
     join(skills, "summary.md"),
-    "---\nname: conversation-summary\ndescription: Summary\n---\nSummarize.",
+    "---\nname: at-conversation-summary\ndescription: Summary\n---\nSummarize.",
     "utf-8",
   );
 
@@ -2070,7 +2070,7 @@ test("REST discovery lists assets; a connection holds no draft and greets with t
     const skillsJson = await skillsResponse.json();
     const bundledSkill = skillsJson.skills.find(
       (skill: { name: string; source: string }) =>
-        skill.name === "conversation-summary" && skill.source === "alt-theory",
+        skill.name === "at-conversation-summary" && skill.source === "alt-theory",
     );
     assert.equal(bundledSkill?.enabled, true);
     const [draft1, draft2] = await Promise.all([

@@ -1,5 +1,5 @@
 ---
-name: page-fetch
+name: at-page-fetch
 description: Fetch a web page or online article as readable markdown. Use when the user gives a URL, when a search result needs reading in full, or when a journal article sits behind an anti-bot wall.
 category: lookup
 subtypes: [fetch.readable, fetch.protected]
@@ -7,7 +7,7 @@ subtypes: [fetch.readable, fetch.protected]
 
 # Page fetch
 
-Follow the search-policy skill: quote what the page actually says, cite the
+Follow the at-search-policy skill: quote what the page actually says, cite the
 URL, and never present memory as fetched content.
 
 Save fetched output inside the current workspace (or the session's writable
@@ -40,6 +40,4 @@ the public, that is what you will get. Say so rather than padding the gap.
 
 Base: `uv tool install "scrapling[fetchers,shell]"`.
 Protected tier additionally needs `scrapling install` — a large browser
-download; follow the alt-theory-help setup procedure before running it.
-
-If the user has installed their own fetching/scraping skill, defer to it.
+download; follow the at-alt-theory-help setup procedure before running it.

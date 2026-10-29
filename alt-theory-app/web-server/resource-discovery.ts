@@ -16,6 +16,7 @@ export type SkillSource = "alt-theory" | "pi-user" | "agents-global";
 
 export interface DiscoveredSkill {
   name: string;
+  displayName: string;
   description: string;
   path: string;
   source: SkillSource;
@@ -47,6 +48,7 @@ export function discoverSkillResources(options: {
       seenPaths.add(skill.filePath);
       skills.push({
         name: skill.name,
+        displayName: source === "alt-theory" ? skill.name.replace(/^at-/, "") : skill.name,
         description: skill.description,
         path: skill.filePath,
         source,
@@ -63,11 +65,16 @@ export function discoverSkillResources(options: {
   for (const skill of extra.skills) {
     if (seenPaths.has(skill.filePath)) continue;
     seenPaths.add(skill.filePath);
-    skills.push({ name: skill.name, description: skill.description, path: skill.filePath, source: "pi-user" });
+    skills.push({ name: skill.name, displayName: skill.name, description: skill.description, path: skill.filePath, source: "pi-user" });
   }
   diagnostics.push(...extra.diagnostics.map(({ message, path }) => ({ message, path })));
   skills.sort(
     (a, b) => a.source.localeCompare(b.source) || a.name.localeCompare(b.name)
   );
+  for (const skill of skills) {
+    if (skill.source === "alt-theory" && skills.some((other) =>
+      other.source !== "alt-theory" && other.displayName === skill.displayName
+    )) skill.displayName += " (Alt Theory)";
+  }
   return { skills, diagnostics };
 }

@@ -29,7 +29,7 @@ The identity layer and the default role bind the agent to these principles in ev
 
 Alt Theory skills can trigger automatically. Convenient on-demand manual triggering is also available through the [Steer bar](../system-guide/steer-bar.md) and the command palette. Different roles emphasize different skills; the set keeps expanding.
 
-Planning, alignment, and problem-understanding skills (the English id is the invocable name, e.g. `/adaptive-aligning`):
+Planning, alignment, and problem-understanding skills (the English id is the invocable name, e.g. `/skill:at-adaptive-aligning`):
 
 - `adaptive-aligning`: before direction-setting work, the agent aligns with the user through batched questions, each carrying its own best guess, so the gap between the user's framing and the agent's reading becomes explicit.
 - `adaptive-planning`: ongoing planning with a provisional goal map, complete work stages, user checkpoints, and a plan-record that persists across sessions.

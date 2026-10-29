@@ -1,5 +1,5 @@
 ---
-name: alt-theory-help
+name: at-alt-theory-help
 description: Help a user understand, use, and fix Alt Theory — how it works, where things are, and setup or configuration trouble (providers, API keys, models, missing tools, migrating a Pi config). Usable in an ordinary conversation.
 ---
 

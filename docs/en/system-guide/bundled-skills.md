@@ -4,9 +4,12 @@ The bundled skills are Alt Theory's methods, written down. Each is a
 readable file you can inspect. Your own skills can take precedence
 ([Add and Manage Skills](add-and-manage-skills.md)).
 
+Menus show short names. Explicit commands use the `at-` technical name,
+for example `/skill:at-adaptive-aligning`.
+
 ## Looking things up
 
-- search-policy governs every search: when live lookup is worth it, the
+- search-policy guides lookup: when live lookup is worth it, the
   three-way provenance rule (found now, memory, inferred), handling of
   thin results, and the fallback when verification is impossible. Applies
   in both modes; in Understand it governs the no-lookup fallback.

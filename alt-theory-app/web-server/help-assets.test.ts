@@ -7,14 +7,14 @@ import test from "node:test";
 // answers from the canonical docs set. These checks keep the skill, its map,
 // and the packaged docs from drifting apart.
 
-const helpRoot = resolve("agent-assets", "skills", "alt-theory-help");
+const helpRoot = resolve("agent-assets", "skills", "at-alt-theory-help");
 const docsRoot = resolve("docs");
 const englishDocsRoot = resolve(docsRoot, "en");
 
 test("alt-theory-help routes to the canonical docs set its map promises", () => {
   assert.ok(existsSync(join(helpRoot, "SKILL.md")));
   const skill = readFileSync(join(helpRoot, "SKILL.md"), "utf-8");
-  assert.match(skill, /^name: alt-theory-help$/m);
+  assert.match(skill, /^name: at-alt-theory-help$/m);
   assert.match(skill, /references\/docs-map\.md/);
   assert.match(skill, /references\/setup-procedure\.md/);
   assert.ok(existsSync(join(helpRoot, "references", "setup-procedure.md")));

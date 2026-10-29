@@ -1,5 +1,5 @@
 ---
-name: adaptive-planning
+name: at-adaptive-planning
 description: Plan and record multi-stage or uncertain work as an ongoing process in which action may change the problem, goals, priorities, evaluation, and route. Use when work spans sessions or days, when the user asks for a plan or plan-record, when an ongoing record needs updating or catching up, or when the shape of the work is still developing.
 category: planning
 subtypes: [planning, plan-record]

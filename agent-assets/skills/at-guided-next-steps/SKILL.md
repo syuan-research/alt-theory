@@ -1,5 +1,5 @@
 ---
-name: guided-next-steps
+name: at-guided-next-steps
 description: Gentle leadership after alignment — propose next steps with the reason each serves the user's goal, always as options. Use when the user wants guidance on where to go next, after an alignment round, or in inductive/deductive theory work when the next move is genuinely open.
 category: interaction
 subtypes: [advancing]

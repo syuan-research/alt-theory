@@ -410,7 +410,7 @@ surfaces remain designation-gated and absent for everyone else.
     paths and loader; the files stay in their original locations.
   - Help center: a curated capability guide and the shipped localized tips.
     The global Help menu opens either this surface or an ordinary new-conversation
-    draft prefilled with `/skill:alt-theory-help`. The user adds a question and
+    draft prefilled with `/skill:at-alt-theory-help`. The user adds a question and
     sends it; the normal draft settings and first-send validation apply.
   - Trash: deleted conversations remain recoverable for 30 days. Restore and
     permanent-delete actions live here rather than in persistent conversation

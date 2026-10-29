@@ -4,8 +4,8 @@
 
 使用 `alt-theory-help` Skill 处理 Alt Theory 自身的问题：原理与机制、设置所在位置、提供方、密钥与工具的引导式配置。
 
-- Help → 询问 Alt 打开普通新对话草稿，预填 `/skill:alt-theory-help`。补充问题后发送。
-- 也可在已有对话中调用 `/alt-theory-help`，沿用该对话的上下文、审批模式和模型。
+- Help → 询问 Alt 打开普通新对话草稿，预填 `/skill:at-alt-theory-help`。补充问题后发送。
+- 也可在已有对话中调用 `/skill:at-alt-theory-help`，沿用该对话的上下文、审批模式和模型。
 - 助手按当前文档回答。具体或可变的内容会查阅产品文档，对无法核实的步骤宁愿承认而不编造。
 
 Help 菜单也可以打开不创建对话的 Help center。不再有专用的 Helper 对话类型或自动帮助标记。

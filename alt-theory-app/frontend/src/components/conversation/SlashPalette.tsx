@@ -6,6 +6,7 @@ import { t } from "@/i18n";
 
 export interface SlashCommand {
   name: string;
+  displayName?: string;
   description: string;
   run: (args: string) => void;
   /**
@@ -64,6 +65,7 @@ export function useSlashCommands({
         .filter((skill) => skill.enabled !== false)
         .map((skill) => ({
           name: skill.name,
+          displayName: skill.displayName,
           description: skill.description || t("Alt Theory skill"),
           run: (args: string) => void conversation.invokeSkill(skill.name, args),
         })),
@@ -93,7 +95,7 @@ export function useSlashPalette({
   const matches = useMemo(() => {
     if (query === null) return [];
     const token = query.split(/\s+/, 1)[0].toLowerCase();
-    return commands.filter((command) => command.name.toLowerCase().startsWith(token));
+    return commands.filter((command) => command.name.toLowerCase().startsWith(token) || command.displayName?.toLowerCase().startsWith(token));
   }, [commands, query]);
   const open = !dismissed && matches.length > 0;
   useEffect(() => setIndex(0), [matches.length]);
@@ -153,7 +155,7 @@ export function SkillDraftChip({ palette }: { palette: ReturnType<typeof useSlas
   if (!palette.skill) return null;
   return <div className="staged-attachments"><span className="attachment-chip">
     <i className="ph ph-cube" aria-hidden="true" />
-    <span>{palette.skill.name}</span>
+    <span>{palette.skill.displayName ?? palette.skill.name}</span>
     <button type="button" aria-label={t("Remove")} onClick={palette.removeSkill}><i className="ph ph-x" /></button>
   </span></div>;
 }
@@ -176,7 +178,7 @@ export function SlashPalette({
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => palette.run(command)}
         >
-          <span className="cmd">/{command.name}</span>
+          <span className="cmd">/{command.displayName ?? command.name}</span>
           <span className="desc">{command.description}</span>
         </button>
       ))}

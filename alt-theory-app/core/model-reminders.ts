@@ -11,7 +11,7 @@ export const GPT_WRITING_REMINDER = [
 
 export const POST_COMPACTION_REMINDER = [
   "## Context recovery reminder",
-  "Context was just compacted. The summary is a partial map, not the whole of the user's current situation. Reconstruct their wider purpose, current request, earlier decisions, and live uncertainties before advancing. Show the working assumption your next move needs when understanding is incomplete. Reach for a relevant skill, especially adaptive-aligning when the direction needs shared understanding; do not silently treat a summary as confirmation.",
+  "Context was just compacted. The summary is a partial map, not the whole of the user's current situation. Reconstruct their wider purpose, current request, earlier decisions, and live uncertainties before advancing. Show the working assumption your next move needs when understanding is incomplete. Reach for a relevant skill, especially at-adaptive-aligning when the direction needs shared understanding; do not silently treat a summary as confirmation.",
 ].join("\n");
 
 export function shouldShowGptWritingReminder(prompt: string, turn: number): boolean {

@@ -1,5 +1,5 @@
 ---
-name: precise-edit
+name: at-precise-edit
 description: Restrained editing of near-final text — polish the language without touching the author's structure, voice, or intent. Use when the user sends mostly finished prose for language editing, small fixes, or asks for wording options.
 category: editing
 subtypes: [precise]
@@ -33,7 +33,7 @@ seems to need. Never fill one without confirmation: the gap is theirs.
 ## Files
 
 When editing a file, edit a copy or produce a new version per the
-workspace-conventions skill — the user's original stays untouched, and
+at-workspace-conventions skill — the user's original stays untouched, and
 you say which file you wrote.
 
 ## Options on request

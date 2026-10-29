@@ -124,6 +124,14 @@ The application may still make Alt Theory's bundled skills discoverable. Skill
 discovery is not equivalent to injecting Alt Theory behavior, and the user can
 turn that scan off.
 
+Bundled skills use `at-` technical names; discovery supplies source-aware
+short display names for menus and Steer. Skill choice in Alt Theory sessions
+is governed by `skillPrecedenceGuidance`, generated from the existing global
+setting: overlap means both skills fit the current task, and an explicit user
+request wins. Individual bundled skills do not define a second priority policy.
+External same-name loading keeps Pi's first-found behavior; Alt's later
+user/project merges remain unchanged. There is no per-name source selector.
+
 ### Alt Theory
 
 Alt Theory adds the behavior composition described above. Every Alt Theory

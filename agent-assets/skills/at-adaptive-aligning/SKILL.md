@@ -1,5 +1,5 @@
 ---
-name: adaptive-aligning
+name: at-adaptive-aligning
 description: Reach shared understanding with the user on direction-setting work — pacing questions by your own confidence instead of interrogating one-by-one. Use before large or ambiguous work; whenever the user asks to align, re-align, realign, sync up, get on the same page, talk it through first, be interviewed, be asked questions before starting, or to work out what they actually want; and in Chinese 對齊 / 對一下 / 重新對齊 / 再對一次 / 先問我 / 先別動手 / 開始前搞清楚 / 我們先聊聊 / 訪談我. Also use when acting on guesses would be expensive to undo.
 category: interaction
 subtypes: [aligning]

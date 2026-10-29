@@ -6,13 +6,13 @@
 
 ## 面板内容
 
-- 所有启用的技能，按 `/技能id` 调用，例如 `/adaptive-aligning`、`/conversation-summary`。完整目录见[内置技能](09-bundled-skills.md)。
+- 所有启用的技能，按 `/技能id` 调用，例如 `/skill:at-adaptive-aligning`、`/skill:at-conversation-summary`。完整目录见[内置技能](09-bundled-skills.md)。
 - 对话命令：
   - `/branch`（分叉）从此处分叉本对话
   - `/btw`（顺带）开启携带当前上下文的侧边对话
   - `/new`（新对话）开启新对话
   - `/compact`（压缩）在你选择的停顿点立即压缩本对话
-  - `/alt-theory-help` 调用帮助 Skill，补充问题后发送
+  - `/skill:at-alt-theory-help` 调用帮助 Skill，补充问题后发送
 
 面板在你键入时过滤，每条都说明其作用。
 

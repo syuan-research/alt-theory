@@ -58,13 +58,15 @@ This is a one-time migration, not ongoing sync.
 
 ## Precedence
 
-Two mechanisms, layered:
+One global setting controls the agent's choice when skills can do the
+same current task: prefer bundled (default), prefer yours, or ask.
+A skill explicitly requested by the user takes priority. This setting
+governs selection before individual skills' trigger instructions.
 
-1. The precedence setting (global, three-way): prefer bundled, prefer
-   yours, or ask on collision. Default: prefer-bundled. Collision means
-   same category (two search skills), not any two skills.
-2. Skill-text deferral: several bundled skills defer to a user skill of
-   the same category (document conversion, page fetching, search).
+Bundled skills have an `at-` technical name so they can coexist with your
+skills. Menus and Steer show short names; ambiguous bundled labels include
+“Alt Theory”. External same-name skills follow Pi's first-found loading
+order, without a separate source selector.
 
 Non-skill assets have no collision: model config is Alt Theory's own; a
 role or soul is whatever the conversation selected; project context files
@@ -72,11 +74,7 @@ all load.
 
 ## Composing your skills with the bundled methods
 
-- Let the cross-cutting method skills (search-policy, aligning,
-  plan-record, conventions) do their job. They are thin and
-  domain-neutral.
-- Bring your domain skills for substance. They compose with the method
-  layer: search-policy governs provenance, your skill governs what counts
-  as a good source in your field.
+- Skills that serve different parts of a task can work together: for example,
+  a source-handling method and a domain skill that judges source quality.
 - Where you disagree with a bundled method, replace it (precedence: prefer
   yours).

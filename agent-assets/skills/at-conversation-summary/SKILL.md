@@ -1,5 +1,5 @@
 ---
-name: conversation-summary
+name: at-conversation-summary
 description: Summarize the current conversation, or write a handoff/continuation note. Use this whenever the user asks to summarize, recap, wrap up, save a summary of, or "write up" this conversation, asks for a handoff or continuation note, or triggers the Summary action — including phrasings like "summarize this", "save a summary", "give me a recap", "wrap this up", or "handoff note". Prefer this skill for any request to condense the conversation into a saved note.
 ---
 

@@ -6,8 +6,8 @@ Use `alt-theory-help` for questions about Alt Theory itself: how something
 works, where a setting lives, guided setup of providers, keys, and tools.
 
 - Help → Ask Alt opens an ordinary new-conversation draft with
-  `/skill:alt-theory-help` prefilled. Add your question and send it.
-- You can also invoke `/alt-theory-help` in an existing conversation. Its
+  `/skill:at-alt-theory-help` prefilled. Add your question and send it.
+- You can also invoke `/skill:at-alt-theory-help` in an existing conversation. Its
   ordinary context, permission, and selected model apply.
 - It answers from current documentation. It consults the product's docs
   for anything concrete or changeable, and says what it could not verify

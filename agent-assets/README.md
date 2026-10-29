@@ -16,7 +16,7 @@ Current first-slice layout:
 - `kb/ep-core/` is the current runtime KB copy used for the first v0.3 smoke-test path. It is not yet declared the long-term KB source-of-truth.
 - `models.example.json` is an uncredentialed example for custom provider/model configuration. Runtime keys stay in environment/config, not Git.
 - `skills/` is the runtime skill root. It contains the user-facing
-  `conversation-summary` and `alt-theory-help` skills; `internal` discovery
+  `at-conversation-summary` and `at-alt-theory-help` skills; `internal` discovery
   must not expose dev SWE bundles to participants.
 - Development-only agent skills are intentionally kept outside the public
   repository. Historical `cs-swe-*` shards may live in a local ignored

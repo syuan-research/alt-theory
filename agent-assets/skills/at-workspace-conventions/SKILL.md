@@ -1,5 +1,5 @@
 ---
-name: workspace-conventions
+name: at-workspace-conventions
 description: Default conventions for files an agent creates in a workspace — where things go, how they are named, and why. Consult before creating any file or folder in the workspace, when organizing outputs, or when unsure where something belongs.
 category: conventions
 subtypes: [workspace]

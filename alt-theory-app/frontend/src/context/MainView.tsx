@@ -212,9 +212,9 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
     if (!conv.startNew()) return;
     updateDraft(NEW_DRAFT, (draft) => ({
       ...draft,
-      text: draft.text.startsWith("/skill:alt-theory-help")
+      text: draft.text.startsWith("/skill:at-alt-theory-help")
         ? draft.text
-        : `/skill:alt-theory-help ${draft.text}`,
+        : `/skill:at-alt-theory-help ${draft.text}`,
     }));
   }, [conv]);
 

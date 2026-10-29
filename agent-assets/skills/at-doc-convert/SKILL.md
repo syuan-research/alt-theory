@@ -1,5 +1,5 @@
 ---
-name: doc-convert
+name: at-doc-convert
 description: Convert documents between formats — docx/pptx/xlsx/pdf to markdown for reading, and produce new document files for the user. Use when a workspace file needs converting or the user asks for output as a document.
 category: doc-conversion
 subtypes: [convert.doc]
@@ -26,13 +26,10 @@ document, work on a copy and summarize your changes in plain language —
 the user's own file is theirs alone.
 
 Formats needing generation libraries (docx/pptx/xlsx writing) may require
-installing dependencies — follow the alt-theory-help setup procedure,
+installing dependencies — follow the at-alt-theory-help setup procedure,
 never install silently.
 
 ## Setup
 
-`uv tool install "markitdown[all]"` (the alt-theory-help setup procedure
+`uv tool install "markitdown[all]"` (the at-alt-theory-help setup procedure
 says when to confirm first).
-
-If the user has installed their own document skill (e.g. a docx or xlsx
-skill), defer to it — it is likely richer than this one.

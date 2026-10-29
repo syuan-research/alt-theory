@@ -78,8 +78,8 @@ test("external skills load under every permission; read-only hides shell skills"
     "utf-8"
   );
   writeFileSync(
-    join(skillsDir, "web-search.md"),
-    "---\nname: web-search\ndescription: Needs the shell\n---\nSearch.",
+    join(skillsDir, "at-web-search.md"),
+    "---\nname: at-web-search\ndescription: Needs the shell\n---\nSearch.",
     "utf-8"
   );
   writeFileSync(
@@ -102,11 +102,11 @@ test("external skills load under every permission; read-only hides shell skills"
 
   assert.match(session.systemPrompt, /alt-summary/);
   assert.match(session.systemPrompt, /work-helper/);
-  assert.doesNotMatch(session.systemPrompt, /web-search/);
+  assert.doesNotMatch(session.systemPrompt, /at-web-search/);
 
   await result.setAltMode("work");
   assert.match(session.systemPrompt, /work-helper/);
-  assert.match(session.systemPrompt, /web-search/);
+  assert.match(session.systemPrompt, /at-web-search/);
 
   await session.dispose();
 });

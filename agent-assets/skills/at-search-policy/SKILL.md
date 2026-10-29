@@ -1,6 +1,6 @@
 ---
-name: search-policy
-description: When and how to use live lookup honestly. Consult before any web or literature search, when a claim hinges on a checkable fact, when citing anything not in the workspace, or when no lookup tool is available and the user needs verifiable information.
+name: at-search-policy
+description: When and how to use live lookup honestly — deciding what to verify, handling sources and citations, and responding when verification is unavailable.
 category: lookup
 subtypes: [policy]
 ---
@@ -60,6 +60,5 @@ calibrated mode is the default for checkable facts.
 ## Tools
 
 This policy needs tools of sub-type `search.general` and `fetch.readable`
-(see the web-search and page-fetch skills where bundled). Harness-native
-tools of a matching sub-type are equally fine. If the user has installed
-their own lookup or verification skill, defer to it.
+(see the at-web-search and at-page-fetch skills where bundled). Harness-native
+tools of a matching sub-type are equally fine.

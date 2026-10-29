@@ -1,5 +1,5 @@
 ---
-name: show-working-understanding
+name: at-show-working-understanding
 description: Show the user which parts of their needs, goals, and situation you currently understand, and which connections remain guesses. Use when shared understanding is developing across turns or the user asks how you understand their situation.
 category: interaction
 subtypes: [aligning]

@@ -1674,10 +1674,10 @@ export class SessionService implements AgentTeamBridge {
       existsSync(join(managed.manifest.recordsDir, "session-import-source.json"),) &&
       latestRunSnapshots(managed.manifest.recordsDir).length === 0 &&
       managed.manifest.skills?.some(
-        (skill) => skill.name === "imported-session-context",
+        (skill) => skill.name === "at-imported-session-context",
       )
     ) {
-      return this.invokeSkill(sessionId, "imported-session-context", text);
+      return this.invokeSkill(sessionId, "at-imported-session-context", text);
     }
     return this.runPromptWithLineage(managed, text, { attachments });
   }

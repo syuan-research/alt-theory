@@ -55,7 +55,7 @@ export function createWebAccessToolDefinitions(): ToolDefinition<any, any>[] {
     name: "fetch_content",
     label: "Fetch web content",
     description:
-      "Fetch a web page over http(s) and return its readable text. Use for reading a specific URL; follow the search-policy skill for provenance (cite the URL; quote only what the page returned).",
+      "Fetch a web page over http(s) and return its readable text. Use for reading a specific URL; cite the URL and quote only what the page returned.",
     parameters: fetchContentSchema,
     async execute(_id, params, signal) {
       const response = await fetch(params.url, {

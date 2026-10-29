@@ -322,12 +322,12 @@ export function skillPrecedenceGuidance(
   precedence?: "prefer-bundled" | "prefer-user" | "ask"
 ): string {
   if (precedence === "prefer-user") {
-    return "Bundled skills are a floor, not the authority. Before auto-invoking a bundled skill, check whether the user has installed a skill of the same category (for example lookup, doc-conversion, summary); if so, prefer the user's skill.";
+    return "Choose skills by this preference before following their individual trigger instructions. Follow any skill the user explicitly requests. Otherwise, when a user-installed skill and an Alt Theory bundled skill (at- prefix) can do the same current task, prefer the user's skill. Use the bundled skill when no user-installed skill fits.";
   }
   if (precedence === "ask") {
-    return "When a bundled skill and a user-installed skill of the same category (for example lookup, doc-conversion, summary) both fit the task, do not choose silently: name both and ask which to use.";
+    return "Choose skills by this preference before following their individual trigger instructions. Follow any skill the user explicitly requests. Otherwise, when a user-installed skill and an Alt Theory bundled skill (at- prefix) can do the same current task, name both and ask which to use.";
   }
-  return "Alt Theory's bundled skills carry this product's stance and are the default choice. When a user-installed skill covers the same category (for example lookup, doc-conversion, summary), still prefer the bundled one unless the user asked for theirs by name or the bundled skill plainly does not cover the task.";
+  return "Choose skills by this preference before following their individual trigger instructions. Follow any skill the user explicitly requests. Otherwise, when a user-installed skill and an Alt Theory bundled skill (at- prefix) can do the same current task, prefer the bundled skill. Use the user's skill when no bundled skill fits.";
 }
 
 export interface AltTheoryOpenExistingConfig extends AltTheoryConfig {
@@ -346,7 +346,7 @@ const READ_ONLY_TOOLS = ["read", "ls", "grep", "find", "edit", "write"];
 /** Pi's own default active toolset for Work and Native Pi. */
 const PI_DEFAULT_TOOLS = ["read", "bash", "edit", "write"];
 /** Bundled skills that need the shell, so read-only does not list them. */
-const SHELL_BUNDLED_SKILLS = new Set(["web-search", "page-fetch", "doc-convert"]);
+const SHELL_BUNDLED_SKILLS = new Set(["at-web-search", "at-page-fetch", "at-doc-convert"]);
 
 const READ_ONLY_PROMPT_SECTION = [
   "## Permission: Read-only",

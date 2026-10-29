@@ -1,5 +1,5 @@
 ---
-name: clear-misunderstanding
+name: at-clear-misunderstanding
 description: Repair a clear misreading of the user's request or situation. Use when the user says you misunderstood or points to a specific mismatch; show the correction and offer a bounded way forward.
 category: interaction
 subtypes: [aligning]

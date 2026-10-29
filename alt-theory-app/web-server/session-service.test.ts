@@ -31,9 +31,9 @@ import {
 test("retry reconstructs a persisted skill invocation", () => {
   assert.equal(
     retryPromptFromStoredUserContent(
-      '<skill name="conversation-summary">expanded body</skill> Focus on decisions',
+      '<skill name="at-conversation-summary">expanded body</skill> Focus on decisions',
     ),
-    "/skill:conversation-summary Focus on decisions",
+    "/skill:at-conversation-summary Focus on decisions",
   );
 });
 import { listSessionSummaries, readSessionDetail } from "./session-store.js";
@@ -1257,8 +1257,8 @@ test("SessionService reconciles a crash-interrupted accepted run and continues f
 test("help is explicitly invoked in an ordinary conversation", async () => {
   const fixture = setupFixture();
   writeFileSync(
-    join(fixture.skillsDir, "alt-theory-help.md"),
-    "---\nname: alt-theory-help\ndescription: Test helper\n---\nCheck current docs.\n",
+    join(fixture.skillsDir, "at-alt-theory-help.md"),
+    "---\nname: at-alt-theory-help\ndescription: Test helper\n---\nCheck current docs.\n",
     "utf-8",
   );
   const service = createTestService(fixture, "internal");
@@ -1274,11 +1274,11 @@ test("help is explicitly invoked in an ordinary conversation", async () => {
     rootManaged.session.prompt = async (text: string) => {
       rootPrompt = text;
     };
-    await service.invokeSkill(ordinary.sessionId, "alt-theory-help", "Help me configure a model.")
+    await service.invokeSkill(ordinary.sessionId, "at-alt-theory-help", "Help me configure a model.")
       .completion;
     assert.equal(
       rootPrompt,
-      "/skill:alt-theory-help Help me configure a model.",
+      "/skill:at-alt-theory-help Help me configure a model.",
     );
     const rootHeader = readV4SessionHeader(
       service.getManifest(ordinary.sessionId).recordsDir,
@@ -1291,11 +1291,11 @@ test("help is explicitly invoked in an ordinary conversation", async () => {
   }
 });
 
-test("imported session invokes imported-session-context skill once on first run", async () => {
+test("imported session invokes at-imported-session-context skill once on first run", async () => {
   const fixture = setupFixture();
   writeFileSync(
-    join(fixture.skillsDir, "imported-session-context.md"),
-    "---\nname: imported-session-context\ndescription: Imported session context\n---\nExplain import losses.\n",
+    join(fixture.skillsDir, "at-imported-session-context.md"),
+    "---\nname: at-imported-session-context\ndescription: Imported session context\n---\nExplain import losses.\n",
     "utf-8",
   );
   const service = createTestService(fixture, "internal");
@@ -1327,7 +1327,7 @@ test("imported session invokes imported-session-context skill once on first run"
       .completion;
     assert.equal(
       prompt,
-      "/skill:imported-session-context Continue the imported work.",
+      "/skill:at-imported-session-context Continue the imported work.",
     );
 
     await service.runPrompt(created.sessionId, "Second turn stays plain.")
@@ -1855,7 +1855,7 @@ test("SessionService validates explicit skill invocation against active Alt Theo
   try {
     assert.deepEqual(
       service.getManifest(created.sessionId).skills.map((skill) => skill.name),
-      ["conversation-summary"],
+      ["at-conversation-summary"],
     );
     assert.throws(
       () => service.invokeSkill(created.sessionId, "debug-only"),
@@ -1875,12 +1875,12 @@ test("SessionService validates explicit skill invocation against active Alt Theo
     };
     const run = service.invokeSkill(
       created.sessionId,
-      "conversation-summary",
+      "at-conversation-summary",
       "Focus on decisions",
     );
     await run.completion;
     assert.ok(
-      promptText.endsWith("/skill:conversation-summary Focus on decisions"),
+      promptText.endsWith("/skill:at-conversation-summary Focus on decisions"),
     );
     const events = readFileSync(
       join(
@@ -1902,7 +1902,7 @@ test("SessionService validates explicit skill invocation against active Alt Theo
           },
       );
     assert.equal(events.at(-1)?.type, "skill_invoked");
-    assert.equal(events.at(-1)?.details?.skillName, "conversation-summary");
+    assert.equal(events.at(-1)?.details?.skillName, "at-conversation-summary");
   } finally {
     await service.disposeAll();
   }
@@ -2177,18 +2177,18 @@ test("SessionService returns to idle when compaction fails", async () => {
 
 test("live transcript projection preserves editable skill commands", () => {
   assert.equal(
-    displayUserTextFromPrompt("/skill:conversation-summary Focus on decisions"),
-    "/skill:conversation-summary Focus on decisions",
+    displayUserTextFromPrompt("/skill:at-conversation-summary Focus on decisions"),
+    "/skill:at-conversation-summary Focus on decisions",
   );
   assert.equal(
-    displayUserTextFromPrompt("/skill:conversation-summary"),
-    "/skill:conversation-summary",
+    displayUserTextFromPrompt("/skill:at-conversation-summary"),
+    "/skill:at-conversation-summary",
   );
   assert.equal(
     displayUserTextFromPrompt(
-      '<skill name="conversation-summary">expanded body</skill> Focus on decisions',
+      '<skill name="at-conversation-summary">expanded body</skill> Focus on decisions',
     ),
-    "/skill:conversation-summary Focus on decisions",
+    "/skill:at-conversation-summary Focus on decisions",
   );
   assert.equal(displayUserTextFromPrompt("ordinary question"), "ordinary question");
 });

@@ -48,7 +48,7 @@ export function setupFixture() {
   );
   writeFileSync(
     join(skillsDir, "summary.md"),
-    "---\nname: conversation-summary\ndescription: Test summary\n---\nSummarize.",
+    "---\nname: at-conversation-summary\ndescription: Test summary\n---\nSummarize.",
     "utf-8",
   );
   writeFileSync(modelsPath, JSON.stringify({ providers: {

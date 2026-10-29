@@ -131,10 +131,10 @@ const AppContext = createContext<AppContextValue | null>(null);
 /** Situational preset buttons (v1.4 round 1): turns a press stays active. */
 export const PRESET_TURNS = 5;
 const DEFAULT_PRESET_BUTTONS = [
-  "adaptive-aligning",
-  "show-working-understanding",
-  "clear-misunderstanding",
-  "guided-next-steps",
+  "at-adaptive-aligning",
+  "at-show-working-understanding",
+  "at-clear-misunderstanding",
+  "at-guided-next-steps",
 ];
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -350,14 +350,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         window.localStorage.getItem("alt-preset-buttons") ?? "null",
       );
       if (!Array.isArray(stored) || !stored.length) return DEFAULT_PRESET_BUTTONS;
-      const names = stored.slice(0, 5).map((name: string) =>
-        name === "confirm-why" ? "show-working-understanding" : name,
-      );
+      const names = stored.slice(0, 5)
+        .filter((name: string) => !["disagree-well", "uncertainty-report"].includes(name))
+        .map((name: string) => name === "confirm-why" ? "show-working-understanding" : name);
       // Migrate the former default order while preserving custom button choices.
       return names.join("|") ===
         "adaptive-aligning|show-working-understanding|guided-next-steps|clear-misunderstanding"
         ? DEFAULT_PRESET_BUTTONS
-        : names;
+        : names.map((name: string) => name.startsWith("at-") ? name : `at-${name}`);
     } catch {
       return DEFAULT_PRESET_BUTTONS;
     }

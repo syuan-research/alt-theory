@@ -30,9 +30,9 @@ controls what loads where:
 ## Precedence
 
 The skill precedence setting (global): prefer bundled (default), prefer
-mine, or ask me. Collision means same category (two search skills), not
-any two skills. Several bundled skills defer to a user skill of their
-category (document conversion, page fetching, search). Fine-grained rules:
+mine, or ask me. It applies when two skills can do the same current task;
+sharing a broad category alone does not make them overlap. A skill you
+explicitly request takes priority. Details:
 [Shared Configuration and Assets](../advanced/shared-configuration-and-assets.md).
 
 ## Recovery
@@ -40,7 +40,7 @@ category (document conversion, page fetching, search). Fine-grained rules:
 - A skill never triggers: invoke it by name from the
   [palette](commands.md), then check its `SKILL.md` description. Triggering
   matches on that description.
-- The wrong skill wins: check precedence and whether the two share a
-  category. Unrelated skills both load.
+- The wrong skill wins: check precedence and whether both fit the current
+  task. Unrelated skills both load.
 - A project skill is missing: confirm the folder is attached and the
   conversation is in Work mode.
