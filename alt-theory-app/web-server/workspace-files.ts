@@ -1,3 +1,4 @@
+import { isImagePath, isHtmlPath } from "../shared/artifact-types.js";
 import {
   existsSync,
   mkdirSync,
@@ -44,6 +45,7 @@ const TEXT_NATIVE_EXTENSIONS = new Set([
   ".tsv",
   ".json",
   ".html",
+  ".htm",
 ]);
 const BINARY_EXTENSIONS = new Set([".docx", ".xlsx", ".pdf"]);
 const DOWNLOADABLE_EXTENSIONS = new Set([
@@ -60,6 +62,7 @@ const MAX_FILE_BYTES: Record<string, number> = {
   ".tsv": 2 * 1024 * 1024,
   ".json": 2 * 1024 * 1024,
   ".html": 2 * 1024 * 1024,
+  ".htm": 2 * 1024 * 1024,
   ".docx": 10 * 1024 * 1024,
   ".xlsx": 10 * 1024 * 1024,
   ".pdf": 20 * 1024 * 1024,
@@ -386,7 +389,7 @@ export function listWorkspaceFiles(
         if (!entry.isFile()) continue;
         if (relNorm.endsWith(".extract-error.json")) continue;
         const ext = extname(entry.name).toLowerCase();
-        if (!TEXT_NATIVE_EXTENSIONS.has(ext)) continue;
+        if (!TEXT_NATIVE_EXTENSIONS.has(ext) && !isImagePath(relNorm)) continue;
         if (entries.some((item) => item.path === relNorm)) continue;
         entries.push(fileEntry(workspaceDir, relNorm, "text"));
       }
@@ -508,7 +511,7 @@ export function listWorkingFolderChildren(
         isDirectory: false,
         size: entryStats.size,
         updatedAt: entryStats.mtime.toISOString(),
-        previewable: entryStats.size <= MAX_TEXT_VIEW_BYTES,
+        previewable: isImagePath(path) || isHtmlPath(path) || entryStats.size <= MAX_TEXT_VIEW_BYTES,
       };
     })
     .sort(
@@ -606,7 +609,7 @@ export async function searchWorkingFolder(
       entries.push({
         folderId, path: match.path, isDirectory: false,
         size: stats.size, updatedAt: stats.mtime.toISOString(),
-        previewable: stats.size <= MAX_TEXT_VIEW_BYTES,
+        previewable: isImagePath(match.path) || isHtmlPath(match.path) || stats.size <= MAX_TEXT_VIEW_BYTES,
       });
     }
   }
@@ -639,17 +642,17 @@ export async function recentWorkingFiles(
     entries: files.slice(0, limit).map(({ path, stats }) => ({
       folderId, path, isDirectory: false,
       size: stats.size, updatedAt: stats.mtime.toISOString(),
-      previewable: stats.size <= MAX_TEXT_VIEW_BYTES,
+      previewable: isImagePath(path) || isHtmlPath(path) || stats.size <= MAX_TEXT_VIEW_BYTES,
     })),
     truncated: files.length > limit,
   };
 }
 
-export function readWorkingFolderTextFile(
+export function resolveWorkingReadableFile(
   dataDir: string,
   sessionId: string,
   requestedPath: string
-): { root: "working"; path: string; folderPath: string; size: number; updatedAt: string; content: string } {
+) {
   const [folderId, ...parts] = requestedPath.replace(/\\/g, "/").split("/");
   const relPath = parts.join("/");
   const folder = describeWorkingFolders(dataDir, sessionId).find(
@@ -675,6 +678,12 @@ export function readWorkingFolderTextFile(
   }
   const stats = statSync(target, { throwIfNoEntry: false });
   if (!stats?.isFile()) throw new Error("File not found in this folder");
+  return { target, folder, stats };
+}
+
+export function readWorkingFolderTextFile(dataDir: string, sessionId: string, requestedPath: string): { root: "working"; path: string; folderPath: string; size: number; updatedAt: string; content: string } {
+  const { target, folder, stats } = resolveWorkingReadableFile(dataDir, sessionId, requestedPath);
+  const folderId = folder.id;
   if (stats.size > MAX_TEXT_VIEW_BYTES) throw new Error("File is too large to preview");
   const buffer = readFileSync(target);
   if (buffer.includes(0)) throw new Error("Binary files cannot be previewed");

@@ -169,3 +169,9 @@ export async function stageAttachmentFile(
   }
   return res.json() as Promise<{ path: string; extractError?: string }>;
 }
+
+/** An executable/resource URL on the file-only preview origin. */
+export async function sessionArtifactUrl(sessionId: string, root: string, path: string): Promise<string> {
+  const qs = new URLSearchParams({ root, path });
+  return (await fetchJson<{ url: string }>(sessionFilesBase(sessionId) + "/preview-url?" + qs)).url;
+}

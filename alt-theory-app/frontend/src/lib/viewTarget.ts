@@ -1,3 +1,4 @@
+import { isImagePath, isHtmlPath } from "../../../shared/artifact-types";
 /**
  * What a side view shows beyond its list, and how it moves (WP-3,
  * state-architecture plan 2026-09-24). One owner: ShellContext holds a
@@ -12,9 +13,9 @@
 /** The side view's rails. Records and provenance are researcher-only. */
 export type RailKey = "chats" | "changes" | "workspace" | "records" | "provenance";
 
-export type ViewTarget =
+export type ViewTarget = (
   /** A local interactive page; it can be opened before a conversation exists. */
-  | { kind: "page"; sessionId: string | null; url: string }
+  | { kind: "page"; sessionId: string | null; url: string; image?: boolean }
   /** A conversation of the family, shown on its own (BTW, branch, subagent). */
   | { kind: "conversation"; sessionId: string }
   /** A file of a conversation: its managed workspace, or a working folder
@@ -23,7 +24,7 @@ export type ViewTarget =
   /** A file a conversation changed; `title` is its display path. */
   | { kind: "change"; sessionId: string; path: string; title: string }
   /** A record of a conversation (researcher Records rail). */
-  | { kind: "record"; sessionId: string; root: "records" | "workspace"; path: string };
+  | { kind: "record"; sessionId: string; root: "records" | "workspace"; path: string }) & { revision?: number };
 
 /** The rail a target opens on. */
 export function railOf(target: ViewTarget): RailKey {
@@ -137,7 +138,10 @@ export function navigate(state: PaneState, action: PaneAction): PaneState {
   switch (action.type) {
     case "open": {
       const rail = railOf(action.target);
-      if (state.rail === rail && state.target && targetKey(state.target) === targetKey(action.target)) return state;
+      if (state.rail === rail && state.target && targetKey(state.target) === targetKey(action.target)) {
+        if (action.target.kind !== "page" && !("path" in action.target && (isImagePath(action.target.path) || isHtmlPath(action.target.path)))) return state;
+        return place(state, rail, { ...action.target, revision: (state.target.revision ?? 0) + 1 }, state.returnTo);
+      }
       const leaving = state.rail && (state.rail !== rail || (action.target.kind === "page" && state.target?.kind !== "page"))
         ? { rail: state.rail, target: state.target } : state.returnTo;
       return place(state, rail, action.target, leaving);

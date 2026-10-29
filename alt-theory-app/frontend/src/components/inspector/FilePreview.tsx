@@ -1,3 +1,6 @@
+import { isImagePath, isHtmlPath } from "../../../../shared/artifact-types";
+import { ArtifactView } from "./ArtifactView";
+import { useShell } from "@/context/ShellContext";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { t } from "@/i18n";
 import { MarkdownBody } from "@/components/conversation/MarkdownBody";
@@ -66,7 +69,7 @@ function persist(sessionId: string, ref: FileRef, key: string, options: SaveOpti
  * changed file (say Alt rewrote it) just reloads when any conversation
  * finishes a run.
  */
-export function FilePreview({
+function TextFilePreview({
   sessionId,
   path,
   fileRef,
@@ -168,7 +171,7 @@ export function FilePreview({
     setStatus({ text: "" });
     setConflict(false);
     setDraft(null);
-    if (!sessionId || !fileRef) return;
+    if (!sessionId || !fileRef || (active === "rendered" && isHtmlPath(path))) return;
     const loadKey = draftKey(sessionId, fileRef.root, fileRef.path);
     let cancelled = false;
     // Wait out a write from an earlier visit, so the load never reads the
@@ -194,7 +197,7 @@ export function FilePreview({
       // saves at once; a failure keeps the draft for the next visit.
       if (getDraft(loadKey) !== null) persist(sessionId, fileRef, loadKey).catch(() => undefined);
     };
-  }, [sessionId, fileRef?.root, fileRef?.path]);
+  }, [sessionId, fileRef?.root, fileRef?.path, isHtmlPath(path) && active === "rendered"]);
 
   // Any conversation may rewrite the open file (they share project
   // folders): whenever one finishes a run, with no unsaved text here, show
@@ -207,7 +210,7 @@ export function FilePreview({
   useEffect(() => {
     const finished = seenRunning.current.some((id) => !running.includes(id));
     seenRunning.current = running;
-    if (!finished || !sessionId || !fileRef || getDraft(key) !== null) return;
+    if (!finished || !sessionId || !fileRef || /\.html?$/i.test(path) || getDraft(key) !== null) return;
     const loadKey = key;
     afterWrites(loadKey)
       .then(() => {
@@ -303,11 +306,12 @@ export function FilePreview({
   const body = () => {
     if (active === "diff") return <DiffLines diff={diff ?? ""} />;
     if (!fileRef) return <div className="rp-empty">{t("The current file is not available.")}</div>;
+    if (active === "rendered" && isHtmlPath(path) && sessionId) return <ArtifactView sessionId={sessionId} file={fileRef} />;
     if (error) return <div className="rp-empty">{error}</div>;
     if (!file) return <div className="rp-empty">{t("Loading…")}</div>;
     if (active === "rendered") {
       return /\.html?$/i.test(path) ? (
-        <iframe className="file-html" sandbox="" srcDoc={file.content} title={path} />
+        sessionId ? <ArtifactView sessionId={sessionId} file={fileRef} /> : null
       ) : (
         <MarkdownBody text={file.content} sessionId={sessionId} baseFile={fileRef ?? undefined} baseFolderPath={file.folderPath} />
       );
@@ -432,4 +436,13 @@ function DiffLines({ diff }: { diff: string }) {
       ))}
     </div>
   );
+}
+
+export function FilePreview(props: Parameters<typeof TextFilePreview>[0]) {
+  const shell = useShell();
+  const revision = shell.target?.revision ?? 0;
+  if (isImagePath(props.path) && props.fileRef && props.sessionId) {
+    return <div className="preview"><div className="change-preview-body expanded"><ArtifactView key={revision} sessionId={props.sessionId} file={props.fileRef} /></div>{props.footer}</div>;
+  }
+  return <TextFilePreview key={revision} {...props} />;
 }

@@ -231,6 +231,23 @@ All three text roots share one size policy: preview reads stop at 5 MB
 truncates generated diffs at 160 lines. These are product-selected limits rather
 than measured performance thresholds.
 
+Images and executable HTML use a separate resource path. The preview-URL route
+checks session access, then the backend's `artifact-preview.ts` lazily starts a
+loopback, file-only HTTP origin in the same process. Its directory-shaped URLs
+preserve relative image/script/style paths and `fetch` of JSON or CSV. It reuses
+`resolveSessionReadableFile` / `resolveWorkingReadableFile`; text readers apply
+their own extension and size rules afterward. Resource responses use their normal
+MIME types and `no-store`, and the listener closes with the application server.
+It exposes no application API or write bridge.
+
+Shared `MarkdownBody` resolves local images with the same folder/path semantics
+as file links; images retain a separate caption and open action. `FilePreview`
+dispatches images before text loading and embeds executable HTML from the preview
+origin. Localhost tools still use `LocalPage`; their own server handles writeback.
+Explicitly reopening an image, HTML file or page reloads it. Agent completion does
+not reload an interactive HTML page and discard its in-progress inputs. TIFF and
+automatic hosting/restarting of agent-created servers are not implemented.
+
 Preview edits save themselves (owner ruling 2026-09-28): one second after
 typing stops, and at once on blur, Ctrl+S, or leaving the file; there is no
 save button and no leave guard. Text not yet on disk lives in an in-process

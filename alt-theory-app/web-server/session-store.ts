@@ -1240,6 +1240,7 @@ const ALLOWED_TEXT_FILE_EXTENSIONS = new Set([
   ".csv",
   ".tsv",
   ".html",
+  ".htm",
 ]);
 
 function selectTextFileRoots(
@@ -1293,7 +1294,7 @@ function listTextFilesInRoot(
   return files;
 }
 
-function resolveSessionTextFile(
+export function resolveSessionReadableFile(
   dataDir: string,
   sessionId: string,
   rootName: string,
@@ -1321,12 +1322,17 @@ function resolveSessionTextFile(
     throw new Error("File path must stay inside the selected session root");
   }
   const relativePath = relative(rootPath, target).replace(/\\/g, "/");
-  if (!isAllowedTextFile(relativePath)) {
+  return { root, path: target, relativePath };
+}
+
+function resolveSessionTextFile(dataDir: string, sessionId: string, rootName: string, requestedPath: string) {
+  const target = resolveSessionReadableFile(dataDir, sessionId, rootName, requestedPath);
+  if (!isAllowedTextFile(target.relativePath)) {
     throw new Error(
       "Only .md, .txt, .json, .csv, .tsv, and .html files are allowed"
     );
   }
-  return { root, path: target, relativePath };
+  return target;
 }
 
 function isAllowedTextFile(path: string): boolean {

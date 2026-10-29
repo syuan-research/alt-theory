@@ -1,3 +1,5 @@
+import { listWorkingFolders, sessionArtifactUrl } from "@/api/session-files";
+import { resolveFileLink } from "@/lib/contentLinks";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import { renderMarkdown } from "@/lib/markdown";
@@ -55,6 +57,11 @@ export function MarkdownBody({
 }) {
   const conversation = useConversationContext();
   const links = useContentLinks(sessionId === undefined ? conversation.sessionId : sessionId, baseFile, baseFolderPath);
+  const imageSessionId = sessionId === undefined ? conversation.sessionId : sessionId;
+  const imageFolders = useMemo(() => {
+    let pending: ReturnType<typeof listWorkingFolders> | undefined;
+    return () => imageSessionId ? (pending ??= listWorkingFolders(imageSessionId)) : Promise.resolve(null);
+  }, [imageSessionId]);
   const rootRef = useRef<HTMLDivElement>(null);
   const finishedRef = useRef<HTMLDivElement>(null);
   const tailRef = useRef<HTMLDivElement>(null);
@@ -160,12 +167,33 @@ export function MarkdownBody({
   // Stable identity prevents same-HTML renders from replacing selected DOM text.
   const innerHtml = useMemo(() => ({ __html: html }), [html]);
 
+  useEffect(() => {
+    const host = rootRef.current;
+    if (!host || !imageSessionId) return;
+    for (const img of host.querySelectorAll<HTMLImageElement>("img[data-image-source]:not([data-image-resolved])")) {
+      const source = img.dataset.imageSource!;
+      const link = contentLink(source);
+      if (link?.kind !== "file") continue;
+      img.dataset.imageResolved = "true";
+      void imageFolders().then(async response => {
+        if (!response) return;
+        const folders = [...response.folders];
+        if (response.workspacePath && !folders.some(folder => folder.managed)) folders.push({ id: "managed", path: response.workspacePath, role: "secondary", managed: true, available: true });
+        const { ref } = resolveFileLink(link.address, folders, baseFile, baseFolderPath);
+        if (!ref) return;
+        const url = await sessionArtifactUrl(imageSessionId, ref.root, ref.path);
+        if (img.isConnected) img.src = url;
+      }).catch(() => { /* The caption and open action remain usable on load failure. */ });
+    }
+  }, [text, html, streaming, imageSessionId, imageFolders, baseFile?.root, baseFile?.path, baseFolderPath]);
+
   const onClick = (event: MouseEvent<HTMLDivElement>) => {
     const anchor = (event.target as Element).closest<HTMLAnchorElement>("a[href]");
     const href = anchor?.getAttribute("href");
     if (href && contentLink(href)?.kind !== "anchor") {
       event.preventDefault();
-      links.open(href);
+      if (anchor?.hasAttribute("data-image-open")) links.openImage(href);
+      else links.open(href);
       return;
     }
     const figure = (event.target as Element).closest<HTMLElement>(".mermaid-figure");
@@ -238,6 +266,7 @@ export function MarkdownBody({
 
   return (<>
     <div
+      ref={rootRef}
       className={cn("markdown-body", className)}
       data-mark-row={markRow}
       onClick={onClick}

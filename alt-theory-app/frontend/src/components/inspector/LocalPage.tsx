@@ -13,9 +13,9 @@ export function LocalPage() {
       <div className="local-page-actions" onContextMenu={event => links.context(event, target.url)}>
         <button className="flat" onClick={openDefault}>{t("Open with default app")}</button>
       </div>
-      <iframe key={target.url} src={target.url} title={target.url}
+      {target.image ? <img className="artifact-image" src={target.url} alt={target.url} /> : <iframe key={`${target.url}:${target.revision ?? 0}`} src={target.url} title={target.url}
         sandbox="allow-scripts allow-forms allow-same-origin allow-downloads allow-popups"
-        onError={openDefault} />
+        onError={openDefault} />}
       {links.menu}
     </div>
   );

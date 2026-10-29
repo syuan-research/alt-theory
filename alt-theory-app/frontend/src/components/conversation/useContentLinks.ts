@@ -1,3 +1,4 @@
+import { isImagePath, isHtmlPath } from "../../../../shared/artifact-types";
 import { getSessionFileContent, listWorkingFolders } from "@/api/session-files";
 import { useShell } from "@/context/ShellContext";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
@@ -22,13 +23,17 @@ export function useContentLinks(sessionId: string | null, base?: FileRef, baseFo
     const file = resolveFileLink(link.address, folders, base, baseFolderPath);
     return { link: { ...link, address: file.address }, ref: file.ref };
   };
-  const open = async (href: string, externally = false) => {
+  const open = async (href: string, externally = false, image = false) => {
     const { link, ref } = await resolve(href);
     if (!link || link.kind === "anchor") return;
+    if (image && (link.kind === "web" || link.kind === "page") && !externally) {
+      shell.openTarget({ kind: "page", sessionId, url: link.address, image: true }); return;
+    }
     if (link.kind === "file") {
       if (!externally && sessionId && ref) {
         try {
-          const file = await getSessionFileContent(sessionId, ref.root, ref.path);
+          const media = isImagePath(ref.path) || isHtmlPath(ref.path);
+          const file = media ? { content: "" } : await getSessionFileContent(sessionId, ref.root, ref.path);
           if (!file.content.includes("\0")) {
             shell.openTarget(ref.root === "records"
               ? { kind: "record", sessionId, root: "records", path: ref.path }
@@ -63,6 +68,7 @@ export function useContentLinks(sessionId: string | null, base?: FileRef, baseFo
   };
   return {
     open: (href: string) => void open(href).catch(report),
+    openImage: (href: string) => void open(href, false, true).catch(report),
     openDefault: (href: string) => void open(href, true).catch(report),
     context, menu: menu.element,
   };

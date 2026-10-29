@@ -557,6 +557,7 @@ const catalog: Record<string, string> = {
   "Open conversation": "打开对话",
   "Open download page": "打开下载页面",
   "Open imported conversation": "打开导入的对话",
+  "Open image": "打开图片",
   "Open in browser": "在浏览器中打开",
   "Open with default app": "用默认应用打开",
   "Copy link": "复制链接",

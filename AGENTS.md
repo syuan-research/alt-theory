@@ -116,6 +116,8 @@ agents mistake them for in-progress work.
 ### Current branch status
 
 - `main` — active product line.
+- `work/artifact-preview` — active isolated image/HTML preview work; not merged
+  or approved for a release. Rebase onto main before Owner trial bundles.
 - `archive/wp-right-pane-sort` — merged into main (Changes, Files and
   Related get sort/filter cards: Changes by folder / recently changed /
   agent / name with an agent filter and writer tags, refreshed on family

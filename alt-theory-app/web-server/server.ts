@@ -1,3 +1,4 @@
+import { createArtifactPreview } from "./artifact-preview.js";
 /**
  * Alt Theory Web Server
  *
@@ -1930,6 +1931,18 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     } catch (error) {
       sendFileApiError(res, error);
     }
+  });
+  const artifactPreview = createArtifactPreview(dataDir);
+  httpServer.once("close", () => artifactPreview.close());
+  app.get("/api/sessions/:sessionId/files/preview-url", async (req, res) => {
+    const sessionId = req.params.sessionId;
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    try {
+      if (typeof req.query.root !== "string" || typeof req.query.path !== "string") {
+        res.status(400).json({ error: "root and path are required" }); return;
+      }
+      res.json({ url: await artifactPreview.url(sessionId, req.query.root, req.query.path) });
+    } catch (error) { sendFileApiError(res, error); }
   });
   app.get("/api/sessions/:sessionId/files/content", (req, res) => {
     const sessionId = req.params.sessionId;

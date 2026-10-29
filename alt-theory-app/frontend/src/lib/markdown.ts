@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import { marked } from "marked";
 import { contentLink } from "@/lib/contentLinks";
 
@@ -44,6 +45,18 @@ function sanitizeRenderedHtml(html: string): string {
 /** Escape raw HTML tokens without changing Markdown link destinations or code. */
 export function renderMarkdown(text: string): string {
   const renderer = new marked.Renderer();
+  renderer.image = ({ href, text, title }) => {
+    const source = escapeHtml(href);
+    const remote = /^https?:\/\//i.test(href) || /^data:image\//i.test(href);
+    const src = remote ? ' src="' + source + '"' : '';
+    const tooltip = title ? ' title="' + escapeHtml(title) + '"' : '';
+    const open = contentLink(href)
+      ? ' <a data-image-open="true" href="' + source + '">' + escapeHtml(t("Open image")) + '</a>'
+      : '';
+    return '<span class="markdown-image">'
+      + '<img data-image-source="' + source + '"' + src + ' alt="' + escapeHtml(text) + '"' + tooltip + ' loading="lazy" />'
+      + '<span class="image-caption">' + escapeHtml(text) + open + '</span></span>';
+  };
   renderer.html = ({ text }) => escapeHtml(text);
   const rawHtml = marked.parse(text, { renderer }) as string;
   return sanitizeRenderedHtml(rawHtml);

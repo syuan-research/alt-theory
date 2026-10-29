@@ -556,6 +556,7 @@ const catalog: Record<string, string> = {
   "Open conversation": "打開對話",
   "Open download page": "開啟下載頁面",
   "Open imported conversation": "打開匯入的對話",
+  "Open image": "開啟圖片",
   "Open in browser": "在瀏覽器中打開",
   "Open with default app": "用預設應用程式開啟",
   "Copy link": "複製連結",
