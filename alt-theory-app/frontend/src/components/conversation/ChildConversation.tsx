@@ -280,6 +280,32 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
         />
       ) : null}
 
+      {hasRunNotes(conversation) ? (
+        <div className="composer-notes">
+          <RunStatusSlot />
+          <NoticeLine />
+          <ContinueButton />
+        </div>
+      ) : null}
+      <SkillDraftChip palette={palette} />
+      {conversation.stagedWorkspacePaths.length > 0 ? (
+        <div className="staged-attachments" aria-label={t("Attached files")}>
+          {conversation.stagedWorkspacePaths.map((path) => (
+            <span className="attachment-chip" key={path} data-tip={path}>
+              <i className="ph ph-paperclip" aria-hidden="true" />
+              <span>{path.split(/[\\/]/).pop() || path}</span>
+              <button
+                type="button"
+                onClick={() => conversation.unstage([path])}
+                data-tip={t("Remove attached file")}
+                aria-label={t("Remove attached file")}
+              >
+                <i className="ph ph-x" aria-hidden="true" />
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
       <QueuedCards />
 
       <div className="ctx-line child-ctx-line" ref={ctxLineRef}>
@@ -354,32 +380,6 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
         </CtxPicker>
       </div>
       <SlashPalette palette={palette} className="slash-palette child-slash-palette" />
-      <SkillDraftChip palette={palette} />
-      {conversation.stagedWorkspacePaths.length > 0 ? (
-        <div className="staged-attachments" aria-label={t("Attached files")}>
-          {conversation.stagedWorkspacePaths.map((path) => (
-            <span className="attachment-chip" key={path} data-tip={path}>
-              <i className="ph ph-paperclip" aria-hidden="true" />
-              <span>{path.split(/[\\/]/).pop() || path}</span>
-              <button
-                type="button"
-                onClick={() => conversation.unstage([path])}
-                data-tip={t("Remove attached file")}
-                aria-label={t("Remove attached file")}
-              >
-                <i className="ph ph-x" aria-hidden="true" />
-              </button>
-            </span>
-          ))}
-        </div>
-      ) : null}
-      {hasRunNotes(conversation) ? (
-        <div className="composer-notes">
-          <RunStatusSlot />
-          <NoticeLine />
-          <ContinueButton />
-        </div>
-      ) : null}
       <div className="composer child-composer">
         <textarea
           ref={textareaRef}
@@ -456,7 +456,7 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
           </button>
           {running ? (
             <button
-              className="send"
+              className="send stop"
               onClick={abort}
               data-tip={t("Stop")}
             >

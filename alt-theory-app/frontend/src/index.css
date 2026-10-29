@@ -362,18 +362,22 @@
     color: var(--ink);
   }
 
+  /* White background mode is the canvas' background for screenshots (owner
+     2026-10-29): the surface goes white, but chrome keeps the app theme. The
+     old block re-pinned every token to light literals across the whole viewer,
+     which froze the White background toggle's ink fill black in dark mode; the
+     toolbar now carries its own themed surface so app-theme tokens stay
+     readable over the white canvas and the primary toggle gets the adaptive
+     ink (light: near-black; dark: light ink). */
   .mermaid-viewer.is-white {
-    --ink: #1f1e1a;
-    --ink-soft: #2a2823;
-    --text-2: #595752;
-    --text-3: #8e8b83;
-    --canvas: #ffffff;
-    --surface: #ffffff;
-    --hairline: #d9d9dc;
-    --hover: #eeedef;
-    --selected: #e8e7e8;
     color-scheme: light;
     background: #fff;
+  }
+  .mermaid-viewer.is-white .mermaid-viewer-toolbar {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-md);
+    padding: var(--space-hair);
   }
 
   .mermaid-viewer-toolbar {
@@ -1126,6 +1130,10 @@
   .flat:disabled:hover { background: none; color: var(--text-2); }
   .flat i.caret { font-size: 0.7rem; color: var(--text-3); }
   .send { width: 34px; height: 30px; border-radius: var(--r-md); border: none; background: var(--ink); color: var(--on-ink); cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  /* Stop keeps the ink CTA fill (owner 2026-10-29): the row flattens .send to
+     a ghost icon, but Stop is the standard adaptive black button in both
+     composers (light: near-black; dark: light ink). */
+  .composer .row > .send.stop { background: var(--ink); color: var(--on-ink); border-radius: var(--r-md); }
   .send:disabled { opacity: 0.45; cursor: default; }
 
   /* menus */
@@ -1224,7 +1232,11 @@
   .arm-pane .af button:disabled { opacity: 0.5; cursor: default; }
 
   /* ------- right rail + panel ------- */
-  .right { flex-shrink: 1; min-width: 49px; display: flex; background: var(--panel); border-left: 1px solid var(--hairline); }
+  /* No min-width floor (owner 2026-10-29): the rail's own width (flex-shrink:
+     0) is the natural min-content floor, and the old literal 49px drifted by
+     1px when a2cols dropped the border (rail sat 1px left when collapsed and
+     snapped right when open). JS contract RIGHT_PANE.collapsed = 48 agrees. */
+  .right { flex-shrink: 1; display: flex; background: var(--panel); border-left: 1px solid var(--hairline); }
   .rail { width: 48px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; padding-top: var(--space-control); gap: var(--space-hair); }
   .rail button { width: 36px; height: 36px; border: none; background: transparent; border-radius: var(--r-sm); color: var(--text-2); cursor: pointer; position: relative; font-size: 1.1rem; display: inline-flex; align-items: center; justify-content: center; }
   .rail button:hover { background: var(--hover); }

@@ -681,7 +681,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   <i className="ph ph-arrow-up" />
                 </button>
                 <button
-                  className="send"
+                  className="send stop"
                   onClick={() => conv.abort()}
                   data-tip={t("Stop")}
                 >
