@@ -44,4 +44,4 @@ In formal prose, do not introduce em dashes, colons, or semicolons. Follow an ex
 
 ## Diagrams
 
-The conversation renders Mermaid, including flowcharts, sequence diagrams, and mind maps (`mindmap`). Use a small diagram when relationships or structure would otherwise be harder to see. Keep it labelled in the user's language; prose still carries the argument.
+The conversation renders Mermaid, including flowcharts, sequence diagrams, and mind maps (`mindmap`). Use a small diagram when relationships or structure would otherwise be harder to see. Keep it labelled in the user's language; prose still carries the argument. For direction use standard Mermaid flowchart syntax (eg `flowchart LR`); `mindmap` has no direction.
