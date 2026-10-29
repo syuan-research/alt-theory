@@ -11,7 +11,6 @@ import { ContextRing } from "@/components/conversation/ContextRing";
 import { CtxPicker } from "@/components/conversation/CtxPicker";
 import { QueuedCards } from "@/components/conversation/QueuedCards";
 import { ContinueButton, hasRunNotes, NoticeLine, RunStatusSlot } from "@/components/conversation/RunNotes";
-import { RunTips } from "@/components/conversation/RunTips";
 import { SlashPalette, SkillDraftChip, useSlashCommands, useSlashPalette } from "@/components/conversation/SlashPalette";
 import { DEFAULT_KB_DOMAIN, KB_OFF_VALUE } from "@/lib/constants";
 import { hasNativeBridge, pathsFromDroppedFiles } from "@/lib/native";
@@ -222,13 +221,9 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
           />
         ) : null}
 
-        {hasRunNotes(conv) ||
-        conv.stoppedByUser ||
-        conv.recovery ||
-        reviewerHint ||
-        needsModel ? (
+        {hasRunNotes(conv) || conv.stoppedByUser || reviewerHint || needsModel ? (
           <div className="composer-notes">
-            <RunStatusSlot />
+            <RunStatusSlot tips />
             <NoticeLine />
             {conv.stoppedByUser ? (
               <span>{t("Editing after Stop won't branch. Use /branch if needed.")}</span>
@@ -276,7 +271,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 </button>
               </span>
             ) : null}
-            <RunTips running={conv.isRunning} />
           </div>
         ) : null}
 

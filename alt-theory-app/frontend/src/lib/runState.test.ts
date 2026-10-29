@@ -21,7 +21,7 @@ const opened = (patch: Partial<SessionSnapshot> = {}) =>
   ] as ConversationInput[];
 const run = (inputs: ConversationInput[]) => inputs.reduce(reduce, initialConversationState());
 
-test("running shows the live detail; idle shows Ready; a deferred switch is carried, not an error", () => {
+test("the band detail carries request states but not thinking; idle shows Ready; a deferred switch is carried, not an error", () => {
   const running = runStateView(
     run([
       ...opened({ status: "running", pending: { mode: "work" } }),
@@ -29,8 +29,10 @@ test("running shows the live detail; idle shows Ready; a deferred switch is carr
     ]),
   );
   assert.equal(running.phase, "running");
-  assert.equal(running.label, "Thinking…");
-  assert.equal(running.detail, "Thinking…");
+  // Thinking is the body's business (think block); the band line stays empty
+  // so the rotating tip can surface there instead (owner 2026-10-29).
+  assert.equal(running.label, "Running");
+  assert.equal(running.detail, "");
   assert.deepEqual(running.pending, { mode: "work" });
 
   const idle = runStateView(run(opened()));

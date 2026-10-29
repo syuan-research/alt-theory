@@ -1,15 +1,56 @@
+import { useEffect, useState } from "react";
 import { useConversationContext } from "@/context/ConversationContext";
 import { t } from "@/i18n";
+import { GENERAL_TIPS, productTipText } from "@/config/productTips";
 import { noticeText, noticeWarns } from "@/lib/runState";
 
 /**
- * One stable status row while a turn runs or a request waits. Clearing the
- * label on each assistant_delta used to collapse this strip and reflow the
- * whole column, so an empty detail keeps the row as blank filler.
+ * Rotating tips for the status slot (alpha.6): waiting is when a user has
+ * attention to spare, so this is where the app says what it can do — but
+ * only things that already exist and that the user drives themselves.
+ * Second-class by design (owner 2026-10-29): the text surfaces inside the
+ * status line and only when that line has no label; it never occupies its
+ * own row again. Short turns should not flash a tip at all.
  */
-export function RunStatusSlot() {
+const FIRST_DELAY_MS = 2000;
+/** Owner: +3s so tips are readable while a turn runs (was 7s). */
+const ROTATE_MS = 10000;
+
+function useRotatingTip(active: boolean): string {
+  const [index, setIndex] = useState(0);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    if (!active) {
+      setVisible(false);
+      return;
+    }
+    const start = window.setTimeout(() => {
+      setIndex(Math.floor(Math.random() * GENERAL_TIPS.length));
+      setVisible(true);
+    }, FIRST_DELAY_MS);
+    return () => window.clearTimeout(start);
+  }, [active]);
+  useEffect(() => {
+    if (!visible) return;
+    const timer = window.setInterval(() => {
+      setIndex((current) => (current + 1) % GENERAL_TIPS.length);
+    }, ROTATE_MS);
+    return () => window.clearInterval(timer);
+  }, [visible]);
+  // Stable text swap in place; remounting on every tip change nudged the band.
+  return visible ? productTipText(GENERAL_TIPS[index]) : "";
+}
+
+/**
+ * The band's one status line (v1.10.x): fixed-height, content by ladder —
+ * connection phase first, then the request/activity label, then a rotating
+ * tip when the composer opts in, then the blank anti-jitter fill. Tool calls
+ * and thinking never appear here; the body carries them permanently.
+ */
+export function RunStatusSlot({ tips = false }: { tips?: boolean }) {
   const conversation = useConversationContext();
-  const { phase, label } = conversation.runState;
+  const { phase, label, detail } = conversation.runState;
+  const tip = useRotatingTip(conversation.isRunning && tips);
   if (phase === "disconnected" || phase === "error") {
     return (
       <span className="run-phase-slot">
@@ -18,12 +59,16 @@ export function RunStatusSlot() {
     );
   }
   if (!conversation.isRunning) return null;
+  const text = detail || (tips ? tip : "");
   return (
-    <span className="run-phase-slot">
-      {conversation.runState.detail ? (
+    <span className="run-phase-slot" data-tip={text || undefined}>
+      {text ? (
         <span className="run-phase">
-          <i className="ph ph-circle-notch" aria-hidden="true" />
-          {conversation.runState.detail}
+          <i
+            className={`ph ${detail ? "ph-circle-notch run-spin" : "ph-lightbulb"}`}
+            aria-hidden="true"
+          />
+          <span className="run-phase-text">{text}</span>
         </span>
       ) : (
         <span className="run-phase-slot-fill" aria-hidden="true">

@@ -946,12 +946,17 @@
   .badge-run { transition: opacity 0.12s ease; }
   .reveal-row:hover .badge-run,
   .reveal-row:focus-within .badge-run { opacity: 0; }
-  /* Fixed one-line slot so status text can change without resizing the band
-     above the composer (that reflow jittered the whole live column). */
+  /* Fixed one-line slot so status content can swap without resizing the band
+     above the composer (that reflow jittered the whole live column). The line
+     never wraps (owner 2026-10-29, option F): long labels and rotating tips
+     ellipsize, full text rides the data-tip bubble. */
   .run-phase-slot {
     display: block;
     min-height: 1.25em;
     line-height: 1.25em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .run-phase-slot-fill {
     visibility: hidden;
@@ -961,10 +966,12 @@
     align-items: center;
     gap: var(--space-tight);
     min-height: 1.25em;
+    min-width: 0;
+    max-width: 100%;
   }
-  .run-phase i {
-    animation: status-spin 0.9s linear infinite;
-  }
+  .run-phase i { flex-shrink: 0; }
+  .run-phase .run-spin { animation: status-spin 0.9s linear infinite; }
+  .run-phase-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   @keyframes status-spin {
     to {
       transform: rotate(360deg);
@@ -1029,7 +1036,7 @@
      never its own row. */
   .preset-bar .ctx-picker { flex: 0 0 auto; margin-left: auto; }
   .preset-bar .ctx-picker .ctx-label, .preset-bar .ctx-picker .caret { display: none; }
-  .preset-toggle { margin-left: auto; color: var(--ink-soft); }
+  .preset-toggle { margin-left: auto; color: var(--ink-soft); flex-shrink: 0; white-space: nowrap; }
   .preset-toggle.on, .preset-toggle:hover { color: var(--ink); }
   .ctx-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ctx-item:hover { color: var(--ink); }
@@ -1050,7 +1057,11 @@
   .approval-dock .deny { color: var(--danger); }
   .approval-dock .dock-input { flex: 1; min-width: 120px; border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: var(--space-tight) var(--space-control); font: inherit; font-size: var(--fs-primary); outline: none; }
 
-  .composer-notes { display: flex; flex-direction: column; gap: var(--space-hair); padding: var(--space-tight) var(--space-tight); font-family: var(--mono); font-size: var(--fs-secondary); color: var(--text-2); }
+  /* Band padding halved vertically (owner 2026-10-29: hints sit closer to
+     the card); band buttons drop their vertical padding so a hint line stays
+     at the text's height instead of a button inflating it to 22px. */
+  .composer-notes { display: flex; flex-direction: column; gap: var(--space-hair); padding: 4px var(--space-tight); font-family: var(--mono); font-size: var(--fs-secondary); color: var(--text-2); }
+  .composer-notes .flat { padding-block: 0; }
   .composer-notes .danger { color: var(--danger); }
   .composer-notes .retry-run { align-self: flex-start; padding: var(--space-hair) 0; }
   .composer-notes .run-tip { display: flex; align-items: center; gap: var(--space-tight); min-height: 1.25em; color: var(--text-3); font-family: inherit; }

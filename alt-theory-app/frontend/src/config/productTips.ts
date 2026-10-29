@@ -1,8 +1,6 @@
 import { t } from "@/i18n";
 
-export type TipCondition =
-  | { kind: "general" }
-  | { kind: "after-action"; action: "branch" | "retry" };
+export type TipCondition = { kind: "general" };
 
 export interface ProductTip {
   id: string;
@@ -40,19 +38,7 @@ const general: ProductTip[] = [
   { id: "message-subagent", condition: { kind: "general" }, text: localized("You can message a subagent directly while it runs — it sees you at its next step.") },
 ];
 
-export const PRODUCT_TIPS: ProductTip[] = [
-  ...general,
-  {
-    id: "after-branch",
-    condition: { kind: "after-action", action: "branch" },
-    text: localized("Both takes are kept — the branch is in Related conversations on the right."),
-  },
-  {
-    id: "after-retry",
-    condition: { kind: "after-action", action: "retry" },
-    text: localized("Same question, fresh answer. What repeats is probably solid; what changes was a choice."),
-  },
-];
+export const PRODUCT_TIPS: ProductTip[] = [...general];
 
 export const GENERAL_TIPS = PRODUCT_TIPS.filter(
   (tip) => tip.condition.kind === "general",
@@ -60,13 +46,4 @@ export const GENERAL_TIPS = PRODUCT_TIPS.filter(
 
 export function productTipText(tip: ProductTip): string {
   return t(tip.text);
-}
-
-export function actionTipText(action: "branch" | "retry"): string {
-  const tip = PRODUCT_TIPS.find(
-    (item) =>
-      item.condition.kind === "after-action" &&
-      item.condition.action === action,
-  );
-  return tip ? productTipText(tip) : "";
 }

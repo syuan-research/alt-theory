@@ -12,7 +12,6 @@ import {
   type TurnActivity,
 } from "@/lib/conversation";
 import { failureText } from "@/lib/failure";
-import { toolLabel } from "@/lib/tools";
 
 /**
  * The one run-state projection for the render sites (v1.5, review card 1):
@@ -42,14 +41,13 @@ export function runPhaseLabels() {
   };
 }
 
-/** What the in-flight turn is doing, in words. */
+/** What the in-flight turn is doing, in words — the band's status line only.
+ *  Tool calls and thinking are deliberately absent: the body carries them
+ *  permanently (MessageList ToolLine / think block), and the band line is
+ *  reserved for request-level states (owner 2026-10-29). */
 export function activityLabel(activity: TurnActivity): string {
   if (!activity) return "";
-  if (activity.kind === "tool") {
-    const { tool } = activity;
-    const label = toolLabel(tool.toolName, tool.path, tool.detail, "running");
-    return tool.progressText ? `${label} — ${tool.progressText}` : label;
-  }
+  if (activity.kind === "tool") return "";
   if (activity.phase === "retrying" && activity.retry) {
     return t("Connection issue — retrying ({attempt}/{maxAttempts})…", {
       attempt: activity.retry.attempt,
@@ -59,8 +57,8 @@ export function activityLabel(activity: TurnActivity): string {
   return {
     connecting: t("Connecting…"),
     processing: t("Processing…"),
-    thinking: t("Thinking…"),
-    tool: t("Using a tool…"),
+    thinking: "",
+    tool: "",
     compacting: t("Compacting conversation…"),
     retrying: t("Connection issue — retrying…"),
     "awaiting-user": t("Waiting for your approval…"),
