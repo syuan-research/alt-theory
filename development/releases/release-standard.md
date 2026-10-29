@@ -53,10 +53,14 @@ installation material defined below.
   non-technical reader understands — adjust the specification level or use
   a relatable name until it does. The mechanism or prior behavior follows
   only when it helps. No restatement sentence after a complete list.
-- Write complete, natural sentences: noun-leaning phrasing ("adds X", "X now
-  does Y") rather than verb-narrated chains ("no longer disappears and
-  comes back"), and never telegraph fragments or label-headed stacks of noun
-  phrases.
+- Write complete, natural sentences; avoid narrated chains, telegraph
+  fragments and label-headed stacks of noun phrases.
+- Match the framing to the change and language. Improvements normally lead
+  with the new behavior ("X now does Y"). English bug fixes may use "no longer"
+  or name the problem fixed; neither form is banned. Chinese normally uses
+  “修复了……的问题” or “解决了……的问题” for a fix rather than mechanically
+  translating "no longer" as “不再”. Do not force identical sentence structures
+  across languages.
 - A release note does not invent usage scenarios. A worked example may
   appear only for a new feature or a major change, and only when the purpose
   is obvious from the feature itself or the docs state the use; this

@@ -24,15 +24,18 @@ All items are equal; there is no core/optional split.
    not, fix by changing the specification level or using a relatable name.
 2. **The opening is the thing itself.** A bullet's first sentence names
    the thing the reader cares about (a conversation, a page, a
-   permission) — not a mechanism seen from the writer's seat, and not the
-   old behavior.
+   permission), not a mechanism seen from the writer's seat. A bug fix may
+   name the faulty behavior it corrects.
 3. **Complete sentences.** No telegraph fragments, no label-plus-colon
    stacks of noun phrases standing in for sentences.
 4. **Low-value content.** Behavior a reader would take for
    granted stays out; numbers the reader cannot act on (MB, milliseconds)
    stay out.
-5. **No verb-narrated chains, no contrasts.** "No longer X" chains and
-   "A instead of B" phrasing are removed; state what now happens.
+5. **Natural framing for the change and language.** Avoid narrated chains
+   and gratuitous contrasts. Improvements normally lead with the new behavior;
+   English fixes may use "no longer" or name the problem fixed. Chinese fixes
+   normally use “修复／解决……问题”, without mechanically translating "no longer"
+   as “不再”. Do not reject acceptable English just to match Chinese phrasing.
 6. **One theme, one item.** A single theme is not split across bullets;
    the unit of organization is an entity the reader understands (one
    feature, one change in experience).
