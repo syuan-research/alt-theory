@@ -130,7 +130,6 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
   }, [menu]);
 
   const summary = app.sessions.find((item) => item.sessionId === sessionId);
-  const purpose = summary?.forkedFrom?.purpose ?? "side";
   const inList = summary ? isListMember(summary) : true;
   // M4b role swap entry points: a branch can take the list spot; a delisted
   // origin can take it back. Hidden when promotion would change nothing.
@@ -225,7 +224,6 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
         <button className="flat" onClick={() => { if (main.openCatalogSession(sessionId)) onClose(); }} data-tip={t("Open in main area")} aria-label={t("Open in main area")}>
           <i className="ph ph-arrows-out-simple" aria-hidden="true" />
         </button>
-        <span className="child-what">{childBlurb(purpose)}</span>
         {mainlineAction ? (
           <button
             className="flat promote-action"
@@ -467,15 +465,4 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
       </div>
     </div>
   );
-}
-
-/** One lowkey line saying what this pane is — not a repeat of the title. */
-function childBlurb(purpose: string): string {
-  if (purpose === "subagent") {
-    return t("A subagent working on its own — you can join in.");
-  }
-  if (purpose === "fork") {
-    return t("A branch of this conversation.");
-  }
-  return t("A related question, kept out of the main conversation.");
 }

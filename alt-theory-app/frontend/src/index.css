@@ -1510,11 +1510,10 @@
   .local-page-actions { padding-bottom: var(--space-tight); }
   .local-page iframe { width: 100%; flex: 1; min-height: 0; border: 0; background: var(--surface); }
   .child-head { display: flex; align-items: center; gap: var(--space-tight); padding: 0 var(--space-hair) var(--space-tight); color: var(--text-3); font-size: var(--fs-secondary); }
-  .child-head .child-what { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .child-head .child-status { flex: 0 0 auto; }
   /* Promotion action: icon + text carry it — no border, no fill
      (owner final call 2026-08-04). */
-  .child-head .promote-action { flex: 0 0 auto; border: none; border-radius: var(--r-sm); background: none; color: var(--ink-soft); padding: var(--space-tight) var(--space-control); font-size: var(--fs-primary); white-space: nowrap; display: inline-flex; align-items: center; gap: var(--space-tight); }
+  .child-head .promote-action { margin-left: auto; flex: 0 0 auto; border: none; border-radius: var(--r-sm); background: none; color: var(--ink-soft); padding: var(--space-tight) var(--space-control); font-size: var(--fs-primary); white-space: nowrap; display: inline-flex; align-items: center; gap: var(--space-tight); }
   .child-head .promote-action:hover { background: var(--hover); color: var(--ink); }
   .child-head:has(.promote-action) { align-items: center; padding-bottom: var(--space-control); flex-wrap: wrap; }
   .child-head button { display: inline-flex; align-items: center; gap: var(--space-hair); border: none; background: transparent; color: var(--text-2); cursor: pointer; font: inherit; font-size: var(--fs-secondary); padding: var(--space-hair) var(--space-hair); border-radius: var(--r-sm); }
