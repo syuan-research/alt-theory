@@ -5,7 +5,7 @@ import type { FileRef } from "@/lib/fileContent";
 import { isImagePath } from "../../../../shared/artifact-types";
 import { t } from "@/i18n";
 
-export function ArtifactView({ sessionId, file }: { sessionId: string; file: FileRef }) {
+export function ArtifactView({ sessionId, file, controlsHost }: { sessionId: string; file: FileRef; controlsHost?: HTMLElement | null }) {
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
   useEffect(() => {
@@ -20,5 +20,5 @@ export function ArtifactView({ sessionId, file }: { sessionId: string; file: Fil
   if (!url) return <div className="rp-empty">{t("Loading…")}</div>;
   return isImagePath(file.path)
     ? <img className="artifact-image" src={url} alt={file.path} onError={() => setError(t("The current file is not available."))} />
-    : <WebPageView url={url} title={file.path} />;
+    : <WebPageView url={url} title={file.path} controlsHost={controlsHost} />;
 }

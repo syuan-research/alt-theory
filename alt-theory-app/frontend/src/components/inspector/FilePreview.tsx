@@ -90,6 +90,7 @@ function TextFilePreview({
   onSaved?: (content: FileContent) => void;
   footer?: ReactNode;
 }) {
+  const [controlsHost, setControlsHost] = useState<HTMLDivElement | null>(null);
   const [file, setFile] = useState<FileContent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
@@ -306,13 +307,11 @@ function TextFilePreview({
   const body = () => {
     if (active === "diff") return <DiffLines diff={diff ?? ""} />;
     if (!fileRef) return <div className="rp-empty">{t("The current file is not available.")}</div>;
-    if (active === "rendered" && isHtmlPath(path) && sessionId) return <ArtifactView sessionId={sessionId} file={fileRef} />;
+    if (active === "rendered" && isHtmlPath(path) && sessionId) return <ArtifactView sessionId={sessionId} file={fileRef} controlsHost={controlsHost} />;
     if (error) return <div className="rp-empty">{error}</div>;
     if (!file) return <div className="rp-empty">{t("Loading…")}</div>;
     if (active === "rendered") {
-      return /\.html?$/i.test(path) ? (
-        sessionId ? <ArtifactView sessionId={sessionId} file={fileRef} /> : null
-      ) : (
+      return (
         <MarkdownBody text={file.content} sessionId={sessionId} baseFile={fileRef ?? undefined} baseFolderPath={file.folderPath} />
       );
     }
@@ -407,6 +406,7 @@ function TextFilePreview({
             {t("Updated {time}", { time: new Date(file.updatedAt).toLocaleTimeString() })}
           </span>
         ) : null}
+        {active === "rendered" && isHtmlPath(path) ? <div className="web-page-controls-host" ref={setControlsHost} /> : null}
       </div>
       <div
         className="change-preview-body expanded"
