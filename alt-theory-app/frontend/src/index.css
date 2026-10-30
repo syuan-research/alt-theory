@@ -1232,11 +1232,13 @@
   .arm-pane .af button:disabled { opacity: 0.5; cursor: default; }
 
   /* ------- right rail + panel ------- */
-  /* No min-width floor (owner 2026-10-29): the rail's own width (flex-shrink:
-     0) is the natural min-content floor, and the old literal 49px drifted by
-     1px when a2cols dropped the border (rail sat 1px left when collapsed and
-     snapped right when open). JS contract RIGHT_PANE.collapsed = 48 agrees. */
-  .right { flex-shrink: 1; display: flex; background: var(--panel); border-left: 1px solid var(--hairline); }
+  /* The floor must stay an explicit literal (owner 2026-10-30): without one,
+     the column's automatic minimum absorbs .rpanel's definite --right-width,
+     the column becomes incompressible, and a wide pane pushes its right edge
+     out of the window. 48 keeps the collapsed alignment 798e4e0 fixed (its
+     49 was border-era, and its "the rail's width is the natural floor"
+     rationale was wrong); JS contract RIGHT_PANE.collapsed = 48 agrees. */
+  .right { flex-shrink: 1; min-width: 48px; display: flex; background: var(--panel); border-left: 1px solid var(--hairline); }
   .rail { width: 48px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; padding-top: var(--space-control); gap: var(--space-hair); }
   .rail button { width: 36px; height: 36px; border: none; background: transparent; border-radius: var(--r-sm); color: var(--text-2); cursor: pointer; position: relative; font-size: 1.1rem; display: inline-flex; align-items: center; justify-content: center; }
   .rail button:hover { background: var(--hover); }
