@@ -18,7 +18,7 @@ function loadMermaid() {
   return mermaidReady;
 }
 
-function configFor(theme: MermaidTheme): MermaidConfig {
+function configFor(theme: MermaidTheme, background?: string): MermaidConfig {
   const palette = PALETTES[theme];
   return {
     startOnLoad: false,
@@ -28,6 +28,9 @@ function configFor(theme: MermaidTheme): MermaidConfig {
     suppressErrorRendering: true,
     theme: "base",
     themeVariables: {
+      // Unset, base falls back to tertiaryColor (the node fill), which tinted
+      // whole-SVG backgrounds away from the canvas color.
+      ...(background ? { background } : {}),
       primaryColor: palette.fill,
       secondaryColor: palette.fill,
       tertiaryColor: palette.fill,
@@ -50,10 +53,14 @@ function configFor(theme: MermaidTheme): MermaidConfig {
 
 /** Render one diagram with an explicit theme. Initialization and rendering are
  * serialized because Mermaid's theme configuration is process-global. */
-export function renderMermaidSvg(source: string, theme: MermaidTheme): Promise<string> {
+export function renderMermaidSvg(
+  source: string,
+  theme: MermaidTheme,
+  background?: string,
+): Promise<string> {
   const task = renderQueue.then(async () => {
     const mermaid = await loadMermaid();
-    mermaid.initialize(configFor(theme));
+    mermaid.initialize(configFor(theme, background));
     const id = `d${(diagramSeq += 1)}`;
     try {
       const { svg } = await mermaid.render(id, source);

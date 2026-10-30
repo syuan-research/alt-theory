@@ -49,7 +49,9 @@ export function MermaidViewer({
     if (!source) return;
     let cancelled = false;
     setActiveSvg("");
-    void renderMermaidSvg(source, "light")
+    // Pure white (owner 2026-10-30): the white background exists so
+    // screenshots drop into documents; the SVG itself must carry it too.
+    void renderMermaidSvg(source, "light", "#ffffff")
       .then((lightSvg) => {
         if (!cancelled) setActiveSvg(lightSvg);
       })
