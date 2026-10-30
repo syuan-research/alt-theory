@@ -360,6 +360,22 @@
     overflow: hidden;
     background: var(--canvas);
     color: var(--ink);
+    /* Drag regions are a window-level geometric union (drag adds, no-drag
+       subtracts) and ignore stacking: the right pane's head band beneath this
+       fullscreen overlay ate ~84% of the floating toolbar's clicks, and a
+       double-click there maximized the window (owner 2026-10-30). */
+    -webkit-app-region: no-drag;
+  }
+  /* Keep a titlebar strip so the window can still be moved while the modal
+     viewer is open (owner 2026-10-30, A'). */
+  .mermaid-viewer::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--titlebar-h);
+    -webkit-app-region: drag;
   }
 
   /* White background mode is the canvas' background for screenshots (owner
