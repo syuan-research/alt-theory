@@ -10,6 +10,7 @@ import {
   resolveFindTarget,
   revealRange,
   scrollerOf,
+  trackAttention,
   type FindTarget,
 } from "@/lib/find";
 
@@ -60,6 +61,8 @@ export function FindBar() {
   const needleRef = useRef(needle);
   needleRef.current = needle;
   const returnFocus = useRef<Element | null>(null);
+
+  useEffect(() => trackAttention(), []);
 
   const show = useCallback((i: number, reveal: boolean) => {
     const list = rangesRef.current;

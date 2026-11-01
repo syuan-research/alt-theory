@@ -1,12 +1,11 @@
 import { useEffect, useRef, useSyncExternalStore, type RefObject } from "react";
-import { attention, COLUMN_ROOT } from "./attention";
 
 /**
  * Ctrl+F (WP 2026-09-24): find acts on what the user last touched. Three
- * separate facts — position truth stays in the shell, content memory in
- * paneMemory, and interaction history in attention. This module owns the
- * registry of find targets mounted right now. The dispatcher never
- * re-derives from shell state what a
+ * separate facts, three homes — position truth stays in the shell, content
+ * memory in paneMemory, and this module only holds *attention* (which column
+ * the user last touched) plus a registry of the find targets that are
+ * mounted right now. The dispatcher never re-derives from shell state what a
  * pane shows; the component that renders the content registers itself.
  */
 
@@ -227,11 +226,54 @@ export function textPatch(prev: string, next: string): [number, number, string] 
   return [start, prev.length - start - end, next.slice(start, next.length - end)];
 }
 
+// ---- attention ------------------------------------------------------------
+
+type Column = "left" | "center" | "right";
+const COLUMN_ROOT: Record<Column, string> = {
+  left: "aside.left",
+  center: "main.center",
+  right: "aside.right",
+};
+let attention: Column = "center";
+
+function columnOf(target: EventTarget | null): Column | null {
+  if (!(target instanceof Element)) return null;
+  // A conversation row opens its content in the center, so touching it
+  // means the center (owner ruling 2026-09-24).
+  const hit = target.closest("[data-find-attention], aside.left, main.center, aside.right");
+  if (!hit) return null;
+  const marked = (hit as HTMLElement).dataset.findAttention as Column | undefined;
+  if (marked) return marked;
+  return hit.matches("aside.left") ? "left" : hit.matches("main.center") ? "center" : "right";
+}
+
+/** Only user-made events count: programmatic scroll (stick-to-bottom,
+ *  scroll restore) and autofocus (approval dock, restored draft) would
+ *  otherwise move attention on their own. Modified keys are skipped so the
+ *  Ctrl+F press itself never re-targets. */
+export function trackAttention(): () => void {
+  const note = (event: Event) => {
+    const column = columnOf(event.target);
+    if (column) attention = column;
+  };
+  const key = (event: KeyboardEvent) => {
+    if (!event.metaKey && !event.ctrlKey && !event.altKey) note(event);
+  };
+  document.addEventListener("pointerdown", note, true);
+  document.addEventListener("keydown", key, true);
+  document.addEventListener("wheel", note, { capture: true, passive: true });
+  return () => {
+    document.removeEventListener("pointerdown", note, true);
+    document.removeEventListener("keydown", key, true);
+    document.removeEventListener("wheel", note, true);
+  };
+}
+
 /** What Ctrl+F acts on now; null = swallow the key. */
 export function resolveFindTarget(): FindTarget | null {
   // Login / import / confirm dialogs cover still-mounted, visible columns.
   if (document.querySelector('[aria-modal="true"]')) return null;
-  const column = document.querySelector(COLUMN_ROOT[attention.latest() ?? "center"]);
+  const column = document.querySelector(COLUMN_ROOT[attention]);
   if (!column) return null;
   let found: FindTarget | null = null;
   for (const entry of targets) {

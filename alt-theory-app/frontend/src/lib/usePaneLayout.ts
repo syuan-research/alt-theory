@@ -1,80 +1,72 @@
 import { useCallback, useLayoutEffect, useReducer, useRef } from "react";
-import { attention, type Column } from "./attention";
-import { boundedWidth, initialLayout, LEFT_PANE, RIGHT_PANE, paneGeometry, reduceLayout,
-  type LayoutSurface, type PaneSide } from "./pane-layout";
+import { boundedLeft, boundedShare, initialLayout, LEFT_PANE, RIGHT_PANE, paneGeometry, reduceLayout,
+  type LayoutSurface } from "./pane-layout";
 
 const LEFT_COLLAPSED_KEY = "alt-theory-left-collapsed";
 
-function readWidth(side: PaneSide): number {
-  const pane = side === "left" ? LEFT_PANE : RIGHT_PANE;
+function read(key: string): number | null {
   try {
-    const stored = localStorage.getItem(pane.key);
-    return stored === null ? pane.initial : boundedWidth(side, Number(stored));
+    const stored = localStorage.getItem(key);
+    return stored === null ? null : Number(stored);
   } catch {
-    return pane.initial;
+    return null;
   }
 }
 
-function readCollapsed(): boolean {
-  try { return localStorage.getItem(LEFT_COLLAPSED_KEY) === "1"; } catch { return false; }
+function save(key: string, value: string | null): void {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch { /* device preference */ }
 }
 
-function saveWidth(side: PaneSide, width: number): void {
-  try { localStorage.setItem(side === "left" ? LEFT_PANE.key : RIGHT_PANE.key, String(width)); } catch { /* device preference */ }
-}
-
-export function usePaneLayout(surface: LayoutSurface, rightOpen: boolean, rightScope: string | null) {
-  const [state, dispatch] = useReducer(reduceLayout, undefined, () =>
-    initialLayout(readWidth("left"), readWidth("right"), readCollapsed()));
+export function usePaneLayout(surface: LayoutSurface, rightOpen: boolean) {
+  const [state, dispatch] = useReducer(reduceLayout, undefined, () => initialLayout(
+    boundedLeft(read(LEFT_PANE.key) ?? LEFT_PANE.initial),
+    boundedShare(read(RIGHT_PANE.key) ?? RIGHT_PANE.initial),
+    read(LEFT_COLLAPSED_KEY) === 1,
+  ));
   const current = useRef(state);
   current.current = state;
   const frame = useRef({ surface, rightOpen });
   frame.current = { surface, rightOpen };
 
-  const measure = useCallback((width?: number) => {
-    dispatch({ type: "frame", ...frame.current, width,
-      attention: attention.latest(["center", "right"], true) ?? "center" });
+  const measure = useCallback((width?: number) => dispatch({ type: "frame", ...frame.current, width }), []);
+  useLayoutEffect(() => { measure(); }, [surface, rightOpen, measure]);
+
+  const setLeftCollapsed = useCallback((collapsed: boolean) => {
+    const action = { type: "left", collapsed } as const;
+    // Opening or closing the float is not a preference; only a docked change is saved.
+    const changed = reduceLayout(current.current, action).leftCollapsed !== current.current.leftCollapsed;
+    dispatch(action);
+    if (changed) save(LEFT_COLLAPSED_KEY, collapsed ? "1" : null);
   }, []);
 
-  useLayoutEffect(() => {
-    attention.setScope("right", rightScope);
-    if (rightScope === null) attention.forget("right");
-    measure();
-  }, [rightScope, surface, rightOpen, measure]);
-
-  const show = useCallback((column: Column) => dispatch({ type: "show", column }), []);
-  const setLeftCollapsed = useCallback((collapsed: boolean) => {
-    if (current.current.single) {
-      dispatch({ type: "show", column: collapsed ? "center" : "left" });
+  /** Pixel request from a drag or key; stored as the left width or the right share. */
+  const setWidth = useCallback((side: "left" | "right", px: number, persist = false) => {
+    const geometry = paneGeometry(current.current);
+    if (!Number.isFinite(px) || current.current.width <= 0 || geometry.rightFull) return;
+    if (side === "left") {
+      if (geometry.leftMini || geometry.leftMax < LEFT_PANE.min) return;
+      const width = Math.min(geometry.leftMax, Math.max(LEFT_PANE.min, px));
+      dispatch({ type: "left-width", width });
+      if (persist) save(LEFT_PANE.key, String(width));
       return;
     }
-    dispatch({ type: "left", collapsed });
-    try {
-      if (collapsed) localStorage.setItem(LEFT_COLLAPSED_KEY, "1");
-      else localStorage.removeItem(LEFT_COLLAPSED_KEY);
-    } catch { /* device preference */ }
+    if (geometry.rightMax < geometry.rightMin || geometry.work <= 0) return;
+    const share = Math.min(geometry.rightMax, Math.max(geometry.rightMin, px)) / geometry.work;
+    dispatch({ type: "right-share", share });
+    if (persist) save(RIGHT_PANE.key, String(boundedShare(share)));
   }, []);
 
-  const setWidth = useCallback((side: PaneSide, width: number, persist = false) => {
-    const before = current.current;
-    if (before.single || !Number.isFinite(width) || before.width <= 0) return;
-    const geometry = paneGeometry(before);
-    const pane = side === "left" ? LEFT_PANE : RIGHT_PANE;
-    const max = side === "left" ? geometry.leftMax : geometry.rightMax;
-    if (max < pane.min) return;
-    const next = Math.min(max, Math.max(pane.min, width));
-    if (next === (side === "left" ? geometry.left : geometry.right)) return;
-    dispatch({ type: "width", side, width: next });
-    if (persist) saveWidth(side, next);
-  }, []);
-
-  const commitWidth = useCallback((side: PaneSide) => {
+  const commitWidth = useCallback((side: "left" | "right") => {
     const value = current.current;
-    saveWidth(side, side === "left" ? value.leftWidth : value.rightWidth);
-  }, []);
-  const openSize = useCallback((size: "half" | "default") => {
-    dispatch({ type: "right-size", size: size === "half" ? "half" : readWidth("right") });
+    if (side === "left") save(LEFT_PANE.key, String(value.leftWidth));
+    else save(RIGHT_PANE.key, String(value.rightShare));
   }, []);
 
-  return { state, geometry: paneGeometry(state), measure, show, setLeftCollapsed, setWidth, commitWidth, openSize };
+  const setRightFull = useCallback((on: boolean) => dispatch({ type: "right-full", on }), []);
+  const showCenter = useCallback(() => dispatch({ type: "center" }), []);
+
+  return { state, geometry: paneGeometry(state), measure, setLeftCollapsed, setWidth, commitWidth, setRightFull, showCenter };
 }

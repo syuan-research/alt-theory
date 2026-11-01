@@ -390,6 +390,7 @@ const catalog: Record<string, string> = {
   "For providers not covered by the quick setups below.": "用於下方快捷配置未覆蓋的服務商。",
   "Former main conversation — demoted when a branch was promoted": "原主對話——在分支被提升時降級",
   "Full access": "完全存取",
+  "Full width": "全寬",
   "Full path of the folder to add to this project:": "要新增到此項目的資料夾的完整路徑：",
   "Full path of the folder to add:": "要新增的資料夾的完整路徑：",
   "Full path of the project's new main folder:": "項目新主資料夾的完整路徑：",

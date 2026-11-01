@@ -120,16 +120,15 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
         // A spawned subagent never opens the rail (owner 2026-09-18); the
         // Related row is its feedback, and seeds belong to user creations.
         if (message.payload.purpose !== "subagent") {
-          shell.openTarget({ kind: "conversation", sessionId: message.payload.sessionId }, { size: "default" });
+          shell.openTarget({ kind: "conversation", sessionId: message.payload.sessionId });
           const seed = creatingSeed();
           if (seed) setChildSeed({ sessionId: message.payload.sessionId, ...seed });
         }
         void app.refreshSessions();
         break;
       case "branch_created":
-        // Main conversation stays in the center. Branched edit work opens in
-        // the right Related rail at ~50% width.
-        shell.openTarget({ kind: "conversation", sessionId: message.payload.sessionId }, { size: "half" });
+        // Main conversation stays in the center; the branch opens on the right.
+        shell.openTarget({ kind: "conversation", sessionId: message.payload.sessionId });
         {
           const seed = creatingSeed();
           if (seed) setChildSeed({ sessionId: message.payload.sessionId, ...seed });
@@ -177,7 +176,8 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
   const openCatalogSession = useCallback(
     (target: string): boolean => {
       if (!target) return false;
-      if (target === sessionId) { shell.showPane("center"); return false; }
+      // Re-clicking the open conversation still brings the center back.
+      if (target === sessionId) { shell.layout.showCenter(); return false; }
       const summary = app.sessions.find((item) => item.sessionId === target);
       // A conversation still in its first turn has no file yet but is live
       // on the server, so it opens; an idle one without a file does not.
@@ -185,16 +185,14 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
         conv.notify({ kind: "text", text: t("Conversation cannot be opened.") });
         return false;
       }
-      const opened = conv.open(target);
-      if (opened) shell.showPane("center");
-      return opened;
+      return conv.open(target);
     },
-    [app.sessions, conv, sessionId, shell.showPane],
+    [app.sessions, conv, sessionId, shell.layout.showCenter],
   );
 
   const startNewSession = useCallback(() => {
-    if (conv.startNew()) shell.showPane("center");
-  }, [conv, shell.showPane]);
+    conv.startNew();
+  }, [conv]);
 
   const compactCurrentSession = useCallback(() => {
     if (!sessionId || conv.isRunning) return;

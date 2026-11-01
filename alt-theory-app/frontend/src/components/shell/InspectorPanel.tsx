@@ -146,6 +146,13 @@ export function InspectorPanel() {
               <i className="ph ph-arrow-left" />
             </button>
             <span>{title}</span>
+            <button
+              className="rp-full"
+              onClick={() => shell.layout.setRightFull(!shell.layout.geometry.rightFull)}
+              data-tip={shell.layout.geometry.rightFull ? t("Restore") : t("Full width")}
+            >
+              <i className={`ph ${shell.layout.geometry.rightFull ? "ph-arrows-in-simple" : "ph-arrows-out-simple"}`} />
+            </button>
           </div>
         ) : null}
         <div
@@ -321,7 +328,7 @@ function RelatedConversations({ list }: { list: ReturnType<typeof useRelatedList
   // the left list.
   const openRow = (row: RelatedRow) => {
     shell.openApp();
-    shell.openTarget({ kind: "conversation", sessionId: row.session.sessionId }, { size: row.paneSize });
+    shell.openTarget({ kind: "conversation", sessionId: row.session.sessionId });
   };
 
   const sessionMenuItems = (child: RelatedRow["session"]): ContextMenuItem[] => {

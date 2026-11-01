@@ -25,7 +25,7 @@ export function ApprovalNotice() {
     shell.openApp();
     main.openCatalogSession(target.center);
     if (target.related) {
-      shell.openTarget({ kind: "conversation", sessionId: target.related }, { size: "default" });
+      shell.openTarget({ kind: "conversation", sessionId: target.related });
     }
   };
 

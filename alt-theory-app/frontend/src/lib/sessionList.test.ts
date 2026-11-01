@@ -296,11 +296,11 @@ test("rail rows carry relation, run state, role and creation time for every kind
   btw.lineagePath = ["root", "br"];
   const rows = relatedRowsFor("root", [root, br, sa, btw]);
   assert.deepEqual(
-    rows.map((r) => [r.session.sessionId, r.relation, r.kind, r.runStatus ?? null, r.role, r.createdAt, r.paneSize]),
+    rows.map((r) => [r.session.sessionId, r.relation, r.kind, r.runStatus ?? null, r.role, r.createdAt]),
     [
-      ["br", "fork", "fork", null, null, "2026-07-01T00:00:00.000Z", "half"],
-      ["sa", "subagent", "subagent", "running", "reviewer", "2026-07-02T00:00:00.000Z", "default"],
-      ["btw", "side", "side", null, null, "2026-07-03T00:00:00.000Z", "default"],
+      ["br", "fork", "fork", null, null, "2026-07-01T00:00:00.000Z"],
+      ["sa", "subagent", "subagent", "running", "reviewer", "2026-07-02T00:00:00.000Z"],
+      ["btw", "side", "side", null, null, "2026-07-03T00:00:00.000Z"],
     ],
   );
 });

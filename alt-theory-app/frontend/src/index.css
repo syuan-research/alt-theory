@@ -551,7 +551,7 @@
   .pane-resizer::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 5px; }
   .pane-resizer:focus-visible::before { outline: 2px solid var(--focus-ring); }
   body.resizing-pane { cursor: col-resize; user-select: none; }
-  body.resizing-pane .rpanel { transition: none; }
+  body.resizing-pane :is(.rpanel, .right) { transition: none; }
 
   /* A2 trial (20260907 bundle-chrome issue): the work area is one floating card
      on shared gray; column hairlines go away. Scoped to .cols.a2cols so other
@@ -576,12 +576,11 @@
   .app-root > .pane-resizer::before { left: calc(var(--space-control) - 2px); }
   .cols.a2cols > .pane-resizer::before { left: calc(-1 * var(--space-control) - 2px); }
 
-  .app-root[data-single-pane="left"] > .settings,
-  .app-root[data-single-pane="left"] .cols > .center,
-  .app-root[data-single-pane="right"] .cols > .center,
-  .app-root[data-single-pane="left"] .rpanel,
-  .app-root[data-single-pane="center"] .rpanel { display: none; }
-  .app-root[data-single-pane="left"] > .cols { flex: 0 0 var(--right-rail-width); }
+  /* Right full: the center stays mounted (draft, scroll, undo) but hidden. */
+  .app-root[data-right-full] .cols > .center { display: none; }
+  /* Left float: the strip keeps its place; the full column floats over the work area. */
+  .app-root.leftFloat::before { content: ""; flex: 0 0 var(--left-width); }
+  .app-root.leftFloat > .left { position: absolute; top: 0; bottom: 0; left: 0; z-index: 40; width: var(--left-float-width); box-shadow: var(--shadow-popup); }
 
   /* macOS bundle: the OS paints the traffic lights over the window's top-left
      — measured 14px buttons spanning x 9–68, y 17–30, i.e. already centred in
@@ -1253,18 +1252,19 @@
 
   /* ------- right rail + panel ------- */
   /* Shell supplies feasible dimensions; automatic min-content must not override them. */
-  .right { flex: 0 0 calc(var(--right-width) + var(--right-rail-width)); min-width: 0; display: flex; background: var(--panel); border-left: 1px solid var(--hairline); }
+  .right { flex: 0 0 calc(var(--right-width) + var(--right-rail-width)); transition: flex-basis 0.18s ease; min-width: 0; display: flex; background: var(--panel); border-left: 1px solid var(--hairline); }
   .rail { width: var(--right-rail-width); flex-shrink: 0; display: flex; flex-direction: column; align-items: center; padding-top: var(--space-control); gap: var(--space-hair); }
   .rail button { width: 36px; height: 36px; border: none; background: transparent; border-radius: var(--r-sm); color: var(--text-2); cursor: pointer; position: relative; font-size: 1.1rem; display: inline-flex; align-items: center; justify-content: center; }
   .rail button:hover { background: var(--hover); }
   .rail button.on { background: var(--selected); color: var(--ink); }
   .rail .attention-count { position: absolute; top: 0; right: 0; min-width: 16px; padding: 0 3px; height: 16px; border-radius: 9px; background: var(--focus-ring); color: white; font-size: 10px; line-height: 16px; }
-  .rpanel { width: 0; min-width: 0; flex-shrink: 0; overflow: hidden; display: flex; flex-direction: column; container-type: inline-size; }
+  .rpanel { width: 0; min-width: 0; flex-shrink: 0; overflow: hidden; transition: width 0.18s ease; display: flex; flex-direction: column; container-type: inline-size; }
   .right.open .rpanel { width: var(--right-width); }
   /* Tight on purpose: the left column keeps only ~4px under its brand row,
      so this header should not sit visibly airier than that. */
   .rpanel .head { display: flex; align-items: center; gap: var(--space-tight); padding: var(--space-tight) var(--space-control); overflow: hidden; border-bottom: 1px solid var(--hairline); font-weight: 500; font-size: var(--fs-primary); white-space: nowrap; }
   .rpanel .head .rp-close { border: none; background: transparent; cursor: pointer; color: var(--text-2); padding: var(--space-hair); flex: 0 0 auto; }
+  .rpanel .head .rp-full { border: none; background: transparent; cursor: pointer; color: var(--text-2); padding: var(--space-hair); flex: 0 0 auto; margin-left: auto; }
   .rpanel .head .back { border: none; background: transparent; cursor: pointer; color: var(--text-2); padding: var(--space-hair); display: none; }
   .rpanel .head.sub .back { display: inline-flex; }
   .rpanel .head > span { overflow: hidden; text-overflow: ellipsis; }

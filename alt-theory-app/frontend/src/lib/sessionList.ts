@@ -268,15 +268,9 @@ export interface RelatedRow {
   /** Subagent role preset; null for everything else. */
   role: string | null;
   createdAt: string | null;
-  paneSize: "half" | "default";
 }
 
 export type RelatedScope = "conversation" | "family";
-
-/** How wide a side conversation opens: a branch/edit ≈ half, anything else the default. */
-export function relatedPaneSize(session: SessionSummary): "half" | "default" {
-  return session.forkedFrom?.purpose === "fork" ? "half" : "default";
-}
 
 /**
  * What the Related rail lists for an open conversation (owner 2026-08-07;
@@ -318,7 +312,6 @@ export function relatedRowsFor(
       runStatus: s.runStatus,
       role: s.agentType ?? null,
       createdAt: s.createdAt,
-      paneSize: relatedPaneSize(s),
     });
   };
   const kindOf = (s: SessionSummary): RelatedKind | null => {

@@ -2,8 +2,7 @@ import { useEffect, useLayoutEffect, useRef, type CSSProperties, type PointerEve
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { useMainView } from "@/context/MainView";
-import { attention, trackAttention } from "@/lib/attention";
-import { LEFT_PANE, RIGHT_PANE, type PaneSide } from "@/lib/pane-layout";
+import { LEFT_PANE, RIGHT_PANE } from "@/lib/pane-layout";
 import { t } from "@/i18n";
 import { applyTitlebarVar, getViewSize } from "@/lib/native";
 import { LeftNav } from "@/components/shell/LeftNav";
@@ -18,6 +17,8 @@ import { VersionsDialog } from "@/components/shell/VersionsDialog";
 import { ApprovalNotice } from "@/components/shell/ApprovalNotice";
 import { FindBar } from "@/components/shell/FindBar";
 
+type PaneSide = "left" | "right";
+
 export function Shell() {
   const app = useApp();
   const shell = useShell();
@@ -28,9 +29,24 @@ export function Shell() {
   const dragCleanup = useRef<(() => void) | null>(null);
   const { state: layout, geometry, measure } = shell.layout;
 
-  useEffect(() => trackAttention(), []);
+  const { showCenter, setLeftCollapsed } = shell.layout;
   useEffect(() => () => dragCleanup.current?.(), []);
-  useLayoutEffect(() => { attention.forget("right"); }, [main.conversation.sessionId]);
+  // Whatever the left column opens shows in the center: a new conversation,
+  // surface or settings tab closes the left float and leaves right full.
+  useLayoutEffect(() => { showCenter(); }, [main.conversation.sessionId, shell.surface, shell.settingsPanel, showCenter]);
+  useEffect(() => {
+    if (!geometry.leftFloat) return;
+    const outside = (event: PointerEvent) => {
+      if (event.target instanceof Element && !event.target.closest("aside.left")) setLeftCollapsed(true);
+    };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setLeftCollapsed(true); };
+    document.addEventListener("pointerdown", outside, true);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", outside, true);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [geometry.leftFloat, setLeftCollapsed]);
   useLayoutEffect(() => {
     const root = rootRef.current;
     if (!root) return;
@@ -43,7 +59,7 @@ export function Shell() {
 
   const beginResize = (side: PaneSide, event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault();
-    if (layout.single) return;
+    if (side === "right" ? geometry.rightFull : layout.narrow) return;
     dragCleanup.current?.();
     let lastX = event.clientX;
     const pane = side === "left" ? LEFT_PANE : RIGHT_PANE;
@@ -54,7 +70,7 @@ export function Shell() {
 
     const move = (moveEvent: PointerEvent) => {
       const current = latest.current;
-      if (current.layout.state.single) { cancel(); return; }
+      if (current.layout.geometry.rightFull) { cancel(); return; }
       const delta = moveEvent.clientX - lastX;
       lastX = moveEvent.clientX;
       gesture += side === "left" ? delta : -delta;
@@ -137,7 +153,8 @@ export function Shell() {
   const rootClass = [
     "app-root",
     shell.leftCollapsed ? "leftCol" : "",
-    geometry.left <= 240 ? "leftNarrow" : "",
+    (geometry.leftFloat ? layout.leftWidth : geometry.left) <= 240 ? "leftNarrow" : "",
+    geometry.leftFloat ? "leftFloat" : "",
     app.viewMode === "researcher" ? "researcher" : "",
   ]
     .filter(Boolean)
@@ -147,10 +164,11 @@ export function Shell() {
     <div
       className={rootClass}
       ref={rootRef}
-      data-single-pane={layout.single ?? undefined}
+      data-right-full={geometry.rightFull || undefined}
       style={
         {
           "--left-width": `${geometry.left}px`,
+          "--left-float-width": `${layout.leftWidth}px`,
           "--right-width": `${geometry.right}px`,
           "--right-rail-width": `${geometry.rail}px`,
           visibility: layout.width > 0 ? undefined : "hidden",
@@ -167,7 +185,7 @@ export function Shell() {
       <LeftNav hidden={shell.surface === "review"} />
       <div
         className="pane-resizer"
-        hidden={shell.surface === "review" || layout.single !== null}
+        hidden={shell.surface === "review" || layout.narrow || geometry.rightFull}
         role="separator"
         aria-label={t("Resize conversation list")}
         aria-orientation="vertical"
@@ -196,7 +214,7 @@ export function Shell() {
         <ConversationPanel />
         <div
           className="pane-resizer"
-          hidden={layout.single !== null}
+          hidden={geometry.rightFull}
           role="separator"
           aria-label={t("Resize files and details panel")}
           aria-orientation="vertical"

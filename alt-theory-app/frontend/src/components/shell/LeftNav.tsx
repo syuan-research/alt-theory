@@ -18,7 +18,6 @@ import {
   nearestAncestor,
   purposeIcon,
   railMatchIds,
-  relatedPaneSize,
   sessionTitle,
   type WorkspaceTree,
 } from "@/lib/sessionList";
@@ -455,13 +454,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
   const [contentResult, setContentResult] = useState<{ query: string; ids: string[] } | null>(null);
   const [contentSearchError, setContentSearchError] = useState("");
   const [pendingRelated, setPendingRelated] = useState<{ centerId: string; childId: string } | null>(null);
-  const openRelated = (childId: string) => {
-    const child = app.sessions.find((item) => item.sessionId === childId);
-    shell.openTarget(
-      { kind: "conversation", sessionId: childId },
-      { size: child ? relatedPaneSize(child) : "default" },
-    );
-  };
+  const openRelated = (childId: string) => shell.openTarget({ kind: "conversation", sessionId: childId });
   useEffect(() => {
     if (!shell.searchOpen) setRailQuery("");
   }, [shell.searchOpen]);
