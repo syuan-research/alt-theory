@@ -5,6 +5,27 @@
 
 ---
 
+## v1.11.0 — 2026-11-01
+
+This update lets you read what conversations produce inside the app, and refines everyday details.
+
+### Files
+
+- Web pages and images a conversation produces now open inside the app for reading.
+
+### Conversations
+
+- The running-conversation count on the app logo looks more polished.
+- The status area above the message box is more minimal.
+
+### Skills
+
+- Fixed bundled skills possibly overriding your own; with the same name, yours takes effect.
+
+### Interface
+
+- Fixed display problems with the diagram viewer.
+
 ## v1.10.0 — 2026-10-27
 
 This update improves project imports, interface design and the experience.
