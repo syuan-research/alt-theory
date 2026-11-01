@@ -44,3 +44,5 @@ All items are equal; there is no core/optional split.
 8. **Worked examples: provenance only.** An example may come only from
    the user's own wording, a purpose obvious from the feature itself, or
    the docs; usage scenarios are never invented.
+9. **Fix items state the repair only.** Benefits the feature shipped with
+   earlier belong to that release's notes.

@@ -60,7 +60,8 @@ installation material defined below.
   or name the problem fixed; neither form is banned. Chinese normally uses
   “修复了……的问题” or “解决了……的问题” for a fix rather than mechanically
   translating "no longer" as “不再”. Do not force identical sentence structures
-  across languages.
+  across languages. Fix items state the repair only. Benefits the feature
+  shipped with earlier belong to that release's notes.
 - A release note does not invent usage scenarios. A worked example may
   appear only for a new feature or a major change, and only when the purpose
   is obvious from the feature itself or the docs state the use; this
