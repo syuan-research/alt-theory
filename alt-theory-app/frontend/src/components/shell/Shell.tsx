@@ -1,6 +1,9 @@
-import { useEffect, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { useApp } from "@/context/AppProvider";
-import { RIGHT_PANE, useShell } from "@/context/ShellContext";
+import { useShell } from "@/context/ShellContext";
+import { useMainView } from "@/context/MainView";
+import { attention, trackAttention } from "@/lib/attention";
+import { LEFT_PANE, RIGHT_PANE, type PaneSide } from "@/lib/pane-layout";
 import { t } from "@/i18n";
 import { applyTitlebarVar, getViewSize } from "@/lib/native";
 import { LeftNav } from "@/components/shell/LeftNav";
@@ -15,91 +18,86 @@ import { VersionsDialog } from "@/components/shell/VersionsDialog";
 import { ApprovalNotice } from "@/components/shell/ApprovalNotice";
 import { FindBar } from "@/components/shell/FindBar";
 
-type PaneSide = "left" | "right";
-
-const LEFT_PANE = {
-  key: "alt-theory-left-width",
-  initial: 256,
-  min: 200,
-  max: 416,
-  collapsed: 48,
-} as const; // 8px module; collapsed pairs with RIGHT_PANE.collapsed
-
-function readLeftWidth(): number {
-  try {
-    const stored = localStorage.getItem(LEFT_PANE.key);
-    if (stored === null) return LEFT_PANE.initial;
-    const value = Number(stored);
-    return Number.isFinite(value)
-      ? Math.min(LEFT_PANE.max, Math.max(LEFT_PANE.min, value))
-      : LEFT_PANE.initial;
-  } catch {
-    return LEFT_PANE.initial;
-  }
-}
-
-function saveLeftWidth(width: number): void {
-  try {
-    localStorage.setItem(LEFT_PANE.key, String(width));
-  } catch {
-    /* ignore */
-  }
-}
-
 export function Shell() {
   const app = useApp();
   const shell = useShell();
-  const [leftWidth, setLeftWidth] = useState(() => readLeftWidth());
-  // Reopening by drag or keyboard reopens the rail open last with its last
-  // target, like its button would (the navigation state remembers both).
+  const main = useMainView();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const latest = useRef(shell);
+  latest.current = shell;
+  const dragCleanup = useRef<(() => void) | null>(null);
+  const { state: layout, geometry, measure } = shell.layout;
 
-  const setLeftPaneWidth = (value: number, persist = false) => {
-    const width = Math.min(LEFT_PANE.max, Math.max(LEFT_PANE.min, value));
-    setLeftWidth(width);
-    if (persist) saveLeftWidth(width);
-  };
+  useEffect(() => trackAttention(), []);
+  useEffect(() => () => dragCleanup.current?.(), []);
+  useLayoutEffect(() => { attention.forget("right"); }, [main.conversation.sessionId]);
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const update = () => measure(root.getBoundingClientRect().width);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, [app.loading, shell.surface, measure]);
 
   const beginResize = (side: PaneSide, event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault();
-    const startX = event.clientX;
+    if (layout.single) return;
+    dragCleanup.current?.();
+    let lastX = event.clientX;
+    const pane = side === "left" ? LEFT_PANE : RIGHT_PANE;
     let collapsed = side === "left" ? shell.leftCollapsed : !shell.rightPanel;
-    const min = side === "left" ? LEFT_PANE.min : RIGHT_PANE.min;
-    const max = side === "left" ? LEFT_PANE.max : RIGHT_PANE.max;
-    const collapsedW = side === "left" ? LEFT_PANE.collapsed : RIGHT_PANE.collapsed;
-    const startWidth = collapsed
-      ? collapsedW
-      : side === "left"
-        ? leftWidth
-        : shell.rightWidth;
-    let nextWidth = side === "left" ? leftWidth : shell.rightWidth;
+    let gesture = side === "left" ? geometry.left : geometry.right;
+    let changed = false;
     document.body.classList.add("resizing-pane");
 
     const move = (moveEvent: PointerEvent) => {
-      const delta = moveEvent.clientX - startX;
-      const raw = startWidth + (side === "left" ? delta : -delta);
-      const nextCollapsed = raw < min / 2;
+      const current = latest.current;
+      if (current.layout.state.single) { cancel(); return; }
+      const delta = moveEvent.clientX - lastX;
+      lastX = moveEvent.clientX;
+      gesture += side === "left" ? delta : -delta;
+      const nextCollapsed = gesture < pane.min / 2;
       if (nextCollapsed !== collapsed) {
-        if (side === "left") shell.setLeftCollapsed(nextCollapsed);
-        else if (nextCollapsed) shell.closeRight();
-        else shell.reopenRight();
+        if (side === "left") current.setLeftCollapsed(nextCollapsed);
+        else if (nextCollapsed) current.closeRight();
+        else current.reopenRight();
         collapsed = nextCollapsed;
+        gesture = collapsed ? (side === "left" ? LEFT_PANE.collapsed : 0) : pane.min;
       }
       if (!collapsed) {
-        nextWidth = Math.min(max, Math.max(min, raw));
-        if (side === "left") setLeftPaneWidth(nextWidth);
-        else shell.setRightPaneWidth(nextWidth);
+        const actual = current.layout.geometry;
+        const max = side === "left" ? actual.leftMax : actual.rightMax;
+        if (max < pane.min) return;
+        // Discard upper-bound overshoot, so reversing the pointer moves immediately.
+        gesture = Math.min(max, gesture);
+        const next = Math.max(pane.min, gesture);
+        changed ||= next !== (side === "left" ? actual.left : actual.right);
+        current.layout.setWidth(side, next);
+      } else {
+        gesture = Math.max(0, gesture);
       }
     };
-    const end = () => {
+    const cleanup = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", cancel);
+      window.removeEventListener("blur", cancel);
       document.body.classList.remove("resizing-pane");
-      if (side === "left") saveLeftWidth(nextWidth);
-      else shell.setRightPaneWidth(nextWidth, true);
+      dragCleanup.current = null;
+    };
+    const cancel = () => cleanup();
+    const end = () => {
+      cleanup();
+      if (changed) latest.current.layout.commitWidth(side);
     };
 
+    dragCleanup.current = cleanup;
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", end, { once: true });
+    window.addEventListener("pointercancel", cancel, { once: true });
+    window.addEventListener("blur", cancel, { once: true });
   };
 
   const resizeKey = (side: PaneSide, key: string) => {
@@ -116,10 +114,10 @@ export function Shell() {
     // edge, so ArrowLeft grows the right pane and ArrowRight shrinks it.
     if (side === "left") {
       const direction = key === "ArrowRight" ? 16 : -16;
-      setLeftPaneWidth(leftWidth + direction, true);
+      shell.layout.setWidth("left", geometry.left + direction, true);
     } else {
       const delta = key === "ArrowLeft" ? 16 : -16;
-      shell.setRightPaneWidth(shell.rightWidth + delta, true);
+      shell.layout.setWidth("right", geometry.right + delta, true);
     }
   };
 
@@ -139,7 +137,7 @@ export function Shell() {
   const rootClass = [
     "app-root",
     shell.leftCollapsed ? "leftCol" : "",
-    leftWidth <= 240 ? "leftNarrow" : "",
+    geometry.left <= 240 ? "leftNarrow" : "",
     app.viewMode === "researcher" ? "researcher" : "",
   ]
     .filter(Boolean)
@@ -148,10 +146,14 @@ export function Shell() {
   return (
     <div
       className={rootClass}
+      ref={rootRef}
+      data-single-pane={layout.single ?? undefined}
       style={
         {
-          "--left-width": `${leftWidth}px`,
-          "--right-width": `${shell.rightWidth}px`,
+          "--left-width": `${geometry.left}px`,
+          "--right-width": `${geometry.right}px`,
+          "--right-rail-width": `${geometry.rail}px`,
+          visibility: layout.width > 0 ? undefined : "hidden",
         } as CSSProperties
       }
     >
@@ -165,17 +167,17 @@ export function Shell() {
       <LeftNav hidden={shell.surface === "review"} />
       <div
         className="pane-resizer"
-        hidden={shell.surface === "review"}
+        hidden={shell.surface === "review" || layout.single !== null}
         role="separator"
         aria-label={t("Resize conversation list")}
         aria-orientation="vertical"
         aria-valuemin={0}
-        aria-valuemax={LEFT_PANE.max}
-        aria-valuenow={shell.leftCollapsed ? 0 : leftWidth}
+        aria-valuemax={geometry.leftMax}
+        aria-valuenow={shell.leftCollapsed ? 0 : geometry.left}
         tabIndex={0}
         onPointerDown={(event) => beginResize("left", event)}
         onDoubleClick={() => shell.leftCollapsed && shell.setLeftCollapsed(false)}
-        onKeyDown={(event) => resizeKey("left", event.key)}
+        onKeyDown={(event) => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") event.preventDefault(); resizeKey("left", event.key); }}
       />
       {shell.surface === "settings" ? (
         <SettingsView />
@@ -194,16 +196,17 @@ export function Shell() {
         <ConversationPanel />
         <div
           className="pane-resizer"
+          hidden={layout.single !== null}
           role="separator"
           aria-label={t("Resize files and details panel")}
           aria-orientation="vertical"
           aria-valuemin={0}
-          aria-valuemax={RIGHT_PANE.max}
-          aria-valuenow={shell.rightPanel ? shell.rightWidth : 0}
+          aria-valuemax={geometry.rightMax}
+          aria-valuenow={shell.rightPanel ? geometry.right : 0}
           tabIndex={0}
           onPointerDown={(event) => beginResize("right", event)}
           onDoubleClick={() => !shell.rightPanel && shell.reopenRight()}
-          onKeyDown={(event) => resizeKey("right", event.key)}
+          onKeyDown={(event) => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") event.preventDefault(); resizeKey("right", event.key); }}
         />
         <InspectorPanel />
       </div>

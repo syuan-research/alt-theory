@@ -70,6 +70,19 @@ surfaces remain designation-gated and absent for everyone else.
     Settings surfaces. Settings replaces the center/right work area; Review is
     full width. The conversation subtree remains mounted but hidden while
     either surface is open, preserving drafts, DOM editing state, and undo.
+  - `lib/pane-layout.ts` owns outer-pane size limits and the layout reducer;
+    `lib/usePaneLayout.ts` connects it to device preferences and the one
+    interaction-attention record. `Shell` measures the actual root with a
+    ResizeObserver and supplies resolved CSS dimensions. Resize hit targets
+    overlay card edges without consuming hidden negative-margin space.
+  - Automatic left collapse runs on entry into a constrained phase, not on
+    every render below 800px. A subsequent manual expansion remains effective;
+    when the panes fit, they stay side by side. Otherwise one expanded pane is
+    shown without closing the others' navigation targets. Entry selects the
+    most recently used valid center/right pane, defaulting to center; later
+    explicit display actions can choose left, center or right through the
+    existing navigation and collapse controls. There is no additional
+    three-pane navigation control.
   - The brand logo shows global work in flight: the existing blue shimmer and a
     quiet count badge include running and awaiting-approval conversations. One
     BrandMark renderer serves expanded/collapsed conversation and Settings rails,
@@ -244,7 +257,10 @@ surfaces remain designation-gated and absent for everyone else.
     conversations. Side conversations open from the conversation module's
     events (a branch or BTW created), the Related list and switcher,
     search hits and the approval notice — each calls `openTarget`, which also
-    sizes the pane (opening what is already on show keeps a dragged width).
+    requests the opening size from the layout owner (opening what is already
+    on show keeps a dragged width). Half-width requests use the measured
+    center/right work area and wait while that surface is hidden. Temporary
+    constraints and single-pane display do not overwrite saved pixel widths.
     Deleting conversations drops their targets from the view (it shows the
     rail's list), from each rail's memory and from the way back.
   - A Related conversation uses the same history, live thinking/tool rendering,
@@ -340,8 +356,8 @@ surfaces remain designation-gated and absent for everyone else.
     related-pane filters, per-view scroll position, the Records selection;
     a deleted conversation's entries are dropped, and loaded Changes diffs
     are kept for the last 8 conversations);
-    `lib/fileDrafts.ts` (unsaved file edits); and `lib/find.ts` (which column
-    Ctrl+F serves). None of these persists across a restart; composer drafts
+    `lib/fileDrafts.ts` (unsaved file edits); and `lib/attention.ts` (the shared
+    recent interaction record). None of these persists across a restart; composer drafts
     are the conversation's own (see Conversation drafts).
   - Changes, Files and Related put their sort (and filter) cards on one
     row (`FolderList.tsx` `MenuButton`, choices in the context-menu shell).
@@ -364,6 +380,14 @@ surfaces remain designation-gated and absent for everyone else.
     search at once. File-change rows may reveal the
     same path here; for files, path copying and file-manager reveal live in
     contextual actions rather than permanent labels.
+  - `lib/attention.ts` keeps one latest interaction per column, in recency
+    order, from pointer, unmodified keyboard and wheel events. `Shell`
+    installs the capture once; programmatic scrolling and autofocus do not
+    change it. Search queries all columns; narrow-layout entry queries the
+    valid center/right candidates. Replacing a right target invalidates its
+    old layout signal, and changing the main conversation drops right-side
+    history. Layout keeps its selected display separately, so attention
+    updates do not continuously switch the single pane.
   - Ctrl+F acts on the column the user last touched (Owner 2026-09-24). A
     list of things to open (the conversation list, Files, Changes, Related)
     focuses its own filter; opened content (a conversation, a related child, a

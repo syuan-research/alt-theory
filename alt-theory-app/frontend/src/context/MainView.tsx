@@ -176,7 +176,8 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
 
   const openCatalogSession = useCallback(
     (target: string): boolean => {
-      if (!target || target === sessionId) return false;
+      if (!target) return false;
+      if (target === sessionId) { shell.showPane("center"); return false; }
       const summary = app.sessions.find((item) => item.sessionId === target);
       // A conversation still in its first turn has no file yet but is live
       // on the server, so it opens; an idle one without a file does not.
@@ -184,14 +185,16 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
         conv.notify({ kind: "text", text: t("Conversation cannot be opened.") });
         return false;
       }
-      return conv.open(target);
+      const opened = conv.open(target);
+      if (opened) shell.showPane("center");
+      return opened;
     },
-    [app.sessions, conv, sessionId],
+    [app.sessions, conv, sessionId, shell.showPane],
   );
 
   const startNewSession = useCallback(() => {
-    conv.startNew();
-  }, [conv]);
+    if (conv.startNew()) shell.showPane("center");
+  }, [conv, shell.showPane]);
 
   const compactCurrentSession = useCallback(() => {
     if (!sessionId || conv.isRunning) return;

@@ -545,9 +545,11 @@
 
   /* Row layout: the persistent left rail + its resizer sit at the root, the
      surface (app columns / settings / review) fills the rest. */
-  .app-root { height: 100%; display: flex; flex-direction: row; min-height: 0; }
+  .app-root { height: 100%; display: flex; flex-direction: row; min-height: 0; min-width: 0; position: relative; }
   .cols { flex: 1; display: flex; min-height: 0; min-width: 0; }
-  .pane-resizer { flex: 0 0 5px; margin: 0 -2px; position: relative; z-index: 30; cursor: col-resize; touch-action: none; outline: none; }
+  .pane-resizer { flex: 0 0 0; width: 0; position: relative; z-index: 30; cursor: col-resize; touch-action: none; outline: none; }
+  .pane-resizer::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 5px; }
+  .pane-resizer:focus-visible::before { outline: 2px solid var(--focus-ring); }
   body.resizing-pane { cursor: col-resize; user-select: none; }
   body.resizing-pane .rpanel { transition: none; }
 
@@ -570,13 +572,16 @@
      reserves that band (real DOM has no full-width top row, unlike the mock). */
   .cols.a2cols .right .rail { padding-top: calc(var(--titlebar-h) + var(--space-tight)); }
   .cols.a2cols .rpanel .head { margin-top: var(--titlebar-h); }
-  /* A2: resize hit-strips hug the card edges (users grab the card boundary),
-     not the middle of the gray gutter. The hoisted left resizer overlays the
-     work card's left edge; last-of-type = the right resizer inside .cols. The
-     strips overlay the card's rounded edge by ~2px. Cursor-only — no hover
-     highlight (owner ruling). */
-  .app-root > .pane-resizer { margin-right: -10px; }
-  .cols.a2cols .pane-resizer:last-of-type { margin-left: -10px; }
+  /* Hit targets overlay card edges without secretly consuming layout width. */
+  .app-root > .pane-resizer::before { left: calc(var(--space-control) - 2px); }
+  .cols.a2cols > .pane-resizer::before { left: calc(-1 * var(--space-control) - 2px); }
+
+  .app-root[data-single-pane="left"] > .settings,
+  .app-root[data-single-pane="left"] .cols > .center,
+  .app-root[data-single-pane="right"] .cols > .center,
+  .app-root[data-single-pane="left"] .rpanel,
+  .app-root[data-single-pane="center"] .rpanel { display: none; }
+  .app-root[data-single-pane="left"] > .cols { flex: 0 0 var(--right-rail-width); }
 
   /* macOS bundle: the OS paints the traffic lights over the window's top-left
      — measured 14px buttons spanning x 9–68, y 17–30, i.e. already centred in
@@ -591,7 +596,6 @@
 
   /* ------- left ------- */
   .left { --rail-head-h: 46px; --rail-row-h: 36px; --rail-icon-size: 1rem; width: var(--left-width); flex-shrink: 0; background: var(--panel); display: flex; flex-direction: column; }
-  .app-root.leftCol .left { width: 52px; }
   .app-root.leftCol .left .full { display: none !important; }
   .left .mini { display: none; flex-direction: column; align-items: stretch; flex: 1; padding-bottom: var(--space-tight); }
   .app-root.leftCol .left .mini { display: flex; }
@@ -740,7 +744,7 @@
 
   /* ------- center ------- */
   /* The center keeps a readable minimum (smart-approval M4); the right pane gives way first. */
-  .center { flex: 1; display: flex; flex-direction: column; min-width: min(400px, 100%); background: var(--canvas); position: relative; }
+  .center { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--canvas); position: relative; }
   .empty-state { flex: 1; display: flex; flex-direction: column; min-height: 0; padding-top: var(--space-column); overflow-y: auto; }
   .empty-intro { margin: auto var(--space-column); display: flex; flex-direction: column; align-items: center; }
   .greet { font-family: var(--brand); font-size: var(--fs-page); color: var(--ink-soft); margin-bottom: var(--space-column); text-align: center; }
@@ -1248,19 +1252,14 @@
   .arm-pane .af button:disabled { opacity: 0.5; cursor: default; }
 
   /* ------- right rail + panel ------- */
-  /* The floor must stay an explicit literal (owner 2026-10-30): without one,
-     the column's automatic minimum absorbs .rpanel's definite --right-width,
-     the column becomes incompressible, and a wide pane pushes its right edge
-     out of the window. 48 keeps the collapsed alignment 798e4e0 fixed (its
-     49 was border-era, and its "the rail's width is the natural floor"
-     rationale was wrong); JS contract RIGHT_PANE.collapsed = 48 agrees. */
-  .right { flex-shrink: 1; min-width: 48px; display: flex; background: var(--panel); border-left: 1px solid var(--hairline); }
-  .rail { width: 48px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; padding-top: var(--space-control); gap: var(--space-hair); }
+  /* Shell supplies feasible dimensions; automatic min-content must not override them. */
+  .right { flex: 0 0 calc(var(--right-width) + var(--right-rail-width)); min-width: 0; display: flex; background: var(--panel); border-left: 1px solid var(--hairline); }
+  .rail { width: var(--right-rail-width); flex-shrink: 0; display: flex; flex-direction: column; align-items: center; padding-top: var(--space-control); gap: var(--space-hair); }
   .rail button { width: 36px; height: 36px; border: none; background: transparent; border-radius: var(--r-sm); color: var(--text-2); cursor: pointer; position: relative; font-size: 1.1rem; display: inline-flex; align-items: center; justify-content: center; }
   .rail button:hover { background: var(--hover); }
   .rail button.on { background: var(--selected); color: var(--ink); }
   .rail .attention-count { position: absolute; top: 0; right: 0; min-width: 16px; padding: 0 3px; height: 16px; border-radius: 9px; background: var(--focus-ring); color: white; font-size: 10px; line-height: 16px; }
-  .rpanel { width: 0; min-width: 0; flex-shrink: 1; overflow: hidden; transition: width 0.18s ease; display: flex; flex-direction: column; container-type: inline-size; }
+  .rpanel { width: 0; min-width: 0; flex-shrink: 0; overflow: hidden; display: flex; flex-direction: column; container-type: inline-size; }
   .right.open .rpanel { width: var(--right-width); }
   /* Tight on purpose: the left column keeps only ~4px under its brand row,
      so this header should not sit visibly airier than that. */

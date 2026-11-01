@@ -13,6 +13,8 @@ import { syncTitlebarTheme } from "@/lib/native";
 import { useVersions } from "@/lib/versions";
 import { paneMemory } from "@/lib/paneMemory";
 import { INITIAL_PANE, navigate, targetKey, type RailKey, type ViewTarget } from "@/lib/viewTarget";
+import { usePaneLayout } from "@/lib/usePaneLayout";
+import type { Column } from "@/lib/attention";
 
 export type { RailKey, ViewTarget };
 
@@ -39,6 +41,8 @@ export interface ShellContextValue {
 
   leftCollapsed: boolean;
   setLeftCollapsed: (collapsed: boolean) => void;
+  layout: ReturnType<typeof usePaneLayout>;
+  showPane: (column: Column) => void;
 
   searchOpen: boolean;
   setSearchOpen: (open: boolean) => void;
@@ -60,11 +64,6 @@ export interface ShellContextValue {
   forgetConversations: (sessionIds: string[]) => void;
   /** Open the collapsed pane on the rail open last (drag, keyboard). */
   reopenRight: () => void;
-
-  /** Right panel width in px (branch/edit ≈ 50%; btw/helper ≈ 480 default). */
-  rightWidth: number;
-  /** Clamp + optionally persist. Used by the resizer and related open sizing. */
-  setRightPaneWidth: (width: number, persist?: boolean) => void;
 
   workspaceRevealPath: string | null;
   revealWorkspacePath: (path: string) => void;
@@ -95,47 +94,8 @@ export interface ShellContextValue {
 
 const ShellContext = createContext<ShellContextValue | null>(null);
 
-const LEFT_COLLAPSED_KEY = "alt-theory-left-collapsed";
-// Below this window width the settings column can no longer hold its widest
-// control row with the rail expanded, so the rail yields (see the window
-// minWidth in electron/main.cjs for the hard floor underneath this).
-const LEFT_COLLAPSE_AT = 800;
 const THINKING_EXPANDED_KEY = "alt-theory-thinking-expanded";
 const DARK_MODE_KEY = "alt-theory-dark-mode";
-const RIGHT_WIDTH_KEY = "alt-theory-right-width";
-
-/** Default / btw / helper rail. Branch/edit comparison opens at ~50%. */
-export const RIGHT_PANE = {
-  initial: 480,
-  min: 320,
-  /** High enough for half of a wide center+right work area. */
-  max: 1200,
-  collapsed: 48,
-} as const;
-
-/**
- * Half of the center + right work area (exclude left nav and the icon rail).
- * Not half the browser window — that over-squeezes the parent conversation.
- */
-function halfCenterRightWorkArea(): number {
-  try {
-    const cols = document.querySelector(".cols") as HTMLElement | null;
-    const left = document.querySelector(".cols > .left") as HTMLElement | null;
-    const rail = document.querySelector(".cols .right .rail") as HTMLElement | null;
-    if (cols) {
-      const colsW = cols.getBoundingClientRect().width;
-      const leftW = left?.getBoundingClientRect().width ?? 264;
-      const railW = rail?.getBoundingClientRect().width ?? RIGHT_PANE.collapsed;
-      // Resizers are ~5px each; treat as noise. Work = center + rpanel.
-      const work = Math.max(0, colsW - leftW - railW);
-      return Math.round(work / 2);
-    }
-  } catch {
-    /* ignore measurement failures */
-  }
-  // Fallback when shell not mounted yet: rough window minus typical left+rail.
-  return Math.round((window.innerWidth - 256 - RIGHT_PANE.collapsed) / 2);
-}
 
 function readFlag(key: string): boolean {
   try {
@@ -149,27 +109,6 @@ function writeFlag(key: string, on: boolean): void {
   try {
     if (on) localStorage.setItem(key, "1");
     else localStorage.removeItem(key);
-  } catch {
-    /* ignore */
-  }
-}
-
-function readStoredRightWidth(): number {
-  try {
-    const stored = localStorage.getItem(RIGHT_WIDTH_KEY);
-    if (stored === null) return RIGHT_PANE.initial;
-    const value = Number(stored);
-    return Number.isFinite(value)
-      ? Math.min(RIGHT_PANE.max, Math.max(RIGHT_PANE.min, value))
-      : RIGHT_PANE.initial;
-  } catch {
-    return RIGHT_PANE.initial;
-  }
-}
-
-function saveStoredRightWidth(width: number): void {
-  try {
-    localStorage.setItem(RIGHT_WIDTH_KEY, String(width));
   } catch {
     /* ignore */
   }
@@ -191,20 +130,9 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       `${url.pathname}${url.search}${url.hash}`,
     );
   }, [openModelsFromUrl]);
-  const [settingsPanel, setSettingsPanel] = useState("models");
+  const [settingsPanel, setSettingsPanelState] = useState("models");
   const [externalAiSetupOpen, setExternalAiSetupOpen] = useState(false);
   const versions = useVersions();
-  const [leftCollapsed, setLeftCollapsedState] = useState(() =>
-    readFlag(LEFT_COLLAPSED_KEY)
-  );
-  // Auto-collapse is derived, never persisted: the user's own choice above is
-  // restored as soon as the window is wide again.
-  const [narrow, setNarrow] = useState(() => window.innerWidth < LEFT_COLLAPSE_AT);
-  useEffect(() => {
-    const onResize = () => setNarrow(window.innerWidth < LEFT_COLLAPSE_AT);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
   const [searchOpen, setSearchOpen] = useState(false);
   // Right-pane memory (Owner 2026-09-03) — what each rail showed last, and
   // where the user was before a target on another rail took over — lives in
@@ -212,8 +140,17 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [pane, dispatchPane] = useReducer(navigate, INITIAL_PANE);
   const paneRef = useRef(pane);
   paneRef.current = pane;
+  const layout = usePaneLayout(surface, pane.rail !== null,
+    pane.rail ? `${surface}:${pane.rail}:${pane.target ? targetKey(pane.target) : "list"}` : null);
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+  const showPane = layout.show;
+  const setLeftCollapsed = layout.setLeftCollapsed;
+  const setSettingsPanel = useCallback((panel: string) => {
+    setSettingsPanelState(panel);
+    showPane("center");
+  }, [showPane]);
   const [workspaceRevealPath, setWorkspaceRevealPath] = useState<string | null>(null);
-  const [rightWidth, setRightWidthState] = useState(() => readStoredRightWidth());
   const [thinkingExpanded, setThinkingExpandedState] = useState(() =>
     readFlag(THINKING_EXPANDED_KEY)
   );
@@ -221,20 +158,19 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [importOpen, setImportOpen] = useState(false);
   const [armsComparisonId, setArmsComparisonId] = useState<string | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
-  const openApp = useCallback(() => setSurface("app"), []);
+  const openApp = useCallback(() => {
+    setSurface("app");
+    showPane("center");
+  }, [showPane]);
   const openSettings = useCallback((panel?: string) => {
     if (panel) setSettingsPanel(panel);
     setSurface("settings");
-  }, []);
-  const openReview = useCallback(() => setSurface("review"), []);
-  const openFiles = useCallback(() => setSurface("files"), []);
+    showPane("center");
+  }, [setSettingsPanel, showPane]);
+  const openReview = useCallback(() => { setSurface("review"); showPane("center"); }, [showPane]);
+  const openFiles = useCallback(() => { setSurface("files"); showPane("center"); }, [showPane]);
   const openExternalAiSetup = useCallback(() => setExternalAiSetupOpen(true), []);
   const closeExternalAiSetup = useCallback(() => setExternalAiSetupOpen(false), []);
-
-  const setLeftCollapsed = useCallback((collapsed: boolean) => {
-    setLeftCollapsedState(collapsed);
-    writeFlag(LEFT_COLLAPSED_KEY, collapsed);
-  }, []);
 
   const setThinkingExpanded = useCallback((on: boolean) => {
     setThinkingExpandedState(on);
@@ -252,27 +188,36 @@ export function ShellProvider({ children }: { children: ReactNode }) {
     syncTitlebarTheme(theme);
   }, [darkMode]);
 
-  const toggleRail = useCallback((rail: RailKey) => dispatchPane({ type: "toggle", rail }), []);
-  const openRail = useCallback((rail: RailKey) => dispatchPane({ type: "rail", rail }), []);
-  const closeRight = useCallback(() => dispatchPane({ type: "collapse" }), []);
-  const closeTarget = useCallback(() => dispatchPane({ type: "back" }), []);
+  const toggleRail = useCallback((rail: RailKey) => {
+    const active = layoutRef.current.state.single;
+    // A hidden open rail is a destination, not a request to close its contents.
+    if (active && active !== "right" && paneRef.current.rail === rail) {
+      showPane("right");
+      return;
+    }
+    const closing = paneRef.current.rail === rail;
+    dispatchPane({ type: "toggle", rail });
+    if (!closing) showPane("right");
+    else if (active === "right") showPane("center");
+  }, [showPane]);
+  const openRail = useCallback((rail: RailKey) => { dispatchPane({ type: "rail", rail }); showPane("right"); }, [showPane]);
+  const closeRight = useCallback(() => {
+    dispatchPane({ type: "collapse" });
+    if (layoutRef.current.state.single === "right") showPane("center");
+  }, [showPane]);
+  const closeTarget = useCallback(() => { dispatchPane({ type: "back" }); showPane("right"); }, [showPane]);
   const forgetConversations = useCallback((sessionIds: string[]) => {
     paneMemory.forgetSessions(sessionIds);
     dispatchPane({ type: "forget", sessionIds });
   }, []);
-  const reopenRight = useCallback(() => dispatchPane({ type: "reopen" }), []);
+  const reopenRight = useCallback(() => { dispatchPane({ type: "reopen" }); showPane("right"); }, [showPane]);
   const revealWorkspacePath = useCallback((path: string) => {
     setSurface("app");
     dispatchPane({ type: "show", rail: "workspace" });
+    showPane("right");
     setWorkspaceRevealPath(path);
-  }, []);
+  }, [showPane]);
   const clearWorkspaceRevealPath = useCallback(() => setWorkspaceRevealPath(null), []);
-
-  const setRightPaneWidth = useCallback((width: number, persist = false) => {
-    const next = Math.min(RIGHT_PANE.max, Math.max(RIGHT_PANE.min, width));
-    setRightWidthState(next);
-    if (persist) saveStoredRightWidth(next);
-  }, []);
 
   // A side conversation sizes the pane as it opens: a branch/edit ≈ half of
   // center+right, BTW/subagent the stored preference (≈480). The
@@ -283,14 +228,12 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       const already = shown !== null && targetKey(shown) === targetKey(target);
       // Opening what is already on show keeps a width the user dragged.
       if (target.kind === "conversation" && !already) {
-        setRightPaneWidth(
-          options?.size === "half" ? halfCenterRightWorkArea() : readStoredRightWidth(),
-          false,
-        );
+        layoutRef.current.openSize(options?.size ?? "default");
       }
       dispatchPane({ type: "open", target });
+      showPane("right");
     },
-    [setRightPaneWidth],
+    [showPane],
   );
   const openConversationId = pane.target?.kind === "conversation" ? pane.target.sessionId : null;
 
@@ -315,8 +258,10 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       versions,
       openExternalAiSetup,
       closeExternalAiSetup,
-      leftCollapsed: leftCollapsed || narrow,
+      leftCollapsed: layout.geometry.leftCollapsed,
       setLeftCollapsed,
+      layout,
+      showPane,
       searchOpen,
       setSearchOpen,
       rightPanel: pane.rail,
@@ -329,8 +274,6 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       openConversationId,
       forgetConversations,
       reopenRight,
-      rightWidth,
-      setRightPaneWidth,
       workspaceRevealPath,
       revealWorkspacePath,
       clearWorkspaceRevealPath,
@@ -354,13 +297,14 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       openReview,
       openFiles,
       settingsPanel,
+      setSettingsPanel,
       externalAiSetupOpen,
       versions,
       openExternalAiSetup,
       closeExternalAiSetup,
-      leftCollapsed,
       setLeftCollapsed,
-      narrow,
+      layout,
+      showPane,
       searchOpen,
       pane,
       toggleRail,
@@ -371,8 +315,6 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       openConversationId,
       forgetConversations,
       reopenRight,
-      rightWidth,
-      setRightPaneWidth,
       workspaceRevealPath,
       revealWorkspacePath,
       clearWorkspaceRevealPath,
