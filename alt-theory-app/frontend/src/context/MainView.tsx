@@ -116,7 +116,6 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
         break;
       }
       case "related_session_created":
-        // BTW keeps the original compact default (~480), not 50%.
         // A spawned subagent never opens the rail (owner 2026-09-18); the
         // Related row is its feedback, and seeds belong to user creations.
         if (message.payload.purpose !== "subagent") {

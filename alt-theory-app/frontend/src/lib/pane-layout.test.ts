@@ -4,13 +4,13 @@ import { initialLayout, paneGeometry, reduceLayout, type PaneLayoutState } from 
 
 const frame = (state: PaneLayoutState, width: number, rightOpen = true, surface: "app" | "settings" | "review" = "app") =>
   reduceLayout(state, { type: "frame", width, rightOpen, surface });
-const start = (width = 1280, rightOpen = true) => frame(initialLayout(256, 0.4, false), width, rightOpen);
+const start = (width = 1280, rightOpen = true) => frame(initialLayout(256, false), width, rightOpen);
 
 test("center and right shrink together as one share of the work area", () => {
   const wide = paneGeometry(start(1280));
   assert.equal(wide.left + wide.center + wide.right + wide.rail, 1280);
   assert.equal(wide.right, Math.round(0.4 * (1280 - 256 - 48)));
-  const narrow = paneGeometry(start(900));
+  const narrow = paneGeometry(start(1100));
   assert.equal(narrow.right, Math.round(0.4 * narrow.work));
   assert.equal(narrow.left, 256);
 });
@@ -23,16 +23,18 @@ test("the right pane never moves the left column", () => {
   }
 });
 
-test("below 800 the left docks as its strip and expanding floats it; leaving needs 824", () => {
-  let state = start(790);
+test("center+right under 700 docks the left as its strip and expanding floats it; leaving needs 724", () => {
+  // 256 left + 48 rail: the strip starts below a 1004 window and ends at 1028.
+  assert.equal(paneGeometry(start(1004)).left, 256);
+  let state = start(1003);
   assert.equal(paneGeometry(state).left, 52);
   state = reduceLayout(state, { type: "left", collapsed: false });
   assert.equal(state.leftCollapsed, false);
   assert.equal(paneGeometry(state).leftFloat, true);
   assert.equal(paneGeometry(state).left, 52);
-  state = frame(state, 810);
+  state = frame(state, 1020);
   assert.equal(paneGeometry(state).left, 52, "hysteresis keeps the strip");
-  state = frame(state, 830);
+  state = frame(state, 1028);
   assert.equal(paneGeometry(state).left, 256);
   assert.equal(state.leftFloat, false);
 });
@@ -64,6 +66,7 @@ test("review is full width; settings has no right pane", () => {
   assert.deepEqual([review.left, review.center, review.right], [0, 1000, 0]);
   const settings = paneGeometry(frame(start(), 1000, true, "settings"));
   assert.deepEqual([settings.left, settings.right, settings.rail], [256, 0, 0]);
+  assert.equal(paneGeometry(frame(start(), 1000, true, "app")).left, 52, "the rail counts in the app");
 });
 
 test("an invalid measurement leaves the state alone", () => {

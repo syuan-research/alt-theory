@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useReducer, useRef } from "react";
-import { boundedLeft, boundedShare, initialLayout, LEFT_PANE, RIGHT_PANE, paneGeometry, reduceLayout,
+import { boundedLeft, initialLayout, LEFT_PANE, paneGeometry, reduceLayout,
   type LayoutSurface } from "./pane-layout";
 
 const LEFT_COLLAPSED_KEY = "alt-theory-left-collapsed";
@@ -23,7 +23,6 @@ function save(key: string, value: string | null): void {
 export function usePaneLayout(surface: LayoutSurface, rightOpen: boolean) {
   const [state, dispatch] = useReducer(reduceLayout, undefined, () => initialLayout(
     boundedLeft(read(LEFT_PANE.key) ?? LEFT_PANE.initial),
-    boundedShare(read(RIGHT_PANE.key) ?? RIGHT_PANE.initial),
     read(LEFT_COLLAPSED_KEY) === 1,
   ));
   const current = useRef(state);
@@ -42,7 +41,7 @@ export function usePaneLayout(surface: LayoutSurface, rightOpen: boolean) {
     if (changed) save(LEFT_COLLAPSED_KEY, collapsed ? "1" : null);
   }, []);
 
-  /** Pixel request from a drag or key; stored as the left width or the right share. */
+  /** Pixel request from a drag or key: the left width (saved) or the right share (session only). */
   const setWidth = useCallback((side: "left" | "right", px: number, persist = false) => {
     const geometry = paneGeometry(current.current);
     if (!Number.isFinite(px) || current.current.width <= 0 || geometry.rightFull) return;
@@ -56,13 +55,10 @@ export function usePaneLayout(surface: LayoutSurface, rightOpen: boolean) {
     if (geometry.rightMax < geometry.rightMin || geometry.work <= 0) return;
     const share = Math.min(geometry.rightMax, Math.max(geometry.rightMin, px)) / geometry.work;
     dispatch({ type: "right-share", share });
-    if (persist) save(RIGHT_PANE.key, String(boundedShare(share)));
   }, []);
 
   const commitWidth = useCallback((side: "left" | "right") => {
-    const value = current.current;
-    if (side === "left") save(LEFT_PANE.key, String(value.leftWidth));
-    else save(RIGHT_PANE.key, String(value.rightShare));
+    if (side === "left") save(LEFT_PANE.key, String(current.current.leftWidth));
   }, []);
 
   const setRightFull = useCallback((on: boolean) => dispatch({ type: "right-full", on }), []);

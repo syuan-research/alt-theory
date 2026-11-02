@@ -3,16 +3,19 @@
  * - The right pane is a share of the center+right work area, so the two
  *   shrink together as the window narrows; switching what the right pane
  *   shows never changes its width.
- * - Below LEFT_FLOAT_AT the left column docks as its icon strip and opens as
- *   a float over the work area. The right pane never moves the left column.
+ * - When center+right (measured with the left docked open) would be under
+ *   WORK_FLOAT_AT, the left column docks as its icon strip and opens as a
+ *   float over the work area. The right pane never moves the left column.
+ * - The right share is not saved: every start opens at 40%; a drag lasts
+ *   until the app restarts.
  * - "Right full": the right pane takes the work area, the center is hidden
  *   (still mounted) and the left column docks as its strip.
  */
 export const LEFT_PANE = { key: "alt-theory-left-width", initial: 256, min: 200, max: 416, collapsed: 52 } as const;
-export const RIGHT_PANE = { key: "alt-theory-right-share", initial: 0.4, min: 240, max: 1200, collapsed: 48 } as const;
+export const RIGHT_PANE = { initial: 0.4, min: 240, max: 1200, collapsed: 48 } as const;
 /** Drag floor for the center; window-driven squeezing may go below it. */
 export const CENTER_MIN = 320;
-export const LEFT_FLOAT_AT = 800;
+export const WORK_FLOAT_AT = 700;
 /** Leave the narrow phase only this far above the threshold. */
 const NARROW_HYSTERESIS = 24;
 const SHARE_MIN = 0.1;
@@ -23,7 +26,7 @@ export interface PaneLayoutState {
   width: number;
   surface: LayoutSurface;
   rightOpen: boolean;
-  /** Device preferences: left px, right share of the work area. */
+  /** Left px (saved), right share of the work area (session only). */
   leftWidth: number;
   rightShare: number;
   leftCollapsed: boolean;
@@ -49,9 +52,9 @@ export function boundedShare(share: number): number {
   return Number.isFinite(share) ? Math.min(SHARE_MAX, Math.max(SHARE_MIN, share)) : RIGHT_PANE.initial;
 }
 
-export function initialLayout(leftWidth: number, rightShare: number, leftCollapsed: boolean): PaneLayoutState {
+export function initialLayout(leftWidth: number, leftCollapsed: boolean): PaneLayoutState {
   return { width: 0, surface: "app", rightOpen: false, leftWidth: boundedLeft(leftWidth),
-    rightShare: boundedShare(rightShare), leftCollapsed, narrow: false, leftFloat: false, rightFull: false };
+    rightShare: RIGHT_PANE.initial, leftCollapsed, narrow: false, leftFloat: false, rightFull: false };
 }
 
 const fullActive = (s: PaneLayoutState) => s.rightFull && s.rightOpen && s.surface === "app";
@@ -63,7 +66,9 @@ export function reduceLayout(state: PaneLayoutState, action: LayoutAction): Pane
     case "frame": {
       const width = action.width ?? state.width;
       if (!Number.isFinite(width) || width <= 0) return state;
-      const narrow = state.narrow ? width < LEFT_FLOAT_AT + NARROW_HYSTERESIS : width < LEFT_FLOAT_AT;
+      const rail = action.surface === "app" ? RIGHT_PANE.collapsed : 0;
+      const work = width - state.leftWidth - rail;
+      const narrow = state.narrow ? work < WORK_FLOAT_AT + NARROW_HYSTERESIS : work < WORK_FLOAT_AT;
       const next = { ...state, width, narrow, surface: action.surface, rightOpen: action.rightOpen };
       if (!action.rightOpen) next.rightFull = false;
       if (!leftDocksMini(next)) next.leftFloat = false;
@@ -102,7 +107,8 @@ export function paneGeometry(state: PaneLayoutState) {
     left, center: work - right, right, rail, leftMini, rightFull,
     leftFloat: state.leftFloat && leftDocksMini(state),
     work,
-    leftMax: Math.max(LEFT_PANE.min, Math.min(LEFT_PANE.max, width - rail - CENTER_MIN)),
+    // Dragging the left never pushes the work area into the narrow phase.
+    leftMax: Math.max(LEFT_PANE.min, Math.min(LEFT_PANE.max, width - rail - WORK_FLOAT_AT)),
     rightMin: RIGHT_PANE.min,
     rightMax: Math.min(RIGHT_PANE.max, work - CENTER_MIN),
   };

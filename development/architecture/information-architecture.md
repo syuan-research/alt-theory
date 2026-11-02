@@ -75,11 +75,12 @@ surfaces remain designation-gated and absent for everyone else.
     measures the actual root with a ResizeObserver and supplies resolved CSS
     widths. Resize hit targets overlay card edges without consuming layout
     width.
-    - The right pane is a share of the center+right work area (default 40%,
-      a drag sets the share). The two shrink together as the window narrows,
-      and changing what the right pane shows never changes its width.
-    - Below 800px (left again above 824) the left column docks as its icon
-      strip; expanding it floats the full column over the work area. Opening
+    - The right pane is a share of the center+right work area (40% at
+      every app start; a drag sets the share until restart and is not
+      saved). The two shrink together as the window narrows, and changing
+      what the right pane shows never changes its width.
+    - When center+right (counted with the left open) would be under 700px
+      (left again at 724) the left column docks as its icon strip; expanding it floats the full column over the work area. Opening
       a conversation, a surface or a settings tab, clicking outside or Esc
       closes the float. A manual collapse on a wide window is the saved
       preference; the float is not. The right pane never moves the left
