@@ -360,22 +360,9 @@
     overflow: hidden;
     background: var(--canvas);
     color: var(--ink);
-    /* Drag regions are a window-level geometric union (drag adds, no-drag
-       subtracts) and ignore stacking: the right pane's head band beneath this
-       fullscreen overlay ate ~84% of the floating toolbar's clicks, and a
-       double-click there maximized the window (owner 2026-10-30). */
-    -webkit-app-region: no-drag;
-  }
-  /* Keep a titlebar strip so the window can still be moved while the modal
-     viewer is open (owner 2026-10-30, A'). */
-  .mermaid-viewer::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: var(--titlebar-h);
-    -webkit-app-region: drag;
+    /* No -webkit-app-region in the viewer: the window handle is the top-edge
+       band, which stays live beneath the overlay; viewer chrome stays below
+       it (owner 2026-11-05). */
   }
 
   /* White background mode is the canvas' background for screenshots (owner
@@ -555,21 +542,25 @@
 
   /* A2 trial (20260907 bundle-chrome issue): the work area is one floating card
      on shared gray; column hairlines go away. Scoped to .cols.a2cols so other
-     surfaces keep the flat layout. The top 48px of the center column is the
-     window drag band; header rows drag too and their buttons opt out. Inert in
-     a plain browser (-webkit-app-region is ignored there). */
+     surfaces keep the flat layout. The top 48px of every column is the window
+     drag band; buttons in it opt out. Inert in a plain browser
+     (-webkit-app-region is ignored there). */
   .cols.a2cols { background: var(--panel); }
   .cols.a2cols .right { border-left: none; }
   .cols.a2cols .center { background: transparent; }
   .cols.a2cols .center::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: var(--titlebar-h); -webkit-app-region: drag; }
   .cols.a2cols .workcard { flex: 1; display: flex; flex-direction: column; min-height: 0; margin: var(--titlebar-h) var(--space-control) var(--space-tight); background: var(--canvas); border-radius: var(--r-lg); box-shadow: var(--shadow-rest); overflow: hidden; }
-  .left-head, .cols.a2cols .rpanel .head { -webkit-app-region: drag; }
-  .left-head button, .cols.a2cols .rpanel .head button { -webkit-app-region: no-drag; }
+  .left-head { -webkit-app-region: drag; }
+  .left-head button { -webkit-app-region: no-drag; }
   /* Keep the card scrollbar's top end below the rounded corner (bottom already
      clears it via the composer area). */
   .cols.a2cols .msgs-wrap { padding-top: var(--space-tight); }
   /* Windows overlay buttons own the window's top-right ~48px: the right column
-     reserves that band (real DOM has no full-width top row, unlike the mock). */
+     reserves that band (real DOM has no full-width top row, unlike the mock).
+     That reserved band is the window handle (owner 2026-11-05: users drag the
+     top edge, not title rows below it); the head row is plain UI. */
+  .cols.a2cols .right { position: relative; }
+  .cols.a2cols .right::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: var(--titlebar-h); -webkit-app-region: drag; }
   .cols.a2cols .right .rail { padding-top: calc(var(--titlebar-h) + var(--space-tight)); }
   .cols.a2cols .rpanel .head { margin-top: var(--titlebar-h); }
   /* Hit targets overlay card edges without secretly consuming layout width. */
