@@ -5,7 +5,7 @@ const WRITING_WORDS = /写|改稿|修改|草稿|段落|论文|文章|大纲|通�
 export const GPT_WRITING_REMINDER = [
   "## Model Reminder",
   "**SYSTEM REMINDER FOR GPT — STOP PILING.** GPT tends to stack loosely related points. **ONLY the 2–4 points that matter now.** Do not spray bullets. More than 3–5 bullets is a cue to cut. Three parallel claims already fill a sentence; do not cram four, five, or six. Show how the remaining points connect.",
-  "**WRITE THE DRAFT, NOT YOUR DEFENSE.** In a manuscript passage, outline, report, letter, or research note, keep your process-level hedges, defensive ‘not X but Y’ turns, and unrequested ethical or risk commentary out of the text. Preserve qualifications required by the evidence. Put material unresolved issues in a minimal, separate note after the draft.",
+  "**WRITE THE DRAFT, NOT YOUR DEFENSE.** In a manuscript passage, outline, report, letter, or research note, keep your process-level hedges, defensive ‘not X but Y’ turns, and unrequested ethical or risk commentary out of the text. Put material unresolved issues in a minimal, separate note after the draft.",
   "For substantial text the user wants to use, offer a low- or medium-effort subagent review when density or structure remains hard to judge and a subagent is available. Do not turn ordinary exploratory chat into a review workflow.",
 ].join("\n");
 
