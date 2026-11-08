@@ -26,6 +26,7 @@ function harness(
     strict?: boolean;
     tempRoot?: string;
     parsePowerShell?: PowerShellParser;
+    kbDirs?: string[];
   } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), "alt-secext-"));
@@ -53,6 +54,8 @@ function harness(
     isFullAccess: () => full,
     isReadOnly: () => readOnly,
     protectedDirs: [dataDir],
+    settingsFile: join(dataDir, "app-settings.json"),
+    getKbDirs: () => options.kbDirs ?? [],
     getCommandAllowlist: () => options.allowlist ?? [],
     allowWriteOnce: (path) => oncePaths.push(path),
     isSmartApproval: () => smart,
@@ -544,4 +547,33 @@ test("Ask: a file-tool write outside the folders asks like a shell write; Allow 
   assert.ok(h.writable.some((root) => root.path === elsewhere));
   await h.call("edit", { path: join(elsewhere, "a.md") });
   assert.equal(h.asked.length, 2, "the folder is the conversation's now");
+});
+
+test("the app settings file is asked about every time; the rest of the data folder stays refused", async () => {
+  const h = harness();
+  const settings = join(h.dataDir, "app-settings.json");
+  assert.equal(await h.call("edit", { path: settings }), undefined);
+  assert.ok(!h.asked[0].options.includes(APPROVAL_ALLOW_SESSION), "no conversation-wide pass");
+  assert.equal(await h.call("edit", { path: settings }), undefined);
+  assert.equal(h.asked.length, 2, "never remembered for the conversation");
+  assert.equal(await h.call("bash", { command: `echo '{}' > ${settings}` }), undefined);
+  assert.equal(h.asked.length, 3);
+  h.answer(undefined);
+  assert.equal((await h.call("write", { path: settings, content: "{}" }))?.block, true);
+  const other = await h.call("write", { path: join(h.dataDir, "sessions", "other.json"), content: "{}" });
+  assert.match(other?.reason ?? "", /Alt Theory's own records/);
+});
+
+test("one approval for the conversation opens the whole knowledge base", async () => {
+  const kb = join(mkdtempSync(join(tmpdir(), "alt-secext-kb-")), "my-kb");
+  mkdirSync(join(kb, "notes"), { recursive: true });
+  mkdirSync(join(kb, "data"), { recursive: true });
+  const h = harness({ kbDirs: [kb] });
+  h.answer(APPROVAL_ALLOW_SESSION);
+  assert.equal(await h.call("write", { path: join(kb, "notes", "a.md"), content: "x" }), undefined);
+  assert.equal(h.asked.length, 1);
+  assert.match(h.asked[0].title + JSON.stringify(h.asked[0]), /my-kb/);
+  assert.equal(await h.call("write", { path: join(kb, "data", "b.json"), content: "{}" }), undefined);
+  assert.equal(await h.call("edit", { path: join(kb, "at-kb-index.tsv") }), undefined);
+  assert.equal(h.asked.length, 1, "the rest of the knowledge base no longer asks");
 });

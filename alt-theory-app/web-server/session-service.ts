@@ -48,7 +48,8 @@ import type { AgentAssetPaths } from "../core/agent-assets.js";
 import {
   isKnownKbDomain,
   listRolePresets,
-  resolveKbDirForDomain,
+  listKbLibraries,
+  selectedKbLibraries,
   resolveRolePresetSlug,
   resolveSoulSlug,
 } from "./asset-registry.js";
@@ -3282,7 +3283,13 @@ export class SessionService implements AgentTeamBridge {
       rolePresetSlug: input.selectors.rolePresetSlug,
       customInstructionPath: instruction?.path ?? null,
       customInstructionRef: instruction?.ref ?? null,
-      kbDir: resolveKbDirForDomain(this.config.kbDir, input.selectors.kbDomain),
+      kbDir: this.config.kbDir,
+      kbLibraries: selectedKbLibraries(this.config.kbDir, input.selectors.kbDomain),
+      kbReadableDirs: () => listKbLibraries(this.config.kbDir).map((library) => library.dir),
+      kbEditableDirs: () =>
+        listKbLibraries(this.config.kbDir)
+          .filter((library) => library.source === "added")
+          .map((library) => library.dir),
       kbDomain: input.selectors.kbDomain,
       piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
       ...input.modelArgs,

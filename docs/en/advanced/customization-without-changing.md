@@ -18,7 +18,7 @@ The soul is the identity layer itself: worldview and principles. Like roles, it 
 
 ## Knowledge bases
 
-To add a domain, create a folder of markdown material under the app's knowledge-base assets. It then appears in the knowledge-base picker. Useful knowledge bases are curated, not dumped. The agent consults them by judgment; signal-to-noise decides whether consultation helps. Domain metadata can state scope and intended use so the agent applies it well.
+A knowledge base is a folder holding `at-kb.md`: its `name` and `description` are what a conversation sees, the way a skill's description is. Its `at-kb-index.tsv` lists the paper summaries, and the agent reads it when it decides to use the knowledge base. Add a location in Settings, or ask the agent to; one location can hold several knowledge bases, and a location without any `at-kb.md` counts as one. The bundled knowledge-base skill writes the summaries, the card, and the index. Useful knowledge bases are curated, not dumped. When the index no longer matches the summary files, the agent says so the next time it uses that knowledge base.
 
 ## Custom instructions
 
