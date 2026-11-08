@@ -3,11 +3,12 @@ import { test } from "node:test";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { checkKbIndex, formatKbPrompt } from "../core/kb-metadata.js";
 import {
   listKbDomains,
   listRolePresets,
-  resolveKbDirForDomain,
   resolveRolePresetSlug,
+  selectedKbLibraries,
   setExtraAssetDirs,
 } from "./asset-registry.js";
 
@@ -20,6 +21,7 @@ function makeFixture() {
   mkdirSync(bundledRoles, { recursive: true });
   mkdirSync(userRoles, { recursive: true });
   mkdirSync(join(bundledKb, "ep-core"), { recursive: true });
+  writeFileSync(join(bundledKb, "ep-core", "at-kb.md"), "---\nname: EP\n---\n");
   mkdirSync(join(extraKb, "my-notes"), { recursive: true });
   writeFileSync(join(bundledRoles, "role-writer.md"), "# writer");
   writeFileSync(join(userRoles, "role-editor.md"), "# editor");
@@ -48,11 +50,14 @@ test("user-added role and KB locations merge behind the bundled ones", () => {
     );
     assert.equal(resolveRolePresetSlug(fx.bundledRoles, "../evil"), null);
 
+    // An added location without any card is itself one knowledge base.
     const domains = listKbDomains(fx.bundledKb).map((d) => d.slug);
-    assert.deepEqual(domains.sort(), ["ep-core", "my-notes"]);
-    assert.equal(resolveKbDirForDomain(fx.bundledKb, "ep-core"), fx.bundledKb);
-    assert.equal(resolveKbDirForDomain(fx.bundledKb, "my-notes"), fx.extraKb);
-    assert.equal(resolveKbDirForDomain(fx.bundledKb, "all"), fx.bundledKb);
+    assert.deepEqual(domains.sort(), ["ep-core", "extra-kb"]);
+    const dirs = (domain: string) => selectedKbLibraries(fx.bundledKb, domain).map((l) => l.dir);
+    assert.deepEqual(dirs("ep-core"), [join(fx.bundledKb, "ep-core")]);
+    assert.deepEqual(dirs("extra-kb"), [fx.extraKb]);
+    assert.deepEqual(dirs("all").sort(), [join(fx.bundledKb, "ep-core"), fx.extraKb].sort());
+    assert.deepEqual(dirs("none"), []);
   } finally {
     setExtraAssetDirs({ roleDirs: [], kbDirs: [] });
   }
@@ -86,24 +91,43 @@ test("nested role files are ordinary assets, top level winning a slug", () => {
   );
 });
 
-test("a KB domain is the directory holding the Markdown, however deep", () => {
+test("a knowledge base is a folder with at-kb.md, found at any depth", () => {
   const root = mkdtempSync(join(tmpdir(), "alt-assets-kb-"));
   const kb = join(root, "kb");
   mkdirSync(join(kb, "ep-core"), { recursive: true });
   mkdirSync(join(kb, "experimental", "ep-core-v0-2-0"), { recursive: true });
-  writeFileSync(join(kb, "CHANGELOG.md"), "# not a domain");
+  mkdirSync(join(kb, "projects", "urban", "sources"), { recursive: true });
+  writeFileSync(join(kb, "CHANGELOG.md"), "# not a library");
+  writeFileSync(join(kb, "ep-core", "at-kb.md"), "---\nname: EP Core\ndescription: EP theories.\n---\n");
   writeFileSync(join(kb, "ep-core", "theory.md"), "# material");
-  writeFileSync(join(kb, "ep-core", "more-material.md"), "# material");
-  writeFileSync(join(kb, "experimental", "ep-core-v0-2-0", "draft.md"), "# d");
+  writeFileSync(join(kb, "experimental", "ep-core-v0-2-0", "draft.md"), "# no card");
+  writeFileSync(join(kb, "projects", "urban", "at-kb.md"), "---\nname: Urban\n---\n");
+  writeFileSync(join(kb, "projects", "urban", "sources", "a.md"), "# entry");
 
   setExtraAssetDirs({ roleDirs: [], kbDirs: [] });
-  const domains = listKbDomains(kb).map((d) => d.slug);
-  // The two files inside ep-core are its material, not two more domains, and
-  // the versioned duplicate of the shipped domain stays hidden.
-  assert.deepEqual(domains, ["ep-core"]);
-  // A nested domain reports the directory it actually sits in.
-  assert.equal(
-    resolveKbDirForDomain(kb, "ep-core-v0-2-0"),
-    join(kb, "experimental"),
-  );
+  assert.deepEqual(listKbDomains(kb), [
+    { slug: "ep-core", displayName: "EP Core", description: "EP theories." },
+    { slug: "urban", displayName: "Urban" },
+  ]);
+});
+
+test("the index check compares listed files with entry files only", () => {
+  const lib = mkdtempSync(join(tmpdir(), "alt-kb-index-"));
+  mkdirSync(join(lib, "sub"));
+  writeFileSync(join(lib, "at-kb.md"), "---\nname: Lib\n---\n");
+  writeFileSync(join(lib, "a.md"), "# a");
+  writeFileSync(join(lib, "sub", "b.md"), "# b");
+  const library = { slug: "lib", name: "Lib", dir: lib };
+  assert.equal(checkKbIndex(lib), "no-index");
+  assert.match(formatKbPrompt([library], null), /has no at-kb-index\.tsv yet/);
+
+  // A Windows-written index may use backslashes or a leading ./
+  writeFileSync(join(lib, "at-kb-index.tsv"), "file\ttitle\n./a.md\tA\nsub\\b.md\tB\n");
+  assert.deepEqual(checkKbIndex(lib), { unlisted: 0, missing: 0 });
+  assert.doesNotMatch(formatKbPrompt([library], null), /index does not match/);
+
+  writeFileSync(join(lib, "c.md"), "# c");
+  writeFileSync(join(lib, "at-kb-index.tsv"), "file\ttitle\na.md\tA\ngone.md\tG\n");
+  assert.deepEqual(checkKbIndex(lib), { unlisted: 2, missing: 1 });
+  assert.match(formatKbPrompt([library], "/data/app-settings.json"), /2 not listed, 1 listed but absent[\s\S]*extraKbDirs/);
 });

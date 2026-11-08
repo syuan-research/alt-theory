@@ -12,7 +12,7 @@ import { CtxPicker } from "@/components/conversation/CtxPicker";
 import { QueuedCards } from "@/components/conversation/QueuedCards";
 import { ContinueButton, hasRunNotes, NoticeLine, RunStatusSlot } from "@/components/conversation/RunNotes";
 import { SlashPalette, SkillDraftChip, useSlashCommands, useSlashPalette } from "@/components/conversation/SlashPalette";
-import { DEFAULT_KB_DOMAIN, KB_OFF_VALUE } from "@/lib/constants";
+import { KB_OFF_VALUE } from "@/lib/constants";
 import { hasNativeBridge, pathsFromDroppedFiles } from "@/lib/native";
 import { stageAttachmentFile } from "@/api/session-files";
 import { WORKSPACE_PATH_MIME } from "@/lib/workspace";
@@ -181,8 +181,8 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const kbDomain = conv.selectors.currentDomain;
   const kbOff = kbDomain === KB_OFF_VALUE;
   const kbLabel = kbOff
-    ? "No knowledge base"
-    : (app.discovery?.kbDomains.find(
+    ? t("No knowledge base")
+    : t(app.discovery?.kbDomains.find(
         (k) => k.slug === kbDomain,
       )?.displayName ?? "Knowledge base");
 
@@ -431,16 +431,8 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             disabled={altControlsDisabled}
             pending={conv.pendingChanges.kbDomain !== undefined}
           >
-            <button
-              type="button"
-              className="mi"
-              onClick={() => (conv.switchKb(DEFAULT_KB_DOMAIN), setMenu(null))}
-            >
-              <span>{t("EP knowledge base")}</span>
-              {!kbOff ? <i className="ph ph-check check" /> : null}
-            </button>
             {(app.discovery?.kbDomains ?? [])
-              .filter((k) => k.slug !== DEFAULT_KB_DOMAIN)
+              .filter((k) => k.slug !== KB_OFF_VALUE)
               .map((k) => (
                 <button
                   type="button"
@@ -448,7 +440,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   className="mi"
                   onClick={() => (conv.switchKb(k.slug), setMenu(null))}
                 >
-                  <span>{k.displayName}</span>
+                  <span>{t(k.displayName)}</span>
                   {kbDomain === k.slug ? (
                     <i className="ph ph-check check" />
                   ) : null}

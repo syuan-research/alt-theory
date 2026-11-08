@@ -25,6 +25,9 @@ for example `/skill:at-adaptive-aligning`.
 - doc-convert (Work) converts documents (docx, pptx, xlsx, pdf to
   markdown) and produces new document files. Converted copies get a
   `_converted` suffix; originals are untouched.
+- knowledge-base summarizes a paper (or other material) faithfully into
+  one structured summary, delivered in chat, beside the original, or into a
+  knowledge base together with its card and index.
 - precise-edit does restrained editing for near-final text: accuracy
   without restructuring, your choices preserved, placeholders never filled
   uninvited.

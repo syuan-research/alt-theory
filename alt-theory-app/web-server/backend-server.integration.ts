@@ -444,6 +444,8 @@ test("asset registry lists safe sorted slugs and resolves known assets", () => {
   const kb = join(root, "kb");
   mkdirSync(join(kb, "urban"), { recursive: true });
   mkdirSync(join(kb, ".hidden"), { recursive: true });
+  writeFileSync(join(kb, "urban", "at-kb.md"), "---\nname: Urban\n---\n", "utf-8");
+  writeFileSync(join(kb, ".hidden", "at-kb.md"), "---\nname: Hidden\n---\n", "utf-8");
   mkdirSync(rolePresets, { recursive: true });
   mkdirSync(souls, { recursive: true });
   writeFileSync(join(rolePresets, "zeta_role.md"), "z", "utf-8");
@@ -1962,6 +1964,7 @@ test("REST discovery lists assets; a connection holds no draft and greets with t
   const skills = join(root, "skills");
   const appContextPath = join(root, "ALTTHEORY.md");
   mkdirSync(join(kb, "ep-core"), { recursive: true });
+  writeFileSync(join(kb, "ep-core", "at-kb.md"), "# card without frontmatter", "utf-8");
   mkdirSync(rolePresets, { recursive: true });
   mkdirSync(souls, { recursive: true });
   mkdirSync(instructions, { recursive: true });
@@ -2046,7 +2049,7 @@ test("REST discovery lists assets; a connection holds no draft and greets with t
     const domainsResponse = await fetch(`${baseUrl}/api/kb-domains`);
     assert.deepEqual(await domainsResponse.json(), {
       domains: [
-        { slug: "none", displayName: "Off" },
+        { slug: "none", displayName: "No knowledge base" },
         { slug: "all", displayName: "All" },
         { slug: "ep-core", displayName: "Ep Core" },
       ],

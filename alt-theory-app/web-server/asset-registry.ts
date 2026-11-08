@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from "fs";
-import { basename, dirname, extname, join, resolve } from "path";
-import { loadKbDomainMetadata } from "../core/kb-metadata.js";
+import { basename, extname, join, resolve } from "path";
+import { KB_CARD_FILE, KB_DISABLED_DOMAIN, readKbCard, type KbLibrary } from "../core/kb-metadata.js";
 
 /**
  * Every asset root is scanned recursively and nothing here knows what a
@@ -106,95 +106,61 @@ export function listSouls(
 }
 
 /**
- * A KB domain is a directory holding the Markdown itself — the files inside it
- * are its material, not separate assets. Directories that only hold other
- * directories are grouping, so the scan keeps descending through them.
+ * A knowledge base is a folder holding `at-kb.md`, found anywhere under a
+ * location. A user-added location with no card anywhere is itself one
+ * knowledge base (a plain folder of notes still works; the agent can add the
+ * card later).
  */
-function scanKbDomainDirs(root: string): string[] {
-  if (!existsSync(root)) return [];
-  return readdirSync(root, { withFileTypes: true })
-    .filter(
-      (entry) =>
-        entry.isDirectory() &&
-        !entry.name.startsWith(".") &&
-        entry.name !== "metadata"
-    )
+// ponytail: rescanned on every root check (the readable roots are live); a
+// card deeper than 4 levels under a location is not found. Cache if slow.
+function findKbLibraryDirs(dir: string, depth = 0): string[] {
+  if (existsSync(join(dir, KB_CARD_FILE))) return [dir];
+  if (depth >= 4) return [];
+  return readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith(".") && entry.name !== "node_modules")
     .sort((left, right) => left.name.localeCompare(right.name))
-    .flatMap((entry) => {
-      const dir = join(root, entry.name);
-      if (dirHoldsMarkdown(dir)) return [dir];
-      // Only a directory that groups other domains is not one itself; an
-      // empty domain is still the domain the user made.
-      const nested = scanKbDomainDirs(dir);
-      return nested.length ? nested : [dir];
-    });
+    .flatMap((entry) => findKbLibraryDirs(join(dir, entry.name), depth + 1));
 }
 
-function dirHoldsMarkdown(dir: string): boolean {
-  return readdirSync(dir, { withFileTypes: true }).some(
-    (entry) =>
-      entry.isFile() &&
-      !entry.name.startsWith(".") &&
-      extname(entry.name).toLowerCase() === ".md"
-  );
-}
-
-function listKbDomainsInDir(kbDir: string): DiscoveredAsset[] {
-  const root = resolve(kbDir);
-  const metadataBySlug = new Map(
-    loadKbDomainMetadata(root).map((domain) => [domain.slug, domain])
-  );
-
-  return scanKbDomainDirs(root)
-    .map((dir) => basename(dir))
-    .sort((left, right) => left.localeCompare(right))
-    .map((slug) => {
-      const metadata = metadataBySlug.get(slug);
-      return {
+/** Every knowledge base, bundled first; a slug already taken keeps its first owner. */
+export function listKbLibraries(kbDir: string): KbLibrary[] {
+  const seen = new Set<string>();
+  const libraries: KbLibrary[] = [];
+  for (const [index, root] of [resolve(kbDir), ...extraKbDirs].entries()) {
+    if (!existsSync(root)) continue;
+    const found = findKbLibraryDirs(root);
+    for (const dir of found.length || index === 0 ? found : [root]) {
+      const slug = basename(dir);
+      if (seen.has(slug)) continue;
+      seen.add(slug);
+      const card = readKbCard(dir);
+      libraries.push({
         slug,
-        displayName: metadata?.displayName ?? displayName(slug),
-        ...(metadata?.shortLabel ? { shortLabel: metadata.shortLabel } : {}),
-        ...(metadata?.userLabel ? { userLabel: metadata.userLabel } : {}),
-        ...(metadata?.description ? { description: metadata.description } : {}),
-      };
-    });
+        name: card.name ?? displayName(slug),
+        ...(card.description ? { description: card.description } : {}),
+        dir,
+        ...(index === 0 ? {} : { source: "added" as const }),
+      });
+    }
+  }
+  return libraries;
 }
 
 export function listKbDomains(kbDir: string): DiscoveredAsset[] {
-  const seen = new Set<string>();
-  const merged: DiscoveredAsset[] = [];
-  const dirs = [resolve(kbDir), ...extraKbDirs];
-  for (const [index, dir] of dirs.entries()) {
-    for (const asset of listKbDomainsInDir(dir)) {
-      // The historical EP tree keeps its versioned directory name; the product
-      // domain is ep-core, and listing both would offer the same knowledge twice.
-      if (asset.slug === "ep-core-v0-2-0" && seen.has("ep-core")) continue;
-      if (seen.has(asset.slug)) continue;
-      seen.add(asset.slug);
-      merged.push(index === 0 ? asset : { ...asset, source: "added" });
-    }
-  }
-  return merged;
+  return listKbLibraries(kbDir).map(({ slug, name, description, source }) => ({
+    slug,
+    displayName: name,
+    ...(description ? { description } : {}),
+    ...(source ? { source } : {}),
+  }));
 }
 
-/**
- * The directory a KB domain sits directly inside — sessions carry one kbDir and
- * join the domain onto it, so a domain nested deeper (or in a user-added
- * location) has to report its own parent.
- */
-export function resolveKbDirForDomain(
-  kbDir: string,
-  domain: string | null | undefined
-): string {
-  const primary = resolve(kbDir);
-  if (!domain || domain === "all") return primary;
-  for (const dir of [primary, ...extraKbDirs]) {
-    const match = scanKbDomainDirs(dir).find(
-      (candidate) => basename(candidate) === domain
-    );
-    if (match) return dirname(match);
-  }
-  return primary;
+/** The knowledge bases a selection reads: one, all, or none. */
+export function selectedKbLibraries(kbDir: string, domain: string | null | undefined): KbLibrary[] {
+  if (domain === KB_DISABLED_DOMAIN) return [];
+  const libraries = listKbLibraries(kbDir);
+  if (!domain || domain === "all") return libraries;
+  return libraries.filter((library) => library.slug === domain);
 }
 
 export function resolveRolePresetSlug(

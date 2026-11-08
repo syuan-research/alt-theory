@@ -1045,8 +1045,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     res.json({ souls: listSouls(soulDir, legacySoulPath) });
   });
   app.get("/api/kb-domains", (_req, res) => {
+    // Read live: the agent may have added a location to the settings file.
+    applyExtraAssetDirs();
     const selectableDomains = [
-      { slug: KB_DISABLED_DOMAIN, displayName: "Off" },
+      { slug: KB_DISABLED_DOMAIN, displayName: "No knowledge base" },
       { slug: "all", displayName: "All" },
       ...listKbDomains(kbDir),
     ].filter(

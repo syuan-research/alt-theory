@@ -54,6 +54,7 @@ import {
 import { createModelRemindersExtension } from "./model-reminders.js";
 import { createWebAccessToolDefinitions } from "./web-access-tools.js";
 import {
+  APP_SETTINGS_FILE,
   writeJsonAtomic,
   type SessionDirectories,
 } from "./data-dir.js";
@@ -63,11 +64,7 @@ import {
   readRequiredTextAsset,
   type LoadedAssetFileRef,
 } from "./agent-assets.js";
-import {
-  findKbDomainMetadata,
-  formatKbMetadataPrompt,
-  type KbDomainMetadata,
-} from "./kb-metadata.js";
+import { formatKbPrompt, KB_DISABLED_DOMAIN, type KbLibrary } from "./kb-metadata.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -121,7 +118,7 @@ export interface AssemblyManifest {
     domain: string;
     domainPath: string | null;
     domainExists: boolean;
-    metadata: KbDomainMetadata | null;
+    libraries: Array<{ slug: string; name: string; dir: string }>;
   };
   sessionCwd: string;
   /**
@@ -163,7 +160,7 @@ export type SmartApprovalSetting = boolean | "strict";
 export function toAltMode(value: unknown): AltMode {
   return value === "read-only" ? "read-only" : "work";
 }
-export const KB_DISABLED_DOMAIN = "none";
+export { KB_DISABLED_DOMAIN } from "./kb-metadata.js";
 
 export interface AltTheoryConfig extends SessionDirectories {
   /** Application/session context loaded into the system prompt */
@@ -184,6 +181,12 @@ export interface AltTheoryConfig extends SessionDirectories {
   kbDir: string;
   /** Active KB domain recorded in the session manifest */
   kbDomain?: string;
+  /** The knowledge bases this conversation's prompt names (empty when off). */
+  kbLibraries?: KbLibrary[];
+  /** Every registered knowledge base folder, read live: all readable without asking. */
+  kbReadableDirs?: () => string[];
+  /** User-added knowledge base folders, read live: one approval opens each for the conversation. */
+  kbEditableDirs?: () => string[];
   /** Pi adapter prompt templates */
   piPromptTemplatesDir?: string;
   /** Optional custom Pi models.json path */
@@ -500,24 +503,13 @@ async function createAltTheorySessionWithManager(
     altSections.push(`## Role\n${rolePresetContent}`);
   }
   const kbDomain = config.kbDomain ?? "all";
-  const kbEnabled = kbDomain !== KB_DISABLED_DOMAIN;
-  const kbMetadata =
-    kbEnabled && kbDomain !== "all"
-      ? findKbDomainMetadata(resolvedKbDir, kbDomain)
-      : null;
-  const kbMetadataPrompt = formatKbMetadataPrompt(kbMetadata);
-  if (kbEnabled) {
-    altSections.push(
-      `## Knowledge Base\nYour knowledge base is at: ${resolvedKbDir}\nConsult it first for relevant domain knowledge.`
-    );
-    if (kbMetadataPrompt) {
-      altSections.push(`## Knowledge Base Metadata\n${kbMetadataPrompt}`);
-    }
-  } else {
-    altSections.push(
-      "## Knowledge Base\nKnowledge-base folder retrieval is disabled for this session. You may still read user workspace files when requested."
-    );
-  }
+  const kbLibraries = kbDomain === KB_DISABLED_DOMAIN ? [] : config.kbLibraries ?? [];
+  altSections.push(
+    `## Knowledge Base\n${formatKbPrompt(
+      kbLibraries,
+      config.dataDir ? resolve(config.dataDir, APP_SETTINGS_FILE) : null,
+    )}`
+  );
   altSections.push(
     ["## Skill Precedence", skillPrecedenceGuidance(config.skillPrecedence)].join("\n")
   );
@@ -584,7 +576,10 @@ async function createAltTheorySessionWithManager(
       cwd,
       approvedDirs: [...approvedWritableRoots],
       kbDir: resolvedKbDir,
-      trustedReadRoots: config.trustedReadRoots ?? [],
+      trustedReadRoots: [
+        ...(config.trustedReadRoots ?? []),
+        ...(config.kbReadableDirs?.() ?? kbLibraries.map((library) => library.dir)),
+      ],
       skillsDir: resolvedSkillsDir,
       globalFolders: folderPolicy?.globalFolders ?? [],
       projectSecondaryDirs: folderPolicy?.projectSecondaryDirs ?? [],
@@ -714,6 +709,8 @@ async function createAltTheorySessionWithManager(
         recordAudit,
         isFullAccess: isFullAccessEffective,
         protectedDirs: config.dataDir ? [resolve(config.dataDir)] : [],
+        settingsFile: config.dataDir ? resolve(config.dataDir, APP_SETTINGS_FILE) : undefined,
+        getKbDirs: config.kbEditableDirs,
         getCommandAllowlist: config.readCommandAllowlist,
         isSmartApproval: isSmartApprovalEffective,
         isStrictSmartApproval: () => runtimeState.smartApproval === "strict",
@@ -922,14 +919,10 @@ async function createAltTheorySessionWithManager(
       domainPath:
         kbDomain === "all" || kbDomain === KB_DISABLED_DOMAIN
           ? null
-          : resolve(resolvedKbDir, kbDomain),
+          : kbLibraries[0]?.dir ?? null,
       domainExists:
-        kbDomain === "all"
-          ? true
-          : kbDomain === KB_DISABLED_DOMAIN
-            ? false
-            : existsSync(resolve(resolvedKbDir, kbDomain)),
-      metadata: kbMetadata,
+        kbDomain === KB_DISABLED_DOMAIN ? false : kbDomain === "all" || kbLibraries.length > 0,
+      libraries: kbLibraries.map(({ slug, name, dir }) => ({ slug, name, dir })),
     },
     sessionCwd: cwd,
     workspace: {

@@ -575,7 +575,7 @@ function registerPreparedImport(
         domain: "all",
         domainPath: null,
         domainExists: true,
-        metadata: null,
+        libraries: [],
       },
       sessionCwd: workspacePrimaryDir,
       workspace: {

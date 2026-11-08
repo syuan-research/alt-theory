@@ -1843,7 +1843,7 @@ function RoleKbPanel() {
 
   const roles = app.discovery?.rolePresets ?? [];
   const kbDomains = (app.discovery?.kbDomains ?? []).filter(
-    (d) => d.slug !== "off" && d.slug !== "all",
+    (d) => d.slug !== "none" && d.slug !== "all",
   );
 
   const addRoleFile = () => {

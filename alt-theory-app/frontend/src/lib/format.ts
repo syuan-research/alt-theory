@@ -3,7 +3,7 @@ import { t } from "@/i18n";
 import { KB_OFF_VALUE } from "./constants";
 
 export function displayKb(value: string | null | undefined): string {
-  if (value === KB_OFF_VALUE) return t("Off");
+  if (value === KB_OFF_VALUE) return t("No knowledge base");
   return value || "—";
 }
 

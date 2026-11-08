@@ -182,3 +182,6 @@ export function writeJsonAtomic(path: string, value: unknown): void {
     rmSync(tempPath, { force: true });
   }
 }
+
+/** The app settings file, inside the data folder. */
+export const APP_SETTINGS_FILE = "app-settings.json";

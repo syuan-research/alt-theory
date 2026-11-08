@@ -25,7 +25,7 @@ import { useComposerRow } from "@/components/conversation/useComposerRow";
 import { QueuedCards } from "@/components/conversation/QueuedCards";
 import { ContinueButton, hasRunNotes, NoticeLine, RunStatusSlot } from "@/components/conversation/RunNotes";
 import { SlashPalette, SkillDraftChip, useSlashCommands, useSlashPalette } from "@/components/conversation/SlashPalette";
-import { DEFAULT_KB_DOMAIN, KB_OFF_VALUE } from "@/lib/constants";
+import { KB_OFF_VALUE } from "@/lib/constants";
 import { stageAttachmentFile } from "@/api/session-files";
 
 /**
@@ -185,8 +185,8 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
     : t("No role");
   const kbLabel = kbOff
     ? t("No knowledge base")
-    : (app.discovery?.kbDomains.find((domain) => domain.slug === kbDomain)?.displayName ??
-      t("Knowledge base"));
+    : t(app.discovery?.kbDomains.find((domain) => domain.slug === kbDomain)?.displayName ??
+      "Knowledge base");
   const attachCopies = (files: File[]) => {
     for (const file of files) {
       void stageAttachmentFile(file)
@@ -345,16 +345,8 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
           disabled={altControlsDisabled}
           pending={pendingChildKb}
         >
-          <button
-            type="button"
-            className="mi"
-            onClick={() => (conversation.switchKb(DEFAULT_KB_DOMAIN), setMenu(null))}
-          >
-            <span>{t("EP knowledge base")}</span>
-            {!kbOff ? <i className="ph ph-check check" /> : null}
-          </button>
           {(app.discovery?.kbDomains ?? [])
-            .filter((domain) => domain.slug !== DEFAULT_KB_DOMAIN)
+            .filter((domain) => domain.slug !== KB_OFF_VALUE)
             .map((domain) => (
               <button
                 type="button"
@@ -362,7 +354,7 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
                 className="mi"
                 onClick={() => (conversation.switchKb(domain.slug), setMenu(null))}
               >
-                <span>{domain.displayName}</span>
+                <span>{t(domain.displayName)}</span>
                 {kbDomain === domain.slug ? <i className="ph ph-check check" /> : null}
               </button>
             ))}

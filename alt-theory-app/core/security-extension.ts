@@ -121,6 +121,17 @@ export interface SecurityExtensionOptions {
    * app's records.
    */
   protectedDirs?: string[];
+  /**
+   * The app settings file inside the data folder: not refused like the
+   * app's other records — a change to it is put to the user (or the
+   * reviewer) every time, approved for this file only, never its folder.
+   */
+  settingsFile?: string;
+  /**
+   * User-added knowledge-base folders, read live: approving a write in one
+   * "for this conversation" opens the whole knowledge base, not one subfolder.
+   */
+  getKbDirs?: () => string[];
   /** The user's command-prefix allowlist, read live (app settings). */
   getCommandAllowlist?: () => string[];
   /** Smart approval: the reviewer model answers where Ask would ask the user. */
@@ -260,6 +271,8 @@ export function createSecurityExtension(
     recordAudit,
     isFullAccess,
     protectedDirs = [],
+    settingsFile,
+    getKbDirs,
     getCommandAllowlist,
     isSmartApproval,
     isStrictSmartApproval,
@@ -392,6 +405,10 @@ export function createSecurityExtension(
         review(rule, [{ reason: null, key }], title);
       /** A write outside the roots: "Allow for this conversation" makes its folder writable. */
       const outsideWrite = (target: string): Need => {
+        const kb = getKbDirs?.().find((dir) => isPathInside(dir, target));
+        if (kb) {
+          return { reason: `Edit knowledge base: ${summarize(kb)}`, key: `write:${canonicalPathKey(kb)}`, folder: kb };
+        }
         const folder = folderOf(target);
         return tooBroadToGrant(folder)
           ? { reason: `Write outside your folders: ${summarize(folder)}`, key: null }
@@ -404,7 +421,11 @@ export function createSecurityExtension(
       // Only the writable roots that live inside the data folder (this
       // conversation's workspace) are exempt: a project root that happens
       // to contain the data folder does not open it up.
+      const isSettingsFile = (target: string) =>
+        settingsFile !== undefined && canonicalPathKey(target) === canonicalPathKey(settingsFile);
+      const settingsNeed: Need = { reason: "Changes Alt Theory settings", key: null, cacheable: false };
       const inDataFolder = (target: string) =>
+        !isSettingsFile(target) &&
         protectedDirs.some((dir) => isPathInside(dir, target)) &&
         !getWritableRoots().some(
           (root) =>
@@ -482,6 +503,7 @@ export function createSecurityExtension(
         }
 
         const needs: Need[] = [];
+        if (writes.some(isSettingsFile)) needs.push(settingsNeed);
         if (evidence.status === "aborted") needs.push({ reason: "Too complex to check", key: null });
         // Guardrail ②: work-discarding git is looked at every time, one call at a time.
         const discarding = destructiveGit(evidence);
@@ -566,6 +588,12 @@ export function createSecurityExtension(
           return blocked("data_folder", `Blocked — ${summarize(resolved)} belongs to Alt Theory's own records, outside this conversation's workspace.`);
         }
         const verb = event.toolName === "edit" ? "Edit" : "Write";
+        if (isSettingsFile(resolved)) {
+          const outcome = await review("app_settings", [settingsNeed], `${verb} Alt Theory settings: ${summarize(resolved)}`);
+          if (outcome) return outcome;
+          if (event.toolName === "write") allowWriteOnce?.(canonicalPathKey(resolved));
+          return undefined;
+        }
         if (isReadOnly?.()) {
           // Outside the roots, name the physical target (a symlinked parent
           // cannot make it look like a workspace path) and pass exactly it.

@@ -8,7 +8,7 @@
 import { randomUUID } from "crypto";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
-import { writeJsonAtomic } from "../core/data-dir.js";
+import { APP_SETTINGS_FILE, writeJsonAtomic } from "../core/data-dir.js";
 import { samePath } from "../core/path-verdict.js";
 import type { AltMode, RuntimeMode } from "../core/alt-theory-core.js";
 import { THINKING_LEVELS } from "./subagent-config.js";
@@ -186,7 +186,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 function settingsPath(dataDir: string): string {
-  return join(dataDir, "app-settings.json");
+  return join(dataDir, APP_SETTINGS_FILE);
 }
 
 /**
