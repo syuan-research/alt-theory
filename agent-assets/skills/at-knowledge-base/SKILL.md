@@ -1,10 +1,10 @@
 ---
 name: at-knowledge-base
 description: Use when the user wants a paper or other material summarized faithfully — in chat, beside the original, or wherever they say — or added to an Alt Theory knowledge base, including its at-kb.md card and at-kb-index.tsv. Explicit user instructions override this skill's defaults.
-version: 0.4.4
+version: 0.4.5
 ---
 
-# Paper summaries for knowledge bases (0.4.4)
+# Paper summaries for knowledge bases (0.4.5)
 
 ## Routes
 
@@ -295,12 +295,10 @@ proposed; borrowed ones carry their source's name.
 
 ## Examples
 
-Read the example summaries in `examples/` (next to this file) before processing any
-paper. They remain the reference for writing craft and granularity:
-definition-first writing, one idea per section, how dense a summary is.
-Their two-file structure, theory-only block list, `===SECTION===`
-delimiters, and standalone scenario blocks are outdated — do not reproduce
-them.
+Before writing, read `examples/README.md` — it lists the example summaries
+by paper type — then read the one or two closest to this paper, no more.
+They show the writing craft and granularity: definition-first writing, one
+idea per section, how dense a summary is.
 
 ## Knowledge base
 
