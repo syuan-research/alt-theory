@@ -116,6 +116,10 @@ agents mistake them for in-progress work.
 ### Current branch status
 
 - `main` — active product line.
+- `kb-libraries-and-skill` — active, not merged: knowledge bases as `at-kb.md`
+  folders (card resident, agent-written index, approval for settings and
+  library writes) and the bundled `at-knowledge-base` skill; Owner testing
+  on Windows (2026-11-08).
 - `work/artifact-preview` — active isolated image/HTML preview work; not merged
   or approved for a release. Rebase onto main before Owner trial bundles.
 - `archive/wp-right-pane-sort` — merged into main (Changes, Files and
