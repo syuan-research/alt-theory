@@ -1,10 +1,12 @@
 ---
 name: at-knowledge-base
 description: Use when the user wants a paper or other material summarized faithfully — in chat, beside the original, or wherever they say — or added to an Alt Theory knowledge base, including its at-kb.md card and at-kb-index.tsv. Explicit user instructions override this skill's defaults.
-version: 0.4.5
+version: 0.4.6
+status: baseline
+supersedes: ../v0.4.5/SKILL.md
 ---
 
-# Paper summaries for knowledge bases (0.4.5)
+# Paper summaries for knowledge bases (0.4.6)
 
 ## Routes
 
@@ -101,10 +103,13 @@ belongs to a named one.
 Tags name the knowledge categories the paper contributes. A paper earns a
 category when its contribution of that kind has the substance of an
 ordinary paper whose main contribution is that kind; content that merely
-appears does not earn it. Typical cases, as heuristics:
+appears does not earn it. A theory or method is the paper's own when the
+paper proposes it, or when experts in the paper's field trace it to this
+paper. Typical cases, as heuristics:
 
 - An empirical study that uses or tests existing theory is evidence; one
-  that develops a theory of its own also earns theory.
+  that tests a theory proposed by itself or traced to it by experts in the
+  paper's field also earns theory.
 - A method paper's validation of its own method belongs to method; its
   findings also earn evidence when, apart from the method, they would be
   the main result of an ordinary empirical paper.
@@ -160,7 +165,8 @@ framework named in the title.
    Each category beyond the first adds up to 200 (at most two), to the
    sections that carry it. A whole book (not a chapter) stays within 2000.
    The count is the whole file. When a draft runs over, cut once, to
-   100–200 words under its limit.
+   100–200 words under its limit — a target for that one cut; any count
+   below the limit passes, no further cutting.
 6. **Self-check.** After finishing the summary, count its words
    (`wc -w <summary.md>`) and report the count.
 
@@ -288,6 +294,8 @@ proposed; borrowed ones carry their source's name.
   heading.
 - Parallel items (steps, needs, findings at the same level) are bulleted;
   argumentative connections stay in prose.
+- Paragraph size is chosen for readability: a paragraph that has grown
+  long is split, and its parallel parts become bullets.
 - Language: English.
 - Deep semantic parsing: do not just copy text out of the PDF; fix line
   breaks and hyphenation; make the text flow as natural Markdown. Clean
