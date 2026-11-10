@@ -18,6 +18,7 @@ import {
 import {
   APPROVAL_ALLOW_ONCE,
   APPROVAL_DENY,
+  approvalGrantCovers,
   type SecurityAuditEntry,
 } from "../core/security-extension.js";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
@@ -28,6 +29,7 @@ import {
   isNoModelPlaceholder,
   KB_DISABLED_DOMAIN,
   openAltTheorySession,
+  readConversationApprovals,
   toAltMode,
   type AssemblyManifest,
   type AltMode,
@@ -43,7 +45,7 @@ import {
   writeJsonAtomic,
   type SessionDirectories,
 } from "../core/data-dir.js";
-import { extname, join, resolve } from "path";
+import { dirname, extname, isAbsolute, join, resolve } from "path";
 import type { AgentAssetPaths } from "../core/agent-assets.js";
 import {
   isKnownKbDomain,
@@ -55,7 +57,8 @@ import {
 } from "./asset-registry.js";
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { clampPromptCacheKey } from "../core/prompt-cache-continuity.js";
-import { isPathInside, samePath } from "../core/path-verdict.js";
+import { canonicalPathKey, isPathInside, samePath, verdict } from "../core/path-verdict.js";
+import { type Root } from "../core/root-policy.js";
 import {
   ApprovalBridge,
   type ApprovalRequest,
@@ -86,6 +89,7 @@ import {
   buildTranscriptFromEntries,
   promoteToMainlineRecords,
   readSessionDetail,
+  readSessionAccessSummary,
   getSessionRootForRequest,
   stripSkillWrapper,
 } from "./session-store.js";
@@ -409,6 +413,7 @@ interface ManagedSession {
   approver: Approver;
   /** Full Access in force (dormant under read-only). */
   isFullAccessEffective: () => boolean;
+  getReadableRoots: () => Root[];
   /** Smart approval in force (not under Full or read-only). */
   isSmartApprovalEffective: () => boolean;
   /** Read-only in force, including a switch waiting for the turn to end. */
@@ -657,13 +662,14 @@ export class SessionService implements AgentTeamBridge {
     managed: ManagedSession,
     resolved: Model<any>,
     override: SessionModelOverride | null,
+    thinkingLevel = override?.thinkingLevel,
   ): Promise<void> {
     managed.thinking = resolveThinkingLevel(
       getSupportedThinkingLevels(resolved),
-      override?.thinkingLevel,
+      thinkingLevel,
     );
     await managed.session.setModel(resolved);
-    this.applyThinking(managed, override?.thinkingLevel, resolved);
+    this.applyThinking(managed, thinkingLevel, resolved);
     managed.manifest.provider = resolved.provider;
     managed.manifest.model = resolved.id;
     this.persistManifestModel(managed);
@@ -1125,7 +1131,7 @@ export class SessionService implements AgentTeamBridge {
         .filter(
           (child) =>
             child.subagentParentId &&
-            this.subagentIsActive(child.manifest.sessionId),
+            this.agentIsActive(child.manifest.sessionId),
         )
         .map((child) => this.subagentReplyTarget(child)),
     );
@@ -3001,6 +3007,32 @@ export class SessionService implements AgentTeamBridge {
     return this.requireSession(sessionId).manifest;
   }
 
+  classifyDroppedFiles(
+    paths: string[], sessionId: string | null, draftPrimaryDir: string | null, draftFullAccess: boolean,
+  ): Array<"reference" | "copy" | "blocked"> {
+    const managed = sessionId ? this.requireSession(sessionId) : null;
+    const readable: Root[] = managed ? managed.getReadableRoots() : [];
+    if (!managed) {
+      const folders = folderPolicyFor(readAppSettings(this.config.dataDir), draftPrimaryDir);
+      if (draftPrimaryDir) readable.push({ path: draftPrimaryDir, reason: "cwd" });
+      readable.push(
+        ...folders.projectSecondaryDirs.map((path): Root => ({ path, reason: "project-secondary" })),
+        ...folders.globalFolders.map(({ path }): Root => ({ path, reason: "global-list" })),
+      );
+    }
+    const full = managed?.isFullAccessEffective() ?? draftFullAccess;
+    const grants = new Set(managed?.getGrants());
+    return paths.map((path) => {
+      if (!isAbsolute(path)) return "copy";
+      if (full) return "reference";
+      const check = verdict(path, "read", { readable });
+      if (check.outcome === "sensitive") return "blocked";
+      return check.outcome === "inside" ||
+        approvalGrantCovers(grants, `read:${canonicalPathKey(dirname(path))}`)
+        ? "reference" : "copy";
+    });
+  }
+
   getMetrics(sessionId: string): SessionMetrics {
     return this.buildMetrics(this.requireSession(sessionId));
   }
@@ -3193,7 +3225,7 @@ export class SessionService implements AgentTeamBridge {
     if (!readV4SessionHeader(managed.manifest.recordsDir)) {
       throw new Error("v0.4 session header is required");
     }
-    const base = override ? null : this.resolveRuntimeModelConfig();
+    const base = override ? null : this.modelArgsFor(null);
     const target = override
       ? { provider: override.provider, modelId: override.modelId }
       : base?.modelProvider && base.modelId
@@ -3204,7 +3236,7 @@ export class SessionService implements AgentTeamBridge {
       : undefined;
     const applied = Boolean(resolved);
     if (resolved) {
-      await this.switchLiveModel(managed, resolved, override);
+      await this.switchLiveModel(managed, resolved, override, base?.thinkingLevel ?? override?.thinkingLevel);
     } else {
       // Saved for the next open; the running model keeps its level, resolved
       // against the current model so a choice is never silently replaced.
@@ -3915,6 +3947,18 @@ export class SessionService implements AgentTeamBridge {
       : `Delivered to ${label}; it sees your message at its next step.`;
   }
 
+  private peerContactGrants(from: ManagedSession, targetId: string, theirs: string[]) {
+    const fromId = from.manifest.sessionId;
+    const mine = from.getGrants();
+    // An approval on either side covers both directions.
+    const always = mine.includes(`contact:${targetId}`) || theirs.includes(`contact:${fromId}`);
+    const since = [
+      ...mine.filter((key) => key.startsWith(`mail:${targetId}@`)),
+      ...theirs.filter((key) => key.startsWith(`mail:${fromId}@`)),
+    ].map((key) => key.slice(key.lastIndexOf("@") + 1)).sort().at(-1);
+    return { always, since };
+  }
+
   /**
    * A message to another conversation (not a lead/subagent pair): Full
    * Access sends; otherwise a standing "always" or an unspent allowance
@@ -3946,24 +3990,14 @@ export class SessionService implements AgentTeamBridge {
         rule: "peer_message",
         detail: `${targetId}: ${detail}`,
       });
-    const mine = from.getGrants();
-    const theirs = target.getGrants();
-    // The latest allowance either side granted covers both directions; what
-    // is left of it is counted from the mail itself.
-    const since = [
-      ...mine.filter((key) => key.startsWith(`mail:${targetId}@`)),
-      ...theirs.filter((key) => key.startsWith(`mail:${fromId}@`)),
-    ]
-      .map((key) => key.slice(key.lastIndexOf("@") + 1))
-      .sort()
-      .at(-1);
+    const { always, since } = this.peerContactGrants(from, targetId, target.getGrants());
     const spent = since
       ? readAgentMail(target.manifest.recordsDir).filter(
           (envelope) => envelope.peer && envelope.from === fromId && envelope.at >= since,
         ).length >= PEER_MESSAGE_ALLOWANCE
       : false;
     if (!readOnly) {
-      if (mine.includes(`contact:${targetId}`) || theirs.includes(`contact:${fromId}`)) {
+      if (always) {
         audit("session-allowance", "always allowed");
         return null;
       }
@@ -4093,62 +4127,100 @@ export class SessionService implements AgentTeamBridge {
     return "Queued: the subagent sees your message with its next turn.";
   }
 
-  async checkSubagent(
-    parentSessionId: string,
-    agent: string,
-    verbose: boolean,
-  ): Promise<string> {
-    const childId = this.resolveSubagentId(parentSessionId, agent);
-    const lines = [this.subagentStatusLine(parentSessionId, childId)];
+  /**
+   * An exact Session ID wins over a child alias, even if that ID is ineligible.
+   * Both tools use this lookup; neither opens or runs a target.
+   */
+  private agentObserver(fromId: string) {
+    const from = this.requireSession(fromId);
+    const children = this.subagentChildren(fromId);
+    const childIds = new Set(children.map((child) => child.sessionId));
+    let received: AgentMailEnvelope[] | undefined;
+
+    return (reference: string): { id: string; isChild: boolean } | null => {
+      const needle = reference.trim();
+      const summary = readSessionAccessSummary(this.config.dataDir, needle);
+      const exact = summary || this.sessions.has(needle) || childIds.has(needle);
+      const id = exact ? needle : children.find((child) => child.alias?.toLowerCase() === needle.toLowerCase())?.sessionId;
+      if (!id || id === fromId) return null;
+      const target = id === needle ? summary : readSessionAccessSummary(this.config.dataDir, id);
+      if (target?.deletedAt || (!target && !this.sessions.has(id))) return null;
+
+      if (childIds.has(id)) return { id, isChild: true };
+      if (from.isFullAccessEffective() || from.subagentParentId === id ||
+          (from.subagentParentId && this.subagentsSpawnedOnPath(id).has(fromId))) {
+        return { id, isChild: false };
+      }
+
+      const dirs = getSessionDirs(this.config.dataDir, id);
+      if (!dirs) return null;
+      const hasMessageFrom = (mail: AgentMailEnvelope[], sender: string, recipient: string) =>
+        mail.some((entry) => entry.kind === "message" && entry.from === sender && entry.to === recipient);
+      received ??= readAgentMail(from.manifest.recordsDir);
+      if (hasMessageFrom(received, id, fromId) || hasMessageFrom(readAgentMail(dirs.recordsDir), fromId, id)) {
+        return { id, isChild: false };
+      }
+
+      if (from.mediatesReadOnly()) return null;
+      const theirs = this.sessions.get(id)?.getGrants() ?? readConversationApprovals(dirs.recordsDir).keys;
+      const { always, since } = this.peerContactGrants(from, id, theirs);
+      // Without a successfully sent message to this target, the allowance is unspent.
+      return always || since ? { id, isChild: false } : null;
+    };
+  }
+
+  async checkAgent(fromId: string, agent: string, verbose: boolean): Promise<string> {
+    const target = this.agentObserver(fromId)(agent);
+    if (!target) throw new Error(`Cannot check agent "${agent}". Use a subagent name or the Session ID of an agent you can message or have communicated with.`);
+    const lines = [this.agentStatusLine(target.id)];
+    if (!target.isChild) return lines[0];
     if (verbose) {
       const transcript =
-        readSessionDetail(this.config.dataDir, childId)?.transcript ?? [];
+        readSessionDetail(this.config.dataDir, target.id)?.transcript ?? [];
       for (const message of transcript.slice(-6)) {
         lines.push(`${message.role}: ${clip(message.text, 300)}`);
       }
     } else {
-      const result = this.subagentResultText(childId, 800);
+      const result = this.subagentResultText(target.id, 800);
       if (result) lines.push(`last output: ${result}`);
     }
     return lines.join("\n");
   }
 
-  async waitForSubagents(
-    parentSessionId: string,
+  async waitForAgents(
+    fromId: string,
     agents: string[] | null,
     timeoutS: number,
     signal?: AbortSignal,
   ): Promise<string> {
-    const watched = agents?.length
-      ? agents.map((agent) => this.resolveSubagentId(parentSessionId, agent))
-      : this.subagentChildren(parentSessionId)
-          .map((child) => child.sessionId)
-          .filter((id) => this.subagentIsActive(id));
-    if (watched.length === 0) {
-      return "No running subagents to wait for.";
+    const observe = this.agentObserver(fromId);
+    const watched = new Set<string>();
+    if (agents?.length) {
+      for (const agent of agents) {
+        const target = observe(agent);
+        if (!target) throw new Error(`Cannot wait for agent "${agent}". Use a subagent name or the Session ID of an agent you can message or have communicated with.`);
+        watched.add(target.id);
+      }
+    } else {
+      for (const id of this.sessions.keys()) {
+        if (this.agentIsActive(id) && observe(id)) watched.add(id);
+      }
     }
-    const initiallyActive = watched.filter((id) => this.subagentIsActive(id));
+    if (!watched.size) return "No running agents to wait for.";
+    const initiallyActive = [...watched].filter((id) => this.agentIsActive(id));
     const deadline = Date.now() + timeoutS * 1000;
-    // The agent loop awaits this tool's promise, so honoring the run's abort
-    // signal is what lets a user stop release the wait before its timeout
-    // instead of leaving the turn (and the composer's stop state) blocked.
+    // Stop cancels this wait without changing any target's run.
     while (
       Date.now() < deadline &&
       initiallyActive.length > 0 &&
-      !initiallyActive.some((id) => !this.subagentIsActive(id)) &&
+      initiallyActive.every((id) => this.agentIsActive(id)) &&
       !signal?.aborted
     ) {
-      await sleep(300);
+      await sleep(Math.min(300, Math.max(0, deadline - Date.now())));
     }
-    if (signal?.aborted) {
-      return [
-        "Wait cut short by the user's stop. Any still-running watched subagents keep running; their completions still arrive as notifications.",
-        ...watched.map((id) => this.subagentStatusLine(parentSessionId, id)),
-      ].join("\n");
-    }
-    return watched
-      .map((id) => this.subagentStatusLine(parentSessionId, id))
-      .join("\n");
+    const lines = [...watched].map((id) => this.agentStatusLine(id));
+    if (signal?.aborted) lines.unshift("Wait cut short by the user's stop. Watched agents keep running.");
+    return lines.join("\n");
   }
 
   async interruptSubagent(
@@ -4178,7 +4250,7 @@ export class SessionService implements AgentTeamBridge {
       return "No subagents in this conversation. Use spawn_agent to delegate a task.";
     }
     return children
-      .map((child) => this.subagentStatusLine(parentSessionId, child.sessionId))
+      .map((child) => this.agentStatusLine(child.sessionId))
       .join("\n");
   }
 
@@ -4297,18 +4369,18 @@ export class SessionService implements AgentTeamBridge {
     }
   }
 
-  private subagentIsActive(sessionId: string): boolean {
+  private agentIsActive(sessionId: string): boolean {
     if (this.queuedSubagentIds.has(sessionId)) return true;
     const managed = this.sessions.get(sessionId);
     return Boolean(managed && !managed.runState.isIdle());
   }
 
-  private subagentStatusLine(parentSessionId: string, sessionId: string): string {
+  private agentStatusLine(sessionId: string): string {
     const alias = this.sessionAlias(sessionId) ?? sessionId;
     let status = "idle";
     if (this.queuedSubagentIds.has(sessionId)) {
       status = "queued";
-    } else if (this.subagentIsActive(sessionId)) {
+    } else if (this.agentIsActive(sessionId)) {
       status = "running";
     } else {
       const dirs = getSessionDirs(this.config.dataDir, sessionId);
@@ -4915,6 +4987,7 @@ export class SessionService implements AgentTeamBridge {
     setSmartApproval: (value: SmartApprovalSetting) => void;
     approver: Approver;
     isFullAccessEffective: () => boolean;
+    getReadableRoots: () => Root[];
     isSmartApprovalEffective: () => boolean;
     mediatesReadOnly: () => boolean;
     recordAudit: (entry: SecurityAuditEntry) => void;

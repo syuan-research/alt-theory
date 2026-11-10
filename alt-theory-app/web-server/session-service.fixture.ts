@@ -6,6 +6,7 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join, resolve } from "path";
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { SessionService } from "./session-service.js";
 
 export function setupFixture() {
@@ -88,6 +89,7 @@ export function createTestService(
     modelId?: string;
     modelsPath?: string;
     authPath?: string;
+    thinkingLevel?: ThinkingLevel;
   },
 ) {
   return new SessionService({

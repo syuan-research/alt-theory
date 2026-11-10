@@ -467,6 +467,14 @@ for another conversation. One rule decides how it travels:
 There is no way to revoke a grant other than switching the conversation to
 Read-only (known gap, 2026-10-12).
 
+`check_agent` and `wait_for_agents` use the same targets. A caller can observe
+its subagents and conversations it can already message or has successfully
+communicated with in either direction. An exact Session ID takes priority over
+a subagent alias. Peer checks report status. When the wait omits its list, it
+watches all eligible agents active at the time of the call. The first watched
+agent to finish or the timeout releases the wait with every watched status.
+These operations leave the target's runtime and mail allowance alone.
+
 What the lead is told is composed in one place, `describeChildOutcome()`
 (`web-server/child-outcome.ts`): the envelope's `event`, its `cause`, the body,
 and the status word that `check_agent`, `wait_for_agents`, and `list_agents`

@@ -26,7 +26,7 @@ import { QueuedCards } from "@/components/conversation/QueuedCards";
 import { ContinueButton, hasRunNotes, NoticeLine, RunStatusSlot } from "@/components/conversation/RunNotes";
 import { SlashPalette, SkillDraftChip, useSlashCommands, useSlashPalette } from "@/components/conversation/SlashPalette";
 import { KB_OFF_VALUE } from "@/lib/constants";
-import { stageAttachmentFile } from "@/api/session-files";
+import { useComposerAttachments } from "./useComposerAttachments";
 
 /**
  * A conversation other than the one in the center: a branch shown beside it for
@@ -187,21 +187,7 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
     ? t("No knowledge base")
     : t(app.discovery?.kbDomains.find((domain) => domain.slug === kbDomain)?.displayName ??
       "Knowledge base");
-  const attachCopies = (files: File[]) => {
-    for (const file of files) {
-      void stageAttachmentFile(file)
-        .then(({ path, extractError }) => {
-          conversation.stage(path);
-          if (extractError) {
-            window.alert(t("{name} was attached, but its text could not be read: {error}", {
-              name: file.name,
-              error: extractError,
-            }));
-          }
-        })
-        .catch((error) => window.alert(error instanceof Error ? error.message : String(error)));
-    }
-  };
+  const { attachCopies, dragOver, dropHandlers, onPaste } = useComposerAttachments();
 
   const latestUserIndex = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -370,10 +356,11 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
         </CtxPicker>
       </div>
       <SlashPalette palette={palette} className="slash-palette child-slash-palette" />
-      <div className="composer child-composer">
+      <div className={`composer child-composer${dragOver ? " file-drag-over" : ""}`} {...dropHandlers}>
         <textarea
           ref={textareaRef}
           rows={1}
+          onPaste={onPaste}
           value={palette.text}
           disabled={!conversation.sessionReady}
           placeholder={conversation.sessionReady ? t("Reply here") : t("Connecting…")}

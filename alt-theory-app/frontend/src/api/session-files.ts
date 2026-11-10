@@ -11,6 +11,19 @@ import type {
   WriteSessionFileInput,
 } from "./types";
 
+export function classifyDroppedFiles(input: {
+  paths: string[];
+  sessionId: string | null;
+  workspacePrimaryDir: string | null;
+  fullAccess: boolean;
+}): Promise<Array<"reference" | "copy" | "blocked">> {
+  return fetchJson("/api/attachments/classify-drop", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
 export async function fetchSessionChanges(
   sessionId: string
 ): Promise<SessionChanges> {
@@ -21,6 +34,14 @@ export async function fetchSessionChanges(
 
 function sessionFilesBase(sessionId: string): string {
   return `/api/sessions/${encodeURIComponent(sessionId)}/files`;
+}
+
+export type FileOwner = string | { primaryDir: string | null };
+
+function readFilesUrl(owner: FileOwner, qs: URLSearchParams, suffix = ""): string {
+  if (typeof owner === "string") return sessionFilesBase(owner) + suffix + "?" + qs;
+  if (owner.primaryDir) qs.set("primaryDir", owner.primaryDir);
+  return "/api/draft/files" + suffix + "?" + qs;
 }
 
 export async function listSessionFiles(
@@ -40,22 +61,22 @@ export async function listWorkspaceFiles(
 }
 
 export async function getSessionFileContent(
-  sessionId: string,
+  owner: FileOwner,
   root: string,
   path: string
 ): Promise<SessionTextFileContent> {
   const qs = new URLSearchParams({ root, path });
   return fetchJson<SessionTextFileContent>(
-    `${sessionFilesBase(sessionId)}/content?${qs}`
+    readFilesUrl(owner, qs, "/content")
   );
 }
 
 export async function putSessionFileContent(
-  sessionId: string,
+  owner: FileOwner,
   input: WriteSessionFileInput
 ): Promise<SessionTextFileContent> {
   return fetchJson<SessionTextFileContent>(
-    `${sessionFilesBase(sessionId)}/content`,
+    readFilesUrl(owner, new URLSearchParams(), "/content"),
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -107,37 +128,37 @@ export async function downloadWorkspaceFile(
 }
 
 export async function listWorkingFolders(
-  sessionId: string
+  owner: FileOwner
 ): Promise<WorkingFoldersResponse> {
   return fetchJson<WorkingFoldersResponse>(
-    `${sessionFilesBase(sessionId)}?root=working`
+    readFilesUrl(owner, new URLSearchParams({ root: "working" }))
   );
 }
 
 export async function listWorkingDirectory(
-  sessionId: string,
+  owner: FileOwner,
   folderId: string,
   path: string,
 ): Promise<WorkingDirectoryResponse> {
   const qs = new URLSearchParams({ root: "working", folderId, path });
-  return fetchJson<WorkingDirectoryResponse>(`${sessionFilesBase(sessionId)}?${qs}`);
+  return fetchJson<WorkingDirectoryResponse>(readFilesUrl(owner, qs));
 }
 
 /** A folder's most recently modified files, newest first (capped by the server). */
-export async function listRecentWorkingFiles(sessionId: string, folderId: string): Promise<WorkingDirectoryResponse> {
+export async function listRecentWorkingFiles(owner: FileOwner, folderId: string): Promise<WorkingDirectoryResponse> {
   const qs = new URLSearchParams({ root: "working", folderId, recent: "1" });
-  return fetchJson<WorkingDirectoryResponse>(`${sessionFilesBase(sessionId)}?${qs}`);
+  return fetchJson<WorkingDirectoryResponse>(readFilesUrl(owner, qs));
 }
 
 export async function searchWorkingDirectory(
-  sessionId: string,
+  owner: FileOwner,
   folderId: string,
   search: string,
   options: { searchToken: string; signal: AbortSignal },
 ): Promise<WorkingDirectoryResponse> {
   // The token lets the server reuse one folder walk while this search lasts.
   const qs = new URLSearchParams({ root: "working", folderId, search, searchToken: options.searchToken });
-  return fetchJson<WorkingDirectoryResponse>(`${sessionFilesBase(sessionId)}?${qs}`, { signal: options.signal });
+  return fetchJson<WorkingDirectoryResponse>(readFilesUrl(owner, qs), { signal: options.signal });
 }
 
 /** Which staged attachments of a restored draft are gone (local form only). */
@@ -171,7 +192,7 @@ export async function stageAttachmentFile(
 }
 
 /** An executable/resource URL on the file-only preview origin. */
-export async function sessionArtifactUrl(sessionId: string, root: string, path: string): Promise<string> {
+export async function sessionArtifactUrl(owner: FileOwner, root: string, path: string): Promise<string> {
   const qs = new URLSearchParams({ root, path });
-  return (await fetchJson<{ url: string }>(sessionFilesBase(sessionId) + "/preview-url?" + qs)).url;
+  return (await fetchJson<{ url: string }>(readFilesUrl(owner, qs, "/preview-url"))).url;
 }

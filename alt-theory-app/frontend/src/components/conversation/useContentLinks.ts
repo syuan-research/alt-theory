@@ -8,14 +8,15 @@ import { copyText } from "@/lib/clipboard";
 import { hasNativeBridge, openExternal, openPath, revealPath } from "@/lib/native";
 import { t } from "@/i18n";
 
-export function useContentLinks(sessionId: string | null, base?: FileRef, baseFolderPath?: string | null) {
+export function useContentLinks(sessionId: string | null, base?: FileRef, baseFolderPath?: string | null, draftPrimaryDir?: string | null) {
+  const owner = sessionId ?? (draftPrimaryDir !== undefined ? { primaryDir: draftPrimaryDir } : null);
   const shell = useShell();
   const menu = useContextMenu();
   const report = (error: unknown) => window.alert(error instanceof Error ? error.message : String(error));
   const resolve = async (href: string) => {
     const link = contentLink(href);
     if (!link || link.kind !== "file") return { link, ref: null };
-    const response = sessionId ? await listWorkingFolders(sessionId) : null;
+    const response = owner !== null ? await listWorkingFolders(owner) : null;
     const folders = [...(response?.folders ?? [])];
     if (response?.workspacePath && !folders.some((folder) => folder.managed)) {
       folders.push({ id: "managed", path: response.workspacePath, role: "secondary", managed: true, available: true });
@@ -30,15 +31,21 @@ export function useContentLinks(sessionId: string | null, base?: FileRef, baseFo
       shell.openTarget({ kind: "page", sessionId, url: link.address, image: true }); return;
     }
     if (link.kind === "file") {
-      if (!externally && sessionId && ref) {
+      if (!externally && owner !== null && ref) {
         try {
           const media = isImagePath(ref.path) || isHtmlPath(ref.path);
-          const file = media ? { content: "" } : await getSessionFileContent(sessionId, ref.root, ref.path);
+          const file = media ? { content: "" } : await getSessionFileContent(owner, ref.root, ref.path);
           if (!file.content.includes("\0")) {
-            shell.openTarget(ref.root === "records"
-              ? { kind: "record", sessionId, root: "records", path: ref.path }
-              : { kind: "file", sessionId, root: ref.root, path: ref.path });
-            return;
+            if (sessionId) {
+              shell.openTarget(ref.root === "records"
+                ? { kind: "record", sessionId, root: "records", path: ref.path }
+                : { kind: "file", sessionId, root: ref.root, path: ref.path });
+              return;
+            }
+            if (ref.root === "working" && draftPrimaryDir !== undefined) {
+              shell.openTarget({ kind: "file", sessionId: null, draftPrimaryDir, root: "working", path: ref.path });
+              return;
+            }
           }
         } catch { /* A file without an internal preview opens in its default app. */ }
       }

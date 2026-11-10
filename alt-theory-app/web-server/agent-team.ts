@@ -43,12 +43,12 @@ export interface AgentTeamBridge {
     signal?: AbortSignal,
     toolCallId?: string,
   ): Promise<string>;
-  checkSubagent(
+  checkAgent(
     parentSessionId: string,
     agent: string,
     verbose: boolean,
   ): Promise<string>;
-  waitForSubagents(
+  waitForAgents(
     parentSessionId: string,
     agents: string[] | null,
     timeoutS: number,
@@ -237,8 +237,12 @@ export function createAgentTeamTools(
     },
   };
 
+  const observableAgentRef = Type.String({
+    description: "An agent's Session ID, or one of your subagents' names",
+  });
+
   const checkSchema = Type.Object({
-    agent: agentRef,
+    agent: observableAgentRef,
     verbose: Type.Optional(
       Type.Boolean({
         description: "true = include the subagent's recent transcript tail",
@@ -247,21 +251,21 @@ export function createAgentTeamTools(
   });
   const checkAgent: ToolDefinition<typeof checkSchema, undefined> = {
     name: "check_agent",
-    label: "Check subagent",
+    label: "Check agent",
     description:
-      "Get a subagent's status and last output without interrupting it.",
+      "Check a subagent or a peer you can message or have exchanged mail with. Returns status; subagents also include their last output.",
     parameters: checkSchema,
     async execute(_id, params) {
       return text(
-        await bridge.checkSubagent(sessionId, params.agent, params.verbose ?? false),
+        await bridge.checkAgent(sessionId, params.agent, params.verbose ?? false),
       );
     },
   };
 
   const waitSchema = Type.Object({
     agents: Type.Optional(
-      Type.Array(agentRef, {
-        description: "Subagents to wait for; omit for all running subagents",
+      Type.Array(observableAgentRef, {
+        description: "Agents to wait for; omit to wait for any currently active agent you can check",
       }),
     ),
     timeout_s: Type.Optional(
@@ -270,14 +274,14 @@ export function createAgentTeamTools(
   });
   const waitForAgents: ToolDefinition<typeof waitSchema, undefined> = {
     name: "wait_for_agents",
-    label: "Wait for subagents",
+    label: "Wait for agents",
     description:
-      "Block until a watched subagent finishes its turn or the timeout passes; returns each watched subagent's status. Use sparingly — prefer continuing your own work and letting completions arrive.",
+      "Wait until any watched agent finishes its turn or the timeout passes. Returns every watched agent's status. Use sparingly — prefer continuing your own work and letting completions arrive.",
     parameters: waitSchema,
     async execute(_id, params, signal) {
       const timeout = Math.min(Math.max(params.timeout_s ?? 60, 1), 600);
       return text(
-        await bridge.waitForSubagents(
+        await bridge.waitForAgents(
           sessionId,
           params.agents ?? null,
           timeout,

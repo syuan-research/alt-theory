@@ -48,7 +48,7 @@ export function discoverSkillResources(options: {
       seenPaths.add(skill.filePath);
       skills.push({
         name: skill.name,
-        displayName: source === "alt-theory" ? skill.name.replace(/^at-/, "") : skill.name,
+        displayName: source === "alt-theory" ? `${skill.name.replace(/^at-/, "")} (Alt Theory)` : skill.name,
         description: skill.description,
         path: skill.filePath,
         source,
@@ -71,10 +71,5 @@ export function discoverSkillResources(options: {
   skills.sort(
     (a, b) => a.source.localeCompare(b.source) || a.name.localeCompare(b.name)
   );
-  for (const skill of skills) {
-    if (skill.source === "alt-theory" && skills.some((other) =>
-      other.source !== "alt-theory" && other.displayName === skill.displayName
-    )) skill.displayName += " (Alt Theory)";
-  }
   return { skills, diagnostics };
 }

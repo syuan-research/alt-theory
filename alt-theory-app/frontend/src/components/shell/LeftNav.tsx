@@ -363,6 +363,18 @@ function SettingsRail({ hidden, runningCount }: { hidden?: boolean; runningCount
   );
 }
 
+function projectPreviewCount(roots: SessionSummary[], childrenByParent: WorkspaceTree["childrenByParent"]): number {
+  const rowCount = (root: SessionSummary): number =>
+    1 + (childrenByParent.get(root.sessionId) ?? []).reduce((sum, child) => sum + rowCount(child), 0);
+  let rows = 0;
+  for (const [index, root] of roots.entries()) {
+    const next = rows + rowCount(root);
+    if (next > 5) return index + (rows < 3 ? 1 : 0);
+    rows = next;
+  }
+  return roots.length;
+}
+
 function SessionRootList({
   roots,
   tree,
@@ -387,10 +399,11 @@ function SessionRootList({
   onToggleFamily: (id: string) => void;
   onOpen: (id: string) => void;
   draggable: boolean;
-  cap: number;
+  cap?: number;
   emptyLabel?: string;
 }) {
-  const shown = expanded || visibleIds !== null ? roots : roots.slice(0, cap);
+  const previewCount = cap ?? projectPreviewCount(roots, tree.childrenByParent);
+  const shown = expanded || visibleIds !== null ? roots : roots.slice(0, previewCount);
   return (
     <>
       {roots.length === 0 ? (
@@ -409,7 +422,7 @@ function SessionRootList({
           visibleIds={folderHit ? null : visibleIds}
         />
       ))}
-      {visibleIds === null && roots.length > cap ? (
+      {visibleIds === null && roots.length > previewCount ? (
         <button className="group-more" onClick={onToggleExpanded}>
           {expanded ? t("Show less") : t("Show all ({count})", { count: roots.length })}
         </button>
@@ -1208,7 +1221,6 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     onToggleFamily={toggleFamily}
                     onOpen={openSession}
                     draggable
-                    cap={GROUP_CAP}
                   />
                 ) : null}
               </div>

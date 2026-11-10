@@ -21,6 +21,7 @@ export type ViewTarget = (
   /** A file of a conversation: its managed workspace, or a working folder
    *  (`path` = "<folderId>/<path in folder>"). */
   | { kind: "file"; sessionId: string; root: "workspace" | "working"; path: string }
+  | { kind: "file"; sessionId: null; draftPrimaryDir: string | null; root: "working"; path: string }
   /** A file a conversation changed; `title` is its display path. */
   | { kind: "change"; sessionId: string; path: string; title: string }
   /** A record of a conversation (researcher Records rail). */
@@ -74,7 +75,7 @@ export function targetKey(target: ViewTarget): string {
     case "conversation":
       return `conversation:${target.sessionId}`;
     case "file":
-      return `file:${target.sessionId}:${target.root}:${target.path}`;
+      return `file:${target.sessionId === null ? `draft:${target.draftPrimaryDir}` : target.sessionId}:${target.root}:${target.path}`;
     case "change":
       return `change:${target.sessionId}:${target.path}`;
     case "record":

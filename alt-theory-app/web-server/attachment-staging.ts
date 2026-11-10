@@ -1,6 +1,6 @@
 /**
- * Attached files (owner 2026-09-25): the paperclip — and, in read-only, a
- * drop or a pasted image — copies the file into the app and converts
+ * The paperclip, a drop that needs a copy, or a pasted image copies the file
+ * into the app and converts
  * docx/pdf/xlsx/pptx to text, like a web chatbot. The copy is staged here
  * until the message is sent (a new conversation has no folder yet); the
  * message's send copies it into that conversation's own folder and names it

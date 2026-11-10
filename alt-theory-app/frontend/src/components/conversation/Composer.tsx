@@ -13,9 +13,7 @@ import { QueuedCards } from "@/components/conversation/QueuedCards";
 import { ContinueButton, hasRunNotes, NoticeLine, RunStatusSlot } from "@/components/conversation/RunNotes";
 import { SlashPalette, SkillDraftChip, useSlashCommands, useSlashPalette } from "@/components/conversation/SlashPalette";
 import { KB_OFF_VALUE } from "@/lib/constants";
-import { hasNativeBridge, pathsFromDroppedFiles } from "@/lib/native";
-import { stageAttachmentFile } from "@/api/session-files";
-import { WORKSPACE_PATH_MIME } from "@/lib/workspace";
+import { useComposerAttachments } from "./useComposerAttachments";
 import { isWithheld, type SessionVisibility } from "@/api/types";
 import { t } from "@/i18n";
 import { useAutosizeTextarea } from "@/lib/autosizeTextarea";
@@ -46,7 +44,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     setPresetOpen(next);
     window.localStorage.setItem("alt-preset-open", next ? "1" : "0");
   };
-  const [fileDragOver, setFileDragOver] = useState(false);
   const rowRef = useRef<HTMLDivElement>(null);
   const rowClassName = useComposerRow(rowRef);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -87,24 +84,8 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const interactive = conv.sessionReady;
   const hasText = draft.trim().length > 0;
   const canAttach = interactive;
-  // Paperclip, pasted files, and a read-only drop attach a copy (converted
-  // to text when it is an office/PDF file); other drops attach a link.
   const fileInput = useRef<HTMLInputElement>(null);
-  const attachCopies = (files: File[]) => {
-    for (const file of files) {
-      void stageAttachmentFile(file)
-        .then(({ path, extractError }) => {
-          conv.stage(path);
-          if (extractError) {
-            window.alert(t("{name} was attached, but its text could not be read: {error}", { name: file.name, error: extractError }));
-          }
-        })
-        .catch((error) => window.alert(error instanceof Error ? error.message : String(error)));
-    }
-  };
-  const dropsCopy = conv.permission === "read-only";
-  const acceptsFiles = (types: string[]) =>
-    types.includes("Files") && (dropsCopy || hasNativeBridge());
+  const { attachCopies, dragOver, dropHandlers, onPaste } = useComposerAttachments();
   // Permission (owner 2026-09-25): read-only / Ask / Full. On the draft
   // screen the choice applies once the first message materializes the
   // session.
@@ -528,65 +509,11 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
           </div>
         ) : null}
 
-        <div
-          className={`composer${fileDragOver ? " file-drag-over" : ""}`}
-          onDragEnter={(e) => {
-            if (!canAttach) return;
-            const types = [...e.dataTransfer.types];
-            if (types.includes(WORKSPACE_PATH_MIME)) {
-              e.preventDefault();
-              setFileDragOver(true);
-              return;
-            }
-            if (!acceptsFiles(types)) return;
-            e.preventDefault();
-            setFileDragOver(true);
-          }}
-          onDragOver={(e) => {
-            if (!canAttach) return;
-            const types = [...e.dataTransfer.types];
-            if (!types.includes(WORKSPACE_PATH_MIME) && !acceptsFiles(types)) {
-              return;
-            }
-            e.preventDefault();
-            e.dataTransfer.dropEffect = "copy";
-          }}
-          onDragLeave={(e) => {
-            if (e.currentTarget.contains(e.relatedTarget as Node)) return;
-            setFileDragOver(false);
-          }}
-          onDrop={(e) => {
-            setFileDragOver(false);
-            if (!canAttach) return;
-            // Internal drag from the right-hand file tree.
-            const internal = e.dataTransfer.getData(WORKSPACE_PATH_MIME);
-            if (internal) {
-              e.preventDefault();
-              conv.stage(internal);
-              return;
-            }
-            if (dropsCopy) {
-              e.preventDefault();
-              attachCopies([...e.dataTransfer.files]);
-              return;
-            }
-            if (!hasNativeBridge()) return;
-            e.preventDefault();
-            const paths = pathsFromDroppedFiles(e.dataTransfer.files);
-            paths.forEach((p) => conv.stage(p));
-          }}
-        >
+        <div className={`composer${dragOver ? " file-drag-over" : ""}`} {...dropHandlers}>
           <textarea
             ref={textareaRef}
             rows={1}
-            onPaste={(e) => {
-              // A pasted image (or copied file) has no path: attach a copy.
-              // Office copies carry the text plus a picture of it: keep the text.
-              const files = [...e.clipboardData.files];
-              if (!canAttach || files.length === 0 || e.clipboardData.getData("text/plain")) return;
-              e.preventDefault();
-              attachCopies(files);
-            }}
+            onPaste={onPaste}
             value={palette.text}
             onChange={(e) => {
               palette.setText(e.target.value);

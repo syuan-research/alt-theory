@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from "fs";
 import { mkdtempSync } from "fs";
-import { tmpdir } from "os";
+import { homedir, tmpdir } from "os";
 import { join, resolve } from "path";
 import test from "node:test";
 import { createAltTheorySession } from "../core/alt-theory-core.js";
@@ -4187,9 +4187,32 @@ test("stop applies the pending switch; Full Access off is live during a run", as
   }
 });
 
-test("thinking resolver: a chosen level is kept or reported clamped; no choice â†’ model midpoint", async () => {
+test("dropped files reference readable workspace paths and copy files outside a draft's folders", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
+  const project = join(fixture.root, "project");
+  mkdirSync(project);
+  const inProject = join(project, "notes.md");
+  const outside = join(fixture.root, "source.md");
+  const credential = join(homedir(), ".ssh", "id_test");
+  writeFileSync(inProject, "notes");
+  writeFileSync(outside, "source");
+  try {
+    assert.deepEqual(service.classifyDroppedFiles([inProject, outside, credential], null, project, false),
+      ["reference", "copy", "blocked"]);
+    const session = await service.createSession({
+      rolePresetSlug: null, soulSlug: "soul-latest", kbDomain: "ep-core",
+    }, { mode: "read-only", workspace: { primaryDir: project } });
+    assert.deepEqual(service.classifyDroppedFiles([inProject], session.sessionId, null, false), ["reference"]);
+  } finally {
+    await service.disposeAll();
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("thinking resolver: a chosen level is kept or reported clamped; no choice â†’ model midpoint", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture, "clean", { ...fixture.runtimeModelConfig, thinkingLevel: "low" });
   const created = await service.createSession({
     rolePresetSlug: "role-conceptual-theory-companion",
     kbDomain: "ep-core",
@@ -4201,7 +4224,7 @@ test("thinking resolver: a chosen level is kept or reported clamped; no choice â
     provider,
     id,
     reasoning: true,
-    thinkingLevelMap: { minimal: null, low: null },
+    thinkingLevelMap: { minimal: null, ...(provider === "r" ? { low: null } : {}) },
   });
   let currentModel: unknown = managed.session.model;
   Object.defineProperty(managed.session, "model", {
@@ -4250,6 +4273,11 @@ test("thinking resolver: a chosen level is kept or reported clamped; no choice â
       level: "high",
       source: "clamped",
     });
+
+    const inherited = await service.setSessionModel(created.sessionId, null);
+    assert.equal(inherited.thinking?.level, "low");
+    assert.equal(set.at(-1), "low");
+    assert.equal(readV4SessionHeader(managed.manifest.recordsDir)?.modelOverride, undefined);
   } finally {
     await service.disposeAll();
   }

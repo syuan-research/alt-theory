@@ -1,4 +1,4 @@
-import { getSessionFileContent, putSessionFileContent } from "@/api/session-files";
+import { getSessionFileContent, putSessionFileContent, type FileOwner } from "@/api/session-files";
 
 /** Mirrors web-server/text-file-policy.ts — the edit cap of the unified
  *  size scheme (5 MB view / 1 MiB edit, owner ruling 2026-09-15). */
@@ -60,8 +60,8 @@ export function previewModes(path: string, options: { hasDiff?: boolean; hasFile
   return modes;
 }
 
-export async function loadFileContent(sessionId: string, ref: FileRef): Promise<FileContent> {
-  const data = await getSessionFileContent(sessionId, ref.root, ref.path);
+export async function loadFileContent(owner: FileOwner, ref: FileRef): Promise<FileContent> {
+  const data = await getSessionFileContent(owner, ref.root, ref.path);
   return {
     content: data.content ?? "",
     updatedAt: data.updatedAt ?? null,
@@ -74,12 +74,12 @@ export async function loadFileContent(sessionId: string, ref: FileRef): Promise<
 }
 
 export async function saveFileContent(
-  sessionId: string,
+  owner: FileOwner,
   ref: FileRef,
   content: string,
   options: SaveFileOptions = {}
 ): Promise<FileContent> {
-  const data = await putSessionFileContent(sessionId, {
+  const data = await putSessionFileContent(owner, {
     root: ref.root,
     path: ref.path,
     content,

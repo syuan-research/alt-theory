@@ -112,7 +112,7 @@ const SELECTORS = {
 };
 
 type StubbableManaged = {
-  runState: { begin(): void; isIdle(): boolean };
+  runState: { begin(): void; settle(): unknown; isIdle(): boolean };
   subagentParentId: string | null;
   subagentConfig: { agents: Array<{ id: string; model: string }> };
   session: {
@@ -369,7 +369,7 @@ test("unknown spawn role is not_found and creates no session directory", async (
   }
 });
 
-test("waitForSubagents honors the run abort signal instead of blocking until timeout", async () => {
+test("waitForAgents honors the run abort signal instead of blocking until timeout", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
   try {
@@ -382,7 +382,7 @@ test("waitForSubagents honors the run abort signal instead of blocking until tim
     const bridgeController = new AbortController();
     setTimeout(() => bridgeController.abort(), 150);
     const bridgeStarted = Date.now();
-    const bridgeReport = await service.waitForSubagents(
+    const bridgeReport = await service.waitForAgents(
       parent.sessionId,
       null,
       10,
@@ -1137,7 +1137,7 @@ test("a user stop tells the lead the user stopped the child, and the status line
     assert.match(outcomes()[0]!.body, /Do not restart or continue it unless the user asks/);
     await waitFor(() => childManaged.runState.isIdle());
     assert.match(
-      await service.checkSubagent(parent.sessionId, child.sessionId, false),
+      await service.checkAgent(parent.sessionId, child.sessionId, false),
       /interrupted \(stopped by the user\)/,
     );
   } finally {
@@ -1189,6 +1189,7 @@ type Approvals = {
   };
   setFullAccess(enabled: boolean): void;
   getGrants(): string[];
+  addGrant(key: string): void;
 };
 
 function approvalsOf(service: SessionService, sessionId: string): Approvals {
@@ -1238,6 +1239,51 @@ async function twoConversations(service: SessionService) {
     waitFor(() => managedOf(service, a.sessionId).runState.isIdle() && managedOf(service, b.sessionId).runState.isIdle());
   return { a: a.sessionId, b: b.sessionId, idle };
 }
+
+test("check and wait use the same peer targets, including when wait omits its list", async () => {
+  const service = createTestService(setupFixture());
+  try {
+    const { a, b } = await twoConversations(service);
+    const child = await service.createSession(SELECTORS, {
+      forkedFrom: { sessionId: a, purpose: "subagent" },
+    });
+    const stranger = await service.createSession(SELECTORS);
+    const childState = managedOf(service, child.sessionId).runState;
+    const peerState = managedOf(service, b).runState;
+    writeFileSync(join(managedOf(service, child.sessionId).manifest.recordsDir, "ui-alias.json"), JSON.stringify({ alias: b }));
+    childState.begin();
+    peerState.begin();
+    managedOf(service, stranger.sessionId).runState.begin();
+
+    await assert.rejects(service.checkAgent(a, b, false), /Cannot check agent/);
+    approvalsOf(service, b).addGrant(`contact:${a}`);
+    assert.ok((await service.checkAgent(a, b, true)).endsWith(`(${b}): running`));
+    await assert.rejects(service.waitForAgents(a, [stranger.sessionId], 0), /Cannot wait for agent/);
+
+    setTimeout(() => peerState.settle(), 25);
+    const result = await service.waitForAgents(a, null, 2);
+    assert.ok(result.includes(`(${b}): idle`));
+    assert.ok(result.includes(`(${child.sessionId}): running`));
+    assert.ok(!result.includes(stranger.sessionId));
+    assert.deepEqual(peerMail(service, b, a), []);
+
+    // A past message is enough on its own, even with no standing grant.
+    appendAgentMail(managedOf(service, a).manifest.recordsDir, {
+      at: new Date().toISOString(),
+      from: stranger.sessionId,
+      to: a,
+      kind: "message",
+      body: "Previously sent",
+      delivered: true,
+      peer: true,
+    });
+    assert.ok((await service.checkAgent(a, stranger.sessionId, false)).includes(stranger.sessionId));
+    const explicit = await service.waitForAgents(a, [stranger.sessionId], 0);
+    assert.ok(explicit.endsWith(`(${stranger.sessionId}): running`));
+  } finally {
+    await service.disposeAll();
+  }
+});
 
 test("another conversation is reached by Session ID after approval; the allowance is 5 each way, replies included", async () => {
   const fixture = setupFixture();

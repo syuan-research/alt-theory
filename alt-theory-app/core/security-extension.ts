@@ -201,6 +201,13 @@ const APPROVAL_OPTIONS = [
 
 const UNICODE_SPACES = /[  -   　]/g;
 
+/** A grant covers its exact key and read keys within an approved folder. */
+export function approvalGrantCovers(grants: ReadonlySet<string>, key: string): boolean {
+  if (grants.has(key)) return true;
+  return key.startsWith("read:") &&
+    [...grants].some((grant) => grant.startsWith("read:") && isPathInside(grant.slice(5), key.slice(5)));
+}
+
 /**
  * The path a Pi file tool actually opens. Pi resolves tool paths through its
  * resolveToCwd (unicode spaces, a leading "@", "~", file:// URLs, Windows
@@ -288,11 +295,7 @@ export function createSecurityExtension(
   };
   const approver = options.approver ?? createApprover({ reviewAction, audit });
 
-  /** A grant covers a key: the same key, or a read grant for a folder holding it. */
-  const granted = (key: string) =>
-    sessionAllowances.has(key) ||
-    (key.startsWith("read:") &&
-      [...sessionAllowances].some((grant) => grant.startsWith("read:") && isPathInside(grant.slice(5), key.slice(5))));
+  const granted = (key: string) => approvalGrantCovers(sessionAllowances, key);
 
   return (pi) => {
     // Ruling K counts denials within one run; unanswered approvals likewise (§11).

@@ -363,17 +363,7 @@ function TurnChangesCard() {
         <button
           key={file.path}
           className="tc-file"
-          onContextMenu={(event) => {
-            const path = absoluteOrWorkspacePath(file.path, conv.workspacePrimaryDir);
-            menu.open(event, fileContextItems(path, shell));
-          }}
-          onKeyDown={(event) => {
-            if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
-            event.preventDefault();
-            const path = absoluteOrWorkspacePath(file.path, conv.workspacePrimaryDir);
-            const rect = event.currentTarget.getBoundingClientRect();
-            menu.openAt(rect.left + 18, rect.bottom, fileContextItems(path, shell), event.currentTarget);
-          }}
+          {...fileRowMenu(absoluteOrWorkspacePath(file.path, conv.workspacePrimaryDir), shell, menu)}
           onClick={() => {
             // The change of the conversation drawn here (center or side).
             if (conv.sessionId) {
@@ -401,6 +391,18 @@ function fileContextItems(path: string, shell: ReturnType<typeof useShell>): Con
   return fileMenuItems(path, () => shell.revealWorkspacePath(path));
 }
 
+function fileRowMenu(path: string, shell: ReturnType<typeof useShell>, menu: ReturnType<typeof useContextMenu>) {
+  return {
+    onContextMenu: (event) => menu.open(event, fileContextItems(path, shell)),
+    onKeyDown: (event) => {
+      if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+      event.preventDefault();
+      const rect = event.currentTarget.getBoundingClientRect();
+      menu.openAt(rect.left + 18, rect.bottom, fileContextItems(path, shell), event.currentTarget);
+    },
+  } satisfies Pick<React.HTMLAttributes<HTMLElement>, "onContextMenu" | "onKeyDown">;
+}
+
 function countLines(text: string): number {
   return text.trim() ? text.split(/\r?\n/).length : 0;
 }
@@ -424,7 +426,7 @@ function ToolLine({ tool }: { tool: ActiveToolState }) {
   const { discovery } = useApp();
   const outcome = toolOutcome({ running: tool.status === "running", success: tool.success });
   return (
-    <SysLine tool detail={outcome === "running" ? null : tool.detail} tone={TOOL_TONE[outcome]}>
+    <SysLine tool filePath={toolFilePath(tool.toolName, tool.path)} detail={outcome === "running" ? null : tool.detail} tone={TOOL_TONE[outcome]}>
       <i className={TOOL_ICON[outcome]} />
       {toolLabel(tool.toolName, tool.path, tool.detail, outcome,
         discovery?.skills.find((skill) => skill.name === tool.detail?.skillName)?.displayName)}
@@ -437,6 +439,7 @@ function ToolLine({ tool }: { tool: ActiveToolState }) {
 function CollapseAnywhereDetails({
   className,
   summary,
+  summaryProps,
   children,
   defaultOpen = false,
   findSkip = false,
@@ -444,6 +447,7 @@ function CollapseAnywhereDetails({
 }: {
   className?: string;
   summary: ReactNode;
+  summaryProps?: Pick<React.HTMLAttributes<HTMLElement>, "onContextMenu" | "onKeyDown">;
   children: ReactNode;
   /** Drawn only while open (content that is not in the DOM otherwise). */
   whenOpen?: () => ReactNode;
@@ -482,7 +486,7 @@ function CollapseAnywhereDetails({
         setOpen(false);
       }}
     >
-      <summary>{summary}</summary>
+      <summary {...summaryProps}>{summary}</summary>
       {children}
       {open && whenOpen ? whenOpen() : null}
     </details>
@@ -613,6 +617,7 @@ export function TranscriptEntry({
     return (
       <SysLine
         tool
+        filePath={toolFilePath(message.toolName, message.toolPath)}
         tone={TOOL_TONE[outcome]}
         detail={message.toolDetail}
         result={
@@ -892,12 +897,17 @@ function StaleWorkspaceNotice({ warning }: { warning: string }) {
   );
 }
 
+function toolFilePath(toolName: string | null | undefined, path: string | null | undefined) {
+  return toolName && ["read", "edit", "write"].includes(toolName) ? path ?? undefined : undefined;
+}
+
 function SysLine({
   children,
   tone,
   detail,
   result,
   tool = false,
+  filePath,
 }: {
   children: React.ReactNode;
   tone?: "danger" | "ok" | "running" | "pending";
@@ -908,7 +918,13 @@ function SysLine({
   /** Tool rows are searchable with Ctrl+F; system lines (warnings,
    *  notices) are chrome and stay out (owner 2026-09-24). */
   tool?: boolean;
+  filePath?: string;
 }) {
+  const conv = useConversationContext();
+  const shell = useShell();
+  const menu = useContextMenu();
+  const path = filePath && absoluteOrWorkspacePath(filePath, conv.workspacePrimaryDir ?? conv.manifest?.sessionCwd ?? null);
+  const fileActions = path ? fileRowMenu(path, shell, menu) : undefined;
   const className = cn(
     "sys-line",
     tone === "danger" && "sys-danger",
@@ -918,17 +934,21 @@ function SysLine({
   );
   const shownDetail = detail && detail.kind !== "skill" ? detail : null;
   if (!shownDetail && !result) {
-    return <div className={className} data-find-skip={tool ? undefined : ""}>{children}</div>;
+    return <div {...fileActions} tabIndex={path ? 0 : undefined} className={className} data-find-skip={tool ? undefined : ""}>{children}{menu.element}</div>;
   }
   return (
-    <CollapseAnywhereDetails
-      className={cn(className, "sys-detail")}
-      summary={children}
-      findSkip={!tool}
-      whenOpen={result ? () => <ToolResultBody {...result} /> : undefined}
-    >
-      {shownDetail ? <ToolDetailBody detail={shownDetail} /> : null}
-    </CollapseAnywhereDetails>
+    <>
+      <CollapseAnywhereDetails
+        className={cn(className, "sys-detail")}
+        summary={children}
+        summaryProps={fileActions}
+        findSkip={!tool}
+        whenOpen={result ? () => <ToolResultBody {...result} /> : undefined}
+      >
+        {shownDetail ? <ToolDetailBody detail={shownDetail} /> : null}
+      </CollapseAnywhereDetails>
+      {menu.element}
+    </>
   );
 }
 

@@ -897,6 +897,7 @@ const catalog: Record<string, string> = {
   "From {title}": "来自 {title}",
   "Showing the most relevant matches. Refine your search for more.": "显示最相关的匹配项。缩小搜索范围可查看更多。",
   "{name} was attached, but its text could not be read: {error}": "已附加 {name}，但无法读取其中的文字：{error}",
+  "Access to credential path denied: {path}": "无法附加凭据目录中的文件：{path}",
   "What can Alt Theory do, and which permission should I choose?": "Alt Theory 能做什么？我该选哪种权限？",
   "Permission: {name}": "权限：{name}",
   "Add a file: copied into this conversation's folder and converted to text": "添加文件：复制到本对话的文件夹，并转换为文字",

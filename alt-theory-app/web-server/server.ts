@@ -172,6 +172,7 @@ import {
 } from "./subagent-config.js";
 import {
   describeWorkingFolders,
+  type WorkingFileOwner,
   listWorkingFolderChildren,
   recentWorkingFiles,
   searchWorkingFolder,
@@ -1062,9 +1063,13 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     res.json({ instructions: listInstructionAssets(instructionsDir) });
   });
   app.get("/api/skills", (_req, res) => {
-    res.json({
-      skills: discoverConfiguredSkills().skills,
-    });
+    // The chooser invokes a skill by name. Settings still list each installation by path.
+    const byName = new Map<string, ReturnType<typeof discoverConfiguredSkills>["skills"][number]>();
+    for (const skill of discoverConfiguredSkills().skills) {
+      const current = byName.get(skill.name);
+      if (!current || (!current.enabled && skill.enabled)) byName.set(skill.name, skill);
+    }
+    res.json({ skills: [...byName.values()] });
   });
   app.get("/api/app", async (_req, res) => {
     const settings = readAppSettings(dataDir);
@@ -1822,6 +1827,64 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       }
     },
   );
+  async function browseWorkingFiles(req: express.Request, res: Response, owner: WorkingFileOwner) {
+    const folderId =
+      typeof req.query.folderId === "string" ? req.query.folderId : null;
+    if (!folderId) {
+      res.json({
+        folders: describeWorkingFolders(dataDir, owner),
+        ...(typeof owner === "string" ? { workspacePath: join(resolveSessionRoot(dataDir, owner)!, "workspace") } : {}),
+      });
+      return;
+    }
+    const path = typeof req.query.path === "string" ? req.query.path : "";
+    const search = typeof req.query.search === "string" ? req.query.search : "";
+    if (req.query.recent === "1") {
+      const closed = new AbortController();
+      res.on("close", () => closed.abort());
+      res.json(await recentWorkingFiles(dataDir, owner, folderId, 200, closed.signal));
+      return;
+    }
+    if (!search) {
+      res.json(listWorkingFolderChildren(dataDir, owner, folderId, path));
+      return;
+    }
+    // A newer keystroke closes this request; stop working for it.
+    const closed = new AbortController();
+    res.on("close", () => closed.abort());
+    const token = typeof req.query.searchToken === "string" ? req.query.searchToken : undefined;
+    const result = await searchWorkingFolder(dataDir, owner, folderId, search, 200, {
+      token,
+      signal: closed.signal,
+    });
+    res.json(result);
+  }
+
+  function draftFileOwner(req: express.Request): WorkingFileOwner {
+    const primaryDir = typeof req.query.primaryDir === "string" && req.query.primaryDir ? req.query.primaryDir : null;
+    if (!primaryDir) return { primaryDir };
+    // The draft picker includes saved projects and folders of visible conversations.
+    const selected = knownWorkspacesOf(readAppSettings(dataDir)).find((path) => samePath(path, primaryDir))
+      ?? listSessionSummaries(dataDir).sessions.find((session) =>
+        session.workspacePrimaryDir && samePath(session.workspacePrimaryDir, primaryDir)
+        && access.canList(req, session.sessionId) && access.canReadContent(req, session.sessionId))?.workspacePrimaryDir;
+    if (!selected) throw new Error("Unknown project folder");
+    return { primaryDir: selected };
+  }
+
+  app.get("/api/draft/files", async (req, res) => {
+    try {
+      await browseWorkingFiles(req, res, draftFileOwner(req));
+    } catch (error) {
+      if (!res.destroyed) sendFileApiError(res, error);
+    }
+  });
+  app.get("/api/draft/files/content", (req, res) => {
+    try {
+      res.json(readWorkingFolderTextFile(dataDir, draftFileOwner(req), String(req.query.path ?? "")));
+    } catch (error) { sendFileApiError(res, error); }
+  });
+
   app.get("/api/sessions/:sessionId/files", async (req, res) => {
     const sessionId = req.params.sessionId;
     const rootName =
@@ -1840,36 +1903,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         return;
       }
       if (rootName === "working") {
-        const folderId =
-          typeof req.query.folderId === "string" ? req.query.folderId : null;
-        if (!folderId) {
-          res.json({
-            folders: describeWorkingFolders(dataDir, sessionId),
-            workspacePath: join(resolveSessionRoot(dataDir, sessionId)!, "workspace"),
-          });
-          return;
-        }
-        const path = typeof req.query.path === "string" ? req.query.path : "";
-        const search = typeof req.query.search === "string" ? req.query.search : "";
-        if (req.query.recent === "1") {
-          const closed = new AbortController();
-          res.on("close", () => closed.abort());
-          res.json(await recentWorkingFiles(dataDir, sessionId, folderId, 200, closed.signal));
-          return;
-        }
-        if (!search) {
-          res.json(listWorkingFolderChildren(dataDir, sessionId, folderId, path));
-          return;
-        }
-        // A newer keystroke closes this request; stop working for it.
-        const closed = new AbortController();
-        res.on("close", () => closed.abort());
-        const token = typeof req.query.searchToken === "string" ? req.query.searchToken : undefined;
-        const result = await searchWorkingFolder(dataDir, sessionId, folderId, search, 200, {
-          token,
-          signal: closed.signal,
-        });
-        res.json(result);
+        await browseWorkingFiles(req, res, sessionId);
         return;
       }
       res.json(listSessionTextFiles(dataDir, sessionId, rootName));
@@ -1902,7 +1936,23 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       }
     },
   );
-  // Attached files (paperclip, read-only drop, pasted image): copied and
+  app.post("/api/attachments/classify-drop", (req, res) => {
+    const body = (req.body ?? {}) as { paths?: unknown; sessionId?: unknown; workspacePrimaryDir?: unknown; fullAccess?: unknown };
+    if (!Array.isArray(body.paths) || !body.paths.every((path) => typeof path === "string")) {
+      res.status(400).json({ error: "paths must be an array of strings" });
+      return;
+    }
+    const sessionId = typeof body.sessionId === "string" && body.sessionId ? body.sessionId : null;
+    if (sessionId && !requireSessionRestContentAccess(req, res, sessionId)) return;
+    try {
+      const primaryDir = typeof body.workspacePrimaryDir === "string" && body.workspacePrimaryDir
+        ? resolve(body.workspacePrimaryDir) : null;
+      res.json(sessionService.classifyDroppedFiles(body.paths, sessionId, primaryDir, body.fullAccess === true));
+    } catch (error) {
+      sendFileApiError(res, error);
+    }
+  });
+  // Attached files (paperclip, drop that needs a copy, pasted image): copied and
   // converted before any conversation exists; the send moves them into it.
   app.post("/api/attachments/stage", workspaceUpload.single("file"), async (req, res) => {
     if (!req.file) {
@@ -1936,6 +1986,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   });
   const artifactPreview = createArtifactPreview(dataDir);
   httpServer.once("close", () => artifactPreview.close());
+  app.get("/api/draft/files/preview-url", async (req, res) => {
+    try {
+      res.json({ url: await artifactPreview.url(draftFileOwner(req), "working", String(req.query.path ?? "")) });
+    } catch (error) { sendFileApiError(res, error); }
+  });
   app.get("/api/sessions/:sessionId/files/preview-url", async (req, res) => {
     const sessionId = req.params.sessionId;
     if (!requireSessionRestContentAccess(req, res, sessionId)) return;
@@ -1962,8 +2017,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       sendFileApiError(res, error);
     }
   });
-  app.put("/api/sessions/:sessionId/files/content", (req, res) => {
-    const sessionId = req.params.sessionId;
+  function writeFileContent(req: express.Request, res: Response, owner: WorkingFileOwner) {
     const body = req.body as {
       root?: unknown;
       path?: unknown;
@@ -1976,7 +2030,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     if (
       typeof body?.root !== "string" ||
       typeof body.path !== "string" ||
-      typeof body.content !== "string"
+      typeof body.content !== "string" ||
+      (typeof owner !== "string" && body.root !== "working")
     ) {
       res.status(400).json({ error: "root, path, and content are required" });
       return;
@@ -1989,26 +2044,26 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       force: body.force === true,
       conflictCopy: body.conflictCopy === true,
     };
-    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
     try {
       if (body.root === "working") {
         // Writes the user's own folder on this machine; a multi-user
         // deployment must never reach this branch.
         res.json(
-          writeWorkingFolderTextFile(dataDir, sessionId, body.path, body.content, options),
+          writeWorkingFolderTextFile(dataDir, owner, body.path, body.content, options),
         );
         return;
       }
+      if (typeof owner !== "string") return;
       const written = writeSessionTextFile(
         dataDir,
-        sessionId,
+        owner,
         body.root,
         body.path,
         body.content,
         options,
       );
       // A rename is the ui-alias record: the list shows it.
-      if (body.root === "records" && body.path === "ui-alias.json") sessionService.listChanged(sessionId);
+      if (body.root === "records" && body.path === "ui-alias.json") sessionService.listChanged(owner);
       res.json(written);
     } catch (error) {
       if (error instanceof FileConflictError) {
@@ -2020,6 +2075,14 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       }
       sendFileApiError(res, error);
     }
+  }
+  app.put("/api/draft/files/content", (req, res) => {
+    try { writeFileContent(req, res, draftFileOwner(req)); }
+    catch (error) { sendFileApiError(res, error); }
+  });
+  app.put("/api/sessions/:sessionId/files/content", (req, res) => {
+    const sessionId = req.params.sessionId;
+    if (requireSessionRestContentAccess(req, res, sessionId)) writeFileContent(req, res, sessionId);
   });
   app.get("/api/sessions/:sessionId/files/download", (req, res) => {
     const sessionId = req.params.sessionId;

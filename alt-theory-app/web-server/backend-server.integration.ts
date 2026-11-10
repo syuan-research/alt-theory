@@ -26,6 +26,7 @@ import {
   resolveSoulSlug,
 } from "./asset-registry.js";
 import { createAltTheoryServer } from "./server.js";
+import { readAppSettings, writeAppSettings } from "./app-settings.js";
 import { SessionService } from "./session-service.js";
 import {
   buildSessionMetrics,
@@ -2261,6 +2262,13 @@ test("a new conversation is created from the draft settings its first request ca
   mkdirSync(souls, { recursive: true });
   mkdirSync(folder, { recursive: true });
   writeFileSync(appContextPath, "Draft create app context", "utf-8");
+  writeFileSync(join(folder, "notes.md"), "# Before the first message");
+  writeFileSync(join(folder, "report.html"), '<link rel="stylesheet" href="report.css">');
+  writeFileSync(join(folder, "report.css"), "body { color: navy; }");
+  writeAppSettings(dataDir, {
+    ...readAppSettings(dataDir),
+    workingFolders: { projects: [{ id: "project", primaryDir: folder, secondaryDirs: [] }], global: [] },
+  });
   writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8");
   writeFileSync(join(rolePresets, "tutor.md"), "Tutor role", "utf-8");
   writeFileSync(join(souls, "soul-latest.md"), "Latest soul", "utf-8");
@@ -2312,6 +2320,29 @@ test("a new conversation is created from the draft settings its first request ca
     assert.equal(greeting.payload.mode, "work");
     assert.equal(greeting.payload.visibility, "no-export");
     assert.equal(greeting.payload.fullAccess, false);
+
+    const origin = `http://127.0.0.1:${address.port}`;
+    const draftFiles = `${origin}/api/draft/files`;
+    const project = new URLSearchParams({ primaryDir: folder });
+    const directory = await fetch(`${draftFiles}?${project}&folderId=primary`);
+    assert.equal(directory.status, 200);
+    assert.ok((await directory.json()).entries.some((entry: { path: string }) => entry.path === "notes.md"));
+    const contentUrl = `${draftFiles}/content?${project}&path=primary/notes.md`;
+    const loaded = await fetch(contentUrl);
+    assert.equal(loaded.status, 200);
+    assert.equal((await loaded.json()).content, "# Before the first message");
+    const saved = await fetch(`${draftFiles}/content?${project}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ root: "working", path: "primary/notes.md", content: "# Edited in the draft" }),
+    });
+    assert.equal(saved.status, 200);
+    const preview = await fetch(`${draftFiles}/preview-url?${project}&path=primary/report.html`);
+    assert.equal(preview.status, 200);
+    const { url } = await preview.json();
+    assert.match(await (await fetch(url)).text(), /report.css/);
+    assert.equal(await (await fetch(new URL("report.css", url))).text(), "body { color: navy; }");
+    assert.equal(sessionDirs(), 0);
 
     // describe_draft answers the thinking level for the draft's model.
     const described = next((message) => message.type === "session_draft");
@@ -2367,6 +2398,8 @@ test("a new conversation is created from the draft settings its first request ca
     assert.deepEqual(snapshot.studyTag, { studyId: "draft-study", batch: "a" });
     assert.equal(snapshot.workspacePrimaryDir, folder);
     assert.match((await refusedRun).payload.failure.message, /No model is selected/);
+    const liveFile = await fetch(`${origin}/api/sessions/${snapshot.sessionId}/files/content?root=working&path=primary/notes.md`);
+    assert.equal((await liveFile.json()).content, "# Edited in the draft");
 
     // The next draft starts from the defaults again: nothing carried over.
     const fresh = answer("new");

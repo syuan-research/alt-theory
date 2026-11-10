@@ -43,6 +43,7 @@ export function MarkdownBody({
   sessionId,
   baseFile,
   baseFolderPath,
+  draftPrimaryDir,
   markRow,
 }: {
   text: string;
@@ -52,16 +53,19 @@ export function MarkdownBody({
   sessionId?: string | null;
   baseFile?: FileRef;
   baseFolderPath?: string | null;
+  draftPrimaryDir?: string | null;
   /** Transcript row id: this text takes reader marks (lib/marks.ts). */
   markRow?: string;
 }) {
   const conversation = useConversationContext();
-  const links = useContentLinks(sessionId === undefined ? conversation.sessionId : sessionId, baseFile, baseFolderPath);
-  const imageSessionId = sessionId === undefined ? conversation.sessionId : sessionId;
+  const fileSessionId = sessionId === undefined ? conversation.sessionId : sessionId;
+  const links = useContentLinks(fileSessionId, baseFile, baseFolderPath, draftPrimaryDir);
+  const fileOwner = useMemo(() => fileSessionId ??
+    (draftPrimaryDir !== undefined ? { primaryDir: draftPrimaryDir } : null), [fileSessionId, draftPrimaryDir]);
   const imageFolders = useMemo(() => {
     let pending: ReturnType<typeof listWorkingFolders> | undefined;
-    return () => imageSessionId ? (pending ??= listWorkingFolders(imageSessionId)) : Promise.resolve(null);
-  }, [imageSessionId]);
+    return () => fileOwner !== null ? (pending ??= listWorkingFolders(fileOwner)) : Promise.resolve(null);
+  }, [fileOwner]);
   const rootRef = useRef<HTMLDivElement>(null);
   const finishedRef = useRef<HTMLDivElement>(null);
   const tailRef = useRef<HTMLDivElement>(null);
@@ -169,7 +173,7 @@ export function MarkdownBody({
 
   useEffect(() => {
     const host = rootRef.current;
-    if (!host || !imageSessionId) return;
+    if (!host || fileOwner === null) return;
     for (const img of host.querySelectorAll<HTMLImageElement>("img[data-image-source]:not([data-image-resolved])")) {
       const source = img.dataset.imageSource!;
       const link = contentLink(source);
@@ -181,11 +185,11 @@ export function MarkdownBody({
         if (response.workspacePath && !folders.some(folder => folder.managed)) folders.push({ id: "managed", path: response.workspacePath, role: "secondary", managed: true, available: true });
         const { ref } = resolveFileLink(link.address, folders, baseFile, baseFolderPath);
         if (!ref) return;
-        const url = await sessionArtifactUrl(imageSessionId, ref.root, ref.path);
+        const url = await sessionArtifactUrl(fileOwner, ref.root, ref.path);
         if (img.isConnected) img.src = url;
       }).catch(() => { /* The caption and open action remain usable on load failure. */ });
     }
-  }, [text, html, streaming, imageSessionId, imageFolders, baseFile?.root, baseFile?.path, baseFolderPath]);
+  }, [text, html, streaming, fileOwner, imageFolders, baseFile?.root, baseFile?.path, baseFolderPath]);
 
   const onClick = (event: MouseEvent<HTMLDivElement>) => {
     const anchor = (event.target as Element).closest<HTMLAnchorElement>("a[href]");

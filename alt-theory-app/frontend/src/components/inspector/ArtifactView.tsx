@@ -1,21 +1,21 @@
 import { WebPageView } from "./WebPageView";
 import { useEffect, useState } from "react";
-import { sessionArtifactUrl } from "@/api/session-files";
+import { sessionArtifactUrl, type FileOwner } from "@/api/session-files";
 import type { FileRef } from "@/lib/fileContent";
 import { isImagePath } from "../../../../shared/artifact-types";
 import { t } from "@/i18n";
 
-export function ArtifactView({ sessionId, file, controlsHost }: { sessionId: string; file: FileRef; controlsHost?: HTMLElement | null }) {
+export function ArtifactView({ owner, file, controlsHost }: { owner: FileOwner; file: FileRef; controlsHost?: HTMLElement | null }) {
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
   useEffect(() => {
     let cancelled = false;
     setUrl(""); setError("");
-    sessionArtifactUrl(sessionId, file.root, file.path).then(value => {
+    sessionArtifactUrl(owner, file.root, file.path).then(value => {
       if (!cancelled) setUrl(value);
     }).catch(e => { if (!cancelled) setError(String(e)); });
     return () => { cancelled = true; };
-  }, [sessionId, file.root, file.path]);
+  }, [typeof owner === "string" ? owner : owner.primaryDir, typeof owner, file.root, file.path]);
   if (error) return <div className="rp-empty">{error}</div>;
   if (!url) return <div className="rp-empty">{t("Loading…")}</div>;
   return isImagePath(file.path)

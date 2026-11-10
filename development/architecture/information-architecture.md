@@ -113,9 +113,10 @@ surfaces remain designation-gated and absent for everyone else.
     approval with the auto reviewer, a line above the composer says so, with
     a way to Settings and "Don't show again". The first-level paperclip
     adds a file by copy (into the conversation's folder, converted to text for
-    office/PDF files) in every conversation; a pasted file or image does the
-    same; a dropped file attaches a copy under Read-only and a path link
-    otherwise.
+    office/PDF files) in every conversation. A pasted file or image does the
+    same. Both composers accept file drops. A desktop drop links the
+    original when the conversation can already read it, and otherwise
+    attaches a copy. Browser drops without a local path attach a copy.
   - Live composer chrome carries permission, model and effective thinking effort,
     role, knowledge, workspace context where applicable, and run controls.
     Its toolbar stays on one line: as the composer narrows, the permission

@@ -1005,6 +1005,7 @@ async function createAltTheorySessionWithManager(
     },
     getFullAccess: () => runtimeState.fullAccess,
     isFullAccessEffective,
+    getReadableRoots: () => sessionRootsForMode().readable,
     setFullAccess: (enabled: boolean): void => {
       // The server rejects non-local enables. Under read-only the value is
       // dormant (isFullAccessEffective), so the order of the two switches
@@ -1038,7 +1039,7 @@ async function createAltTheorySessionWithManager(
 
 const APPROVALS_FILE = "approvals.json";
 
-function readConversationApprovals(recordsDir: string): { keys: string[]; writableRoots: string[] } {
+export function readConversationApprovals(recordsDir: string): { keys: string[]; writableRoots: string[] } {
   try {
     const raw = JSON.parse(readFileSync(join(recordsDir, APPROVALS_FILE), "utf-8")) as {
       keys?: unknown;

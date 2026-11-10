@@ -12,6 +12,7 @@ import {
   listWorkingFolders,
   listWorkspaceFiles,
   searchWorkingDirectory,
+  type FileOwner,
 } from "@/api/session-files";
 import { t } from "@/i18n";
 import { useConversationContext } from "@/context/ConversationContext";
@@ -38,9 +39,8 @@ export function WorkspaceTree() {
   const app = useApp();
   const conv = useConversationContext();
   const shell = useShell();
-  const [entries, setEntries] = useState<WorkspaceFileEntry[] | null>(null);
-  const [workingFolders, setWorkingFolders] = useState<WorkingFolderDescriptor[]>([]);
-  const [workspacePath, setWorkspacePath] = useState("");
+  const [attachments, setAttachments] = useState<{ sessionId: string; entries: WorkspaceFileEntry[] } | null>(null);
+  const [working, setWorking] = useState<{ scope: string; folders: WorkingFolderDescriptor[]; workspacePath?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandSignal, setExpandSignal] = useState(0);
   const [collapseSignal, setCollapseSignal] = useState(0);
@@ -57,82 +57,50 @@ export function WorkspaceTree() {
 
   const sessionId = conv.sessionId;
   const runCount = conv.runSettledCount;
+  const primaryDir = conv.workspacePrimaryDir;
+  const fileOwner = useMemo<FileOwner>(() => sessionId ?? { primaryDir }, [sessionId, primaryDir]);
+  const scopeKey = sessionId ?? `draft:${primaryDir}`;
+  const folderScope = JSON.stringify([sessionId, primaryDir]);
+  const workingFolders = working?.scope === folderScope ? working.folders : [];
+  const workspacePath = working?.scope === folderScope ? working.workspacePath ?? "" : "";
+  const entries = !sessionId ? [] : attachments?.sessionId === sessionId ? attachments.entries : null;
   // View state that outlives the pane (the tree unmounts on every collapse
   // or rail switch): the open file is the view's file target — drawn against
   // the conversation it belongs to, even after the center moved on; the view
   // mode and filter live in pane memory.
   const fileTarget = shell.target?.kind === "file" ? shell.target : null;
-  const owner = fileTarget?.sessionId ?? sessionId;
+  const owner = fileTarget ? fileTarget.sessionId : sessionId;
+  const previewKey = fileTarget?.sessionId === null ? `draft:${fileTarget.draftPrimaryDir}` : owner ?? scopeKey;
   const ownerAttachments = useDraft(owner ?? NEW_DRAFT).draft.attachments;
-  const [previewView, setPreviewView] = usePaneMemory<PreviewMode>(`${owner}:files:mode`, "rendered");
-  const [query, setQuery] = usePaneMemory(`${sessionId}:files:query`, "");
+  const [previewView, setPreviewView] = usePaneMemory<PreviewMode>(`${previewKey}:files:mode`, "rendered");
+  const [query, setQuery] = usePaneMemory(`${scopeKey}:files:query`, "");
   // Name = the folder trees; recent = each folder's files flat, newest first.
-  const [order, setOrder] = usePaneMemory<"name" | "recent">(`${sessionId}:files:order`, "name");
+  const [order, setOrder] = usePaneMemory<"name" | "recent">(`${scopeKey}:files:order`, "name");
   const [toolsOpen, setToolsOpen] = usePaneMemory("files:toolsOpen", true);
   const recent = order === "recent";
-  const [browsing, setBrowsing] = usePaneMemory<{ folderId: string; path: string } | null>(`${sessionId}:files:browsing`, null);
+  const [browsing, setBrowsing] = usePaneMemory<{ folderId: string; path: string } | null>(`${scopeKey}:files:browsing`, null);
   const resultScroll = useRef({ outer: 0, inner: 0, folderId: "" });
-  const [closedFolders, setClosedFolders] = usePaneMemory<string[]>(`${sessionId}:files:closedFolders`, []);
+  const [closedFolders, setClosedFolders] = usePaneMemory<string[]>(`${scopeKey}:files:closedFolders`, []);
   const folderClosed = (id: string) => (!query.trim() || browsing !== null) && closedFolders.includes(id);
   const toggleFolder = (id: string) =>
     setClosedFolders((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
 
-  // Draft pane: before the first message there is no session to read folders
-  // from, so show the ones this conversation will get — the picker's folder,
-  // its project's companions, and the global list — the same rows the
-  // materialized record will produce. ponytail: availability is pick-time
-  // and settings-time, not re-checked while the pane sits open; live
-  // re-checking arrives with the session's own fetch.
-  const draftFolders = useMemo<WorkingFolderDescriptor[]>(() => {
-    if (sessionId || !conv.workspacePrimaryDir) return [];
-    const dir = conv.workspacePrimaryDir;
-    const project = app.projects.find(
-      (entry) => entry.primaryDir.toLowerCase() === dir.toLowerCase(),
-    );
-    return [
-      { id: "primary", path: dir, role: "primary", managed: false, available: true },
-      ...(project?.secondaryDirs ?? []).map((path, index) => ({
-        id: `secondary-${index + 1}`,
-        path,
-        role: "secondary" as const,
-        managed: false,
-        available: project?.available !== false,
-      })),
-      ...app.globalFolders.map((folder, index) => ({
-        id: `global-${index + 1}`,
-        path: folder.path,
-        role: "global" as const,
-        managed: false,
-        available: true,
-      })),
-    ];
-  }, [sessionId, conv.workspacePrimaryDir, app.projects, app.globalFolders]);
-  const folders = sessionId ? workingFolders : draftFolders;
+  const folders = workingFolders;
 
   useEffect(() => {
-    setWorkspacePath("");
-    if (!sessionId) {
-      setEntries([]);
-      return;
-    }
     let cancelled = false;
-    listWorkspaceFiles(sessionId)
-      .then((res) => {
-        if (cancelled) return;
-        setEntries(res.entries ?? res.files);
-        setWorkingFolders(res.workingFolders ?? []);
-        setError(null);
-        void listWorkingFolders(sessionId).then((working) => {
-          if (cancelled) return;
-          setWorkingFolders(working.folders);
-          setWorkspacePath(working.workspacePath ?? "");
-        }).catch(() => undefined);
-      })
-      .catch((e) => !cancelled && setError(e?.message ?? "Failed to load files"));
-    return () => {
-      cancelled = true;
-    };
-  }, [sessionId, runCount]);
+    setError(null);
+    void listWorkingFolders(fileOwner).then((working) => {
+      if (cancelled) return;
+      setWorking({ scope: folderScope, ...working });
+    }).catch((e) => !cancelled && setError(e?.message ?? "Failed to load files"));
+    if (sessionId) {
+      void listWorkspaceFiles(sessionId).then((res) => {
+        if (!cancelled) setAttachments({ sessionId, entries: res.entries ?? res.files });
+      }).catch((e) => !cancelled && setError(e?.message ?? "Failed to load files"));
+    }
+    return () => { cancelled = true; };
+  }, [fileOwner, folderScope, sessionId, runCount, app.projects, app.globalFolders]);
 
   useEffect(() => {
     const target = shell.workspaceRevealPath;
@@ -215,14 +183,16 @@ export function WorkspaceTree() {
   };
 
   const openWorkingFile = (entry: WorkingTreeEntry) => {
-    if (!sessionId) return;
     if (!entry.previewable) {
       const folder = workingFolders.find(item => item.id === entry.folderId);
       if (folder) void openPath(`${folder.path}/${entry.path}`).catch(error => window.alert(String(error)));
       return;
     }
     setPreviewView("rendered");
-    shell.openTarget({ kind: "file", sessionId, root: "working", path: `${entry.folderId}/${entry.path}` });
+    const path = `${entry.folderId}/${entry.path}`;
+    shell.openTarget(sessionId
+      ? { kind: "file", sessionId, root: "working", path }
+      : { kind: "file", sessionId: null, draftPrimaryDir: primaryDir, root: "working", path });
   };
 
 
@@ -232,6 +202,7 @@ export function WorkspaceTree() {
     return (
       <FilePreview
         sessionId={fileTarget.sessionId}
+        draftPrimaryDir={fileTarget.sessionId === null ? fileTarget.draftPrimaryDir : undefined}
         path={fileTarget.path}
         fileRef={{ root: fileTarget.root, path: fileTarget.path }}
         mode={previewView}
@@ -303,29 +274,29 @@ export function WorkspaceTree() {
                     : t("Companion folder")}${folder.managed ? ` · ${t("conversation folder")}` : ""}`}
                 available={folder.available}
                 closed={folderClosed(folder.id)}
-                onToggle={folder.available && !folder.managed && sessionId ? () => toggleFolder(folder.id) : undefined}
+                onToggle={folder.available && !folder.managed ? () => toggleFolder(folder.id) : undefined}
               />
               {!folder.available ? (
                 <div className="working-folder-missing">{t("Folder is not available on this device.")}</div>
               ) : null}
-              {folder.available && !folder.managed && sessionId && recent ? (
+              {folder.available && !folder.managed && recent ? (
                 <div hidden={folderClosed(folder.id)}>
                   <RecentWorkingFiles
-                    key={`${sessionId}:${folder.id}`}
-                    sessionId={sessionId}
+                    key={`${scopeKey}:${folder.id}`}
+                    owner={fileOwner}
                     folderId={folder.id}
                     refreshSignal={runCount}
                     query={normalizedQuery}
                     onOpenFile={openWorkingFile}
                   />
                 </div>
-              ) : folder.available && !folder.managed && sessionId ? (
+              ) : folder.available && !folder.managed ? (
                 // Folded with `hidden`, not unmounted: the loaded levels and
                 // expansion stay. A filter shows matches even when folded.
                 <div hidden={folderClosed(folder.id)}>
                 <WorkingTree
-                  key={`${sessionId}:${folder.id}`}
-                  sessionId={sessionId!}
+                  key={`${scopeKey}:${folder.id}`}
+                  owner={fileOwner}
                   folderId={folder.id}
                   onOpenFile={openWorkingFile}
                   basePath={folder.path}
@@ -336,7 +307,7 @@ export function WorkspaceTree() {
                   browseMode={browsing !== null}
                   browsePath={browsing?.folderId === folder.id ? browsing.path : undefined}
                   onOpenFolder={(path) => openFolderResult(folder.id, path)}
-                  memoryKey={`${sessionId}:files:${folder.id}`}
+                  memoryKey={`${scopeKey}:files:${folder.id}`}
                 />
                 </div>
               ) : null}
@@ -429,8 +400,8 @@ function RecentList<T extends { path: string; updatedAt: string | null }>({ entr
   );
 }
 
-function RecentWorkingFiles({ sessionId, folderId, refreshSignal, query, onOpenFile }: {
-  sessionId: string;
+function RecentWorkingFiles({ owner, folderId, refreshSignal, query, onOpenFile }: {
+  owner: FileOwner;
   folderId: string;
   refreshSignal: number;
   query: string;
@@ -439,11 +410,11 @@ function RecentWorkingFiles({ sessionId, folderId, refreshSignal, query, onOpenF
   const [result, setResult] = useState<{ entries: WorkingTreeEntry[]; truncated: boolean } | null>(null);
   useEffect(() => {
     let cancelled = false;
-    listRecentWorkingFiles(sessionId, folderId)
+    listRecentWorkingFiles(owner, folderId)
       .then((response) => !cancelled && setResult({ entries: response.entries, truncated: Boolean(response.truncated) }))
       .catch(() => !cancelled && setResult({ entries: [], truncated: false }));
     return () => { cancelled = true; };
-  }, [sessionId, folderId, refreshSignal]);
+  }, [owner, folderId, refreshSignal]);
   if (!result) return <div className="wb-note">{t("Loading…")}</div>;
   // ponytail: the filter narrows the newest 200 only; the Name order searches the whole folder.
   const fileQuery = parseFileQuery(query);
@@ -460,7 +431,7 @@ function RecentWorkingFiles({ sessionId, folderId, refreshSignal, query, onOpenF
 }
 
 function WorkingTree({
-  sessionId,
+  owner,
   folderId,
   onOpenFile,
   basePath,
@@ -473,7 +444,7 @@ function WorkingTree({
   onOpenFolder,
   memoryKey,
 }: {
-  sessionId: string;
+  owner: FileOwner;
   folderId: string;
   onOpenFile: (entry: WorkingTreeEntry) => void;
   basePath: string;
@@ -504,7 +475,7 @@ function WorkingTree({
     if (loadingPaths.current.has(path)) return existing ?? [];
     loadingPaths.current.add(path);
     try {
-      const response = await listWorkingDirectory(sessionId, folderId, path);
+      const response = await listWorkingDirectory(owner, folderId, path);
       setChildrenByPath((current) => {
         const next = new Map(current);
         const survivingDirectories = new Set(
@@ -530,7 +501,7 @@ function WorkingTree({
     } finally {
       loadingPaths.current.delete(path);
     }
-  }, [folderId, sessionId]);
+  }, [folderId, owner]);
 
   useEffect(() => {
     setChildrenByPath(new Map());
@@ -550,7 +521,7 @@ function WorkingTree({
     searchToken.current ??= `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      void searchWorkingDirectory(sessionId, folderId, search, {
+      void searchWorkingDirectory(owner, folderId, search, {
         searchToken: searchToken.current!,
         signal: controller.signal,
       }).then((response) => {
@@ -563,7 +534,7 @@ function WorkingTree({
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [browseMode, folderId, query, sessionId]);
+  }, [browseMode, folderId, query, owner]);
 
   useEffect(() => {
     if (browsePath === undefined) return;

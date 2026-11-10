@@ -409,22 +409,21 @@ export function listWorkspaceFiles(
   };
 }
 
+export type WorkingFileOwner = string | { primaryDir: string | null };
+
 export function describeWorkingFolders(
   dataDir: string,
-  sessionId: string
+  owner: WorkingFileOwner,
 ): WorkingFolderDescriptor[] {
-  const managedDir = workspaceRoot(dataDir, sessionId);
-  const header = readV4SessionHeader(
-    join(resolveSessionRoot(dataDir, sessionId)!, "records")
-  );
-  const primaryDir = header?.workspace?.primaryDir ?? null;
-  // Folder roles follow the root policy (v1.5.1 + WP-C): the project's
-  // main and companion folders, then the global list — everything this
-  // session may read — so the browser shows the same set the policy grants.
-  const policy = folderPolicyFor(readAppSettings(dataDir), primaryDir);
+  const settings = readAppSettings(dataDir);
+  const managedDir = typeof owner === "string" ? workspaceRoot(dataDir, owner) : null;
+  const primaryDir = typeof owner === "string"
+    ? readV4SessionHeader(join(resolveSessionRoot(dataDir, owner)!, "records"))?.workspace?.primaryDir ?? null
+    : owner.primaryDir;
+  const policy = folderPolicyFor(settings, primaryDir);
   const project = primaryDir
     ? [primaryDir, ...policy.projectSecondaryDirs]
-    : [managedDir];
+    : managedDir ? [managedDir] : [];
   const globals = policy.globalFolders.map((folder) => folder.path);
   const folders = [...project, ...globals].map((path, index): WorkingFolderDescriptor => {
     const resolved = resolve(path);
@@ -437,11 +436,11 @@ export function describeWorkingFolders(
           : `secondary-${index}`,
       path: resolved,
       role: global ? "global" : index === 0 ? "primary" : "secondary",
-      managed: samePath(resolved, managedDir),
+      managed: managedDir !== null && samePath(resolved, managedDir),
       available: statSync(resolved, { throwIfNoEntry: false })?.isDirectory() ?? false,
     };
   });
-  if (!folders.some(folder => folder.managed)) folders.push({
+  if (managedDir && !folders.some(folder => folder.managed)) folders.push({
     id: "managed", path: managedDir, role: "secondary", managed: true,
     available: statSync(managedDir, { throwIfNoEntry: false })?.isDirectory() ?? false,
   });
@@ -450,11 +449,11 @@ export function describeWorkingFolders(
 
 export function listWorkingFolderChildren(
   dataDir: string,
-  sessionId: string,
+  owner: WorkingFileOwner,
   folderId: string,
   requestedPath = "",
 ): { folderId: string; path: string; entries: WorkingTreeEntry[] } {
-  const folder = describeWorkingFolders(dataDir, sessionId).find(
+  const folder = describeWorkingFolders(dataDir, owner).find(
     (item) => item.id === folderId,
   );
   if (!folder?.available) throw new Error("This folder is not available");
@@ -576,13 +575,13 @@ function cachedSearchablePaths(root: string, token: string): Promise<SearchableP
 
 export async function searchWorkingFolder(
   dataDir: string,
-  sessionId: string,
+  owner: WorkingFileOwner,
   folderId: string,
   rawQuery: string,
   limit = 200,
   options: { token?: string; signal?: AbortSignal } = {},
 ): Promise<{ folderId: string; path: string; entries: WorkingTreeEntry[]; truncated: boolean }> {
-  const folder = describeWorkingFolders(dataDir, sessionId).find((item) => item.id === folderId);
+  const folder = describeWorkingFolders(dataDir, owner).find((item) => item.id === folderId);
   if (!folder?.available) throw new Error("This folder is not available");
   const query = parseFileQuery(rawQuery);
   if (!query.terms.length) return { folderId, path: "", entries: [], truncated: false };
@@ -619,12 +618,12 @@ export async function searchWorkingFolder(
 /** A folder's most recently modified files, newest first (Files' "Recently modified" order). */
 export async function recentWorkingFiles(
   dataDir: string,
-  sessionId: string,
+  owner: WorkingFileOwner,
   folderId: string,
   limit = 200,
   signal?: AbortSignal,
 ): Promise<{ folderId: string; path: string; entries: WorkingTreeEntry[]; truncated: boolean }> {
-  const folder = describeWorkingFolders(dataDir, sessionId).find((item) => item.id === folderId);
+  const folder = describeWorkingFolders(dataDir, owner).find((item) => item.id === folderId);
   if (!folder?.available) throw new Error("This folder is not available");
   const paths = await listSearchablePaths(realpathSync(folder.path), signal);
   // Async stats: a large folder must not block the server while it is read.
@@ -650,12 +649,12 @@ export async function recentWorkingFiles(
 
 export function resolveWorkingReadableFile(
   dataDir: string,
-  sessionId: string,
+  owner: WorkingFileOwner,
   requestedPath: string
 ) {
   const [folderId, ...parts] = requestedPath.replace(/\\/g, "/").split("/");
   const relPath = parts.join("/");
-  const folder = describeWorkingFolders(dataDir, sessionId).find(
+  const folder = describeWorkingFolders(dataDir, owner).find(
     (item) => item.id === folderId
   );
   if (!folder || !relPath || isAbsolute(relPath)) throw new Error("Invalid folder path");
@@ -681,8 +680,8 @@ export function resolveWorkingReadableFile(
   return { target, folder, stats };
 }
 
-export function readWorkingFolderTextFile(dataDir: string, sessionId: string, requestedPath: string): { root: "working"; path: string; folderPath: string; size: number; updatedAt: string; content: string } {
-  const { target, folder, stats } = resolveWorkingReadableFile(dataDir, sessionId, requestedPath);
+export function readWorkingFolderTextFile(dataDir: string, owner: WorkingFileOwner, requestedPath: string): { root: "working"; path: string; folderPath: string; size: number; updatedAt: string; content: string } {
+  const { target, folder, stats } = resolveWorkingReadableFile(dataDir, owner, requestedPath);
   const folderId = folder.id;
   if (stats.size > MAX_TEXT_VIEW_BYTES) throw new Error("File is too large to preview");
   const buffer = readFileSync(target);
@@ -708,14 +707,14 @@ export function readWorkingFolderTextFile(dataDir: string, sessionId: string, re
  */
 export function writeWorkingFolderTextFile(
   dataDir: string,
-  sessionId: string,
+  owner: WorkingFileOwner,
   requestedPath: string,
   content: string,
   options: WriteTextFileOptions = {}
 ): { root: "working"; path: string; folderPath: string; size: number; updatedAt: string; content: string } {
   const [folderId, ...parts] = requestedPath.replace(/\\/g, "/").split("/");
   const relPath = parts.join("/");
-  const folder = describeWorkingFolders(dataDir, sessionId).find(
+  const folder = describeWorkingFolders(dataDir, owner).find(
     (item) => item.id === folderId
   );
   if (!folder || !relPath || isAbsolute(relPath)) throw new Error("Invalid folder path");
@@ -764,7 +763,7 @@ export function writeWorkingFolderTextFile(
   writeTextFilePreservingIdentity(finalPath, out);
   return readWorkingFolderTextFile(
     dataDir,
-    sessionId,
+    owner,
     `${folderId}/${relative(folder.path, finalPath).replace(/\\/g, "/")}`
   );
 }

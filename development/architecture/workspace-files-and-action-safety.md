@@ -38,6 +38,12 @@ Both are read live from `app-settings.json`, so changes apply to an open
 conversation at its next path check and on its next loader reload (context file
 and project skills).
 
+Before the first message, the Files rail resolves working folders from the
+draft's selected project and global folders. It uses the same directory,
+search, file preview, and user-edit behavior as an open conversation.
+Conversation-owned attachments and records have a session folder once the
+conversation exists.
+
 Reopen restores the persisted main folder when it still exists. If it is
 unavailable, reopen uses no working folder and exposes a warning; the old
 header value remains until the user acts. See
