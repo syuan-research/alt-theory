@@ -777,6 +777,7 @@ async function createAltTheorySessionWithManager(
   // instance only; the user's settings file is not written.
   const settingsManager = SettingsManager.create(cwd);
   settingsManager.getCacheWarmingMode = () => "off";
+  settingsManager.applyOverrides({ retry: { maxRetries: 5 } });
   const sessionOpts: Parameters<typeof createAgentSession>[0] = {
     cwd,
     resourceLoader: loader,

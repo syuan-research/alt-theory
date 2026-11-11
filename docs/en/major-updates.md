@@ -1,3 +1,9 @@
+**v1.12.0 · 2026-11**
+- [Domain knowledge] A new knowledge-base skill condenses literature while retaining substantive findings and contributions, builds shareable knowledge bases for a project or field, and leaves the agent more context for discussion, writing and revision
+
+**v1.11.0 · 2026-11**
+- [Files] Interactive web pages created by the agent open directly in the right pane, with scripts and forms for exploring charts, reading summaries and entering feedback
+
 **v1.9.0 · 2026-10**
 - [Conversation] Messages can be edited and branches created while a reply is running, in side conversations too
 

@@ -5,6 +5,33 @@
 
 ---
 
+## v1.12.0 — 2026-11-12
+
+This update lets you build and use your own knowledge bases with the agent.
+
+### Domain knowledge
+
+- The new bundled knowledge-base skill organizes paper summaries around their empirical, methodological, theoretical and practical contributions. It adjusts each summary to the amount of content while aiming to retain the substance in about one eighth of the original length.
+- For a model with a million-character context window, the knowledge-base summaries needed to write one paper use only 10–15% of that context. They retain substantive findings and contributions, leaving the agent ample room to discuss, write and revise with you after reading the research behind the paper.
+- Summaries identify what they leave out and link to the original PDF, helping the agent recognize when to consult the source. The agent also has updated guidance for searching knowledge bases.
+- You can summarize material in the conversation, save it to a file, or build a knowledge base for your project or field. Knowledge bases consist of Markdown summaries and an `at-kb.md` file, are easy to share, and can be used alongside Zotero notes. The agent can add a knowledge base to the app and maintain its card and list of summaries.
+
+### Files
+
+- Fixed a problem that kept you from expanding folders and opening files in the Files pane before starting a conversation.
+- The right-hand composer now accepts file drops; files the conversation can already read are linked to their originals.
+
+### Conversations
+
+- Agents can check and wait for peers they can message or have communicated with; waiting without a target list includes all eligible agents currently working.
+- Fixed the model picker losing the configured thinking effort when choosing the app's default model.
+- Connection errors can now retry up to five times.
+
+### Interface
+
+- Improved pane sizing and window dragging.
+- Project lists show a shorter preview of their conversations.
+
 ## v1.11.0 — 2026-11-01
 
 This update lets you read what conversations produce inside the app, and refines everyday details.
