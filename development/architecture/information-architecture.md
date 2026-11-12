@@ -152,6 +152,11 @@ surfaces remain designation-gated and absent for everyone else.
   - Skills do not receive permanent navigation entries merely because they are
     installed.
 - **Messages**
+  - User and assistant text nodes have a trailing three-dot menu after all
+    existing actions. Its experimental Bookmark action saves the node and opens
+    a small note popover beside the trigger. Notes save after a typing pause
+    and when closed; the same menu reopens the note or removes the bookmark.
+    There is no separate note action, collection page, tag UI, or export UI.
   - On an ordinary user message, the pencil means **Edit and compare**, including
     while its answer runs. Editing
     stays in the user bubble; Send preserves the original and runs the edit in

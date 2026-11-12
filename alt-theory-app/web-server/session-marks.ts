@@ -29,6 +29,50 @@ const FILE = "marks.json";
 const MAX_MARKS = 5000;
 const MAX_QUOTE = 20000;
 
+export interface NodeBookmark {
+  row: string;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function readDocument(recordsDir: string): Record<string, unknown> {
+  const path = join(recordsDir, FILE);
+  if (!existsSync(path)) return {};
+  const value = JSON.parse(readFileSync(path, "utf-8"));
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid marks file");
+  return value;
+}
+
+export function readBookmarks(recordsDir: string): NodeBookmark[] {
+  const value = readDocument(recordsDir).bookmarks;
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.some((item) => !item ||
+    typeof item.row !== "string" || !item.row ||
+    typeof item.note !== "string" ||
+    typeof item.createdAt !== "string" || typeof item.updatedAt !== "string")) {
+    throw new Error("Invalid bookmarks");
+  }
+  return value;
+}
+
+/** Update one node so saves from different panes do not replace each other's bookmarks. */
+export function writeBookmark(recordsDir: string, row: unknown, note: unknown): NodeBookmark[] {
+  if (typeof row !== "string" || !row || row.length > 200) throw new Error("Invalid bookmark row");
+  if (note !== null && (typeof note !== "string" || note.length > MAX_QUOTE)) throw new Error("Invalid bookmark note");
+  const document = readDocument(recordsDir);
+  const bookmarks = readBookmarks(recordsDir);
+  const previous = bookmarks.find((item) => item.row === row);
+  const next = bookmarks.filter((item) => item.row !== row);
+  if (note !== null) {
+    if (next.length >= MAX_MARKS) throw new Error(`at most ${MAX_MARKS} bookmarks`);
+    const now = new Date().toISOString();
+    next.push({ row, note: note as string, createdAt: previous?.createdAt ?? now, updatedAt: now });
+  }
+  writeJsonAtomic(join(recordsDir, FILE), { ...document, bookmarks: next });
+  return next;
+}
+
 export function readMarks(recordsDir: string): TextMark[] {
   const path = join(recordsDir, FILE);
   if (!existsSync(path)) return [];
@@ -41,7 +85,7 @@ export function readMarks(recordsDir: string): TextMark[] {
 
 export function writeMarks(recordsDir: string, input: unknown): TextMark[] {
   const marks = parseMarks(input);
-  writeJsonAtomic(join(recordsDir, FILE), { marks });
+  writeJsonAtomic(join(recordsDir, FILE), { ...readDocument(recordsDir), marks });
   return marks;
 }
 

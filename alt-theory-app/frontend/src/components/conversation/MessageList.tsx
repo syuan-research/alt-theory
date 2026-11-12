@@ -26,6 +26,7 @@ import { useContextMenu, type ContextMenuItem } from "@/components/shell/Context
 import { fileMenuItems } from "@/lib/fileMenu";
 import { useFindTarget } from "@/lib/find";
 import { useMarks } from "@/components/conversation/useMarks";
+import { BookmarkAction } from "./BookmarkAction";
 
 export function MessageList() {
   const conv = useConversationContext();
@@ -815,6 +816,7 @@ function UserBubble({
             ) : null}
           </span>
         ) : null}
+        {entryId && rowId ? <BookmarkAction row={rowId} /> : null}
       </div>
     </div>
   );
@@ -855,6 +857,7 @@ export function AssistantBubble({
           >
             <i className="ph ph-copy" aria-hidden="true" />
           </button>
+          {markRow ? <BookmarkAction row={markRow} /> : null}
         </div>
       ) : null}
     </div>

@@ -528,6 +528,10 @@
     border-radius: var(--r-lg);
     box-shadow: var(--shadow-popup);
   }
+  .bookmark-popover { position: fixed; z-index: 110; width: min(280px, calc(100vw - 16px)); padding: var(--space-control); color: var(--ink); background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-md); box-shadow: var(--shadow-popup); }
+  .bookmark-popover-head { display: flex; justify-content: space-between; align-items: center; color: var(--text-3); margin-bottom: var(--space-tight); }
+  .bookmark-popover textarea { resize: none; max-height: 144px; border: none; outline: none; padding: var(--space-tight); background: transparent; }
+  .bookmark-popover [role="alert"] { color: var(--danger); margin-top: var(--space-control); font-size: var(--fs-secondary); }
 
 
   /* Row layout: the persistent left rail + its resizer sit at the root, the

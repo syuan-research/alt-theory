@@ -255,6 +255,28 @@ export interface TextMark {
   suffix: string;
 }
 
+export interface NodeBookmark {
+  row: string;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function fetchBookmarks(sessionId: string): Promise<NodeBookmark[]> {
+  const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/bookmarks`);
+  if (!res.ok) throw new Error(`Bookmarks failed (${res.status})`);
+  return ((await res.json()) as { bookmarks: NodeBookmark[] }).bookmarks;
+}
+
+export async function saveBookmark(sessionId: string, row: string, note: string | null): Promise<void> {
+  const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/bookmarks`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ row, note }),
+  });
+  if (!res.ok) throw new Error(`Saving bookmark failed (${res.status})`);
+}
+
 export async function fetchMarks(sessionId: string): Promise<TextMark[]> {
   const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/marks`);
   if (!res.ok) throw new Error(`Marks failed (${res.status})`);

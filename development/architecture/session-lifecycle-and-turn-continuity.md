@@ -109,6 +109,13 @@ The materialized session has two related authorities:
   A fork copies the file (entry ids are kept, so the marks still resolve).
   The client paints marks with the CSS Custom Highlight API in every
   conversation pane (`frontend/src/lib/marks.ts`), with Ctrl+F hits on top.
+  The same file holds a separate `bookmarks` array: transcript `row`, free-text
+  `note`, `createdAt`, and `updatedAt`. Reader-mark writes preserve bookmarks;
+  bookmark writes update one row and preserve reader marks. Both travel with
+  the existing fork copy. `GET/PUT /api/sessions/:sessionId/bookmarks` use the
+  conversation-content access policy; PUT takes `{ row, note }` (null removes).
+  `BookmarkAction.tsx` owns the shared user/assistant menu and autosaving note
+  popover. These records are not automatically inserted into model context.
 
 Pi-native custom messages carry folder context and local time, hidden from chat
 bubbles but retained in the transcript. Folder context is appended when its

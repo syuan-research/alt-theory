@@ -5,6 +5,11 @@
  * wording here AND noting it in the glossary so regeneration keeps it.
  */
 const catalog: Record<string, string> = {
+  "Bookmark": "收藏",
+  "Note…": "备注…",
+  "More message actions": "更多消息操作",
+  "Remove bookmark": "取消收藏",
+  "Bookmark note": "收藏备注",
   "View release notes and check for updates.": "查看功能变更说明和检查新版本。",
   "Destination project": "归属项目",
   "Project: {name}": "项目：{name}",

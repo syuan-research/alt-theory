@@ -161,7 +161,7 @@ import {
 } from "./app-settings.js";
 import { discoverSkillResources } from "./resource-discovery.js";
 import { adoptStagedAttachments, stageAttachment } from "./attachment-staging.js";
-import { readMarks, writeMarks } from "./session-marks.js";
+import { readMarks, writeMarks, readBookmarks, writeBookmark } from "./session-marks.js";
 import { reviewerRecommendations } from "./reviewer-recommendations.js";
 import {
   readSubagentConfig,
@@ -1801,6 +1801,25 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     try {
       const marks = writeMarks(join(resolveSessionRoot(dataDir, sessionId)!, "records"), asObject(req.body).marks);
       res.json({ marks });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+  app.get("/api/sessions/:sessionId/bookmarks", (req, res) => {
+    const { sessionId } = req.params;
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    try {
+      res.json({ bookmarks: readBookmarks(join(resolveSessionRoot(dataDir, sessionId)!, "records")) });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+  app.put("/api/sessions/:sessionId/bookmarks", (req, res) => {
+    const { sessionId } = req.params;
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    try {
+      const body = asObject(req.body);
+      res.json({ bookmarks: writeBookmark(join(resolveSessionRoot(dataDir, sessionId)!, "records"), body.row, body.note) });
     } catch (error) {
       res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
     }

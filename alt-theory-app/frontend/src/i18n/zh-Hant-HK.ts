@@ -4,6 +4,11 @@
  * hand-edit policy as zh-Hans.ts.
  */
 const catalog: Record<string, string> = {
+  "Bookmark": "收藏",
+  "Note…": "備註…",
+  "More message actions": "更多訊息操作",
+  "Remove bookmark": "取消收藏",
+  "Bookmark note": "收藏備註",
   "View release notes and check for updates.": "查看功能變更說明和檢查新版本。",
   "Destination project": "所屬項目",
   "Project: {name}": "項目：{name}",
