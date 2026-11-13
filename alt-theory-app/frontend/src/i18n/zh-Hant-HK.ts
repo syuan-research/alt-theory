@@ -4,6 +4,7 @@
  * hand-edit policy as zh-Hans.ts.
  */
 const catalog: Record<string, string> = {
+  "Open bookmark note": "開啟收藏備註",
   "Bookmark": "收藏",
   "Note…": "備註…",
   "More message actions": "更多訊息操作",

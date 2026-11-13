@@ -27,9 +27,15 @@ import { fileMenuItems } from "@/lib/fileMenu";
 import { useFindTarget } from "@/lib/find";
 import { useMarks } from "@/components/conversation/useMarks";
 import { BookmarkAction } from "./BookmarkAction";
+import { loadBookmarks } from "@/lib/bookmarks";
 
 export function MessageList() {
   const conv = useConversationContext();
+  useEffect(() => {
+    if (conv.sessionId) void loadBookmarks(conv.sessionId).catch((reason) =>
+      conv.notify({ kind: "text", text: reason instanceof Error ? reason.message : String(reason), icon: "warning" }),
+    );
+  }, [conv.sessionId, conv.notify]);
   const actions = useTranscriptActions();
   const streamParts = useTurnParts();
   const messages = conv.messages;

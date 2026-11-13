@@ -114,8 +114,11 @@ The materialized session has two related authorities:
   bookmark writes update one row and preserve reader marks. Both travel with
   the existing fork copy. `GET/PUT /api/sessions/:sessionId/bookmarks` use the
   conversation-content access policy; PUT takes `{ row, note }` (null removes).
-  `BookmarkAction.tsx` owns the shared user/assistant menu and autosaving note
-  popover. These records are not automatically inserted into model context.
+  `frontend/src/lib/bookmarks.ts` shares one loaded collection per conversation
+  and serializes saves so both panes see consistent corner markers.
+  `BookmarkAction.tsx` owns the user/assistant menu, corner entry and single
+  autosaving note card used by both entries. These records are not automatically
+  inserted into model context.
 
 Pi-native custom messages carry folder context and local time, hidden from chat
 bubbles but retained in the transcript. Folder context is appended when its

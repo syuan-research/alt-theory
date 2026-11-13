@@ -529,7 +529,16 @@
     box-shadow: var(--shadow-popup);
   }
   .bookmark-popover { position: fixed; z-index: 110; width: min(280px, calc(100vw - 16px)); padding: var(--space-control); color: var(--ink); background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-md); box-shadow: var(--shadow-popup); }
-  .bookmark-popover-head { display: flex; justify-content: space-between; align-items: center; color: var(--text-3); margin-bottom: var(--space-tight); }
+  .bookmark-popover-head { display: flex; justify-content: space-between; align-items: center; color: var(--text-3); margin-bottom: var(--space-tight); padding-bottom: var(--space-tight); border-bottom: 1px solid var(--hairline); }
+  .bookmark-popover-title { display: flex; align-items: center; gap: var(--space-hair); font-size: var(--fs-secondary); color: var(--text-2); }
+  .bookmark-glyph { width: 16px; height: 16px; display: block; color: var(--text-3); }
+  .bookmark-glyph.is-bookmarked { color: #4676ad; }
+  .bookmark-toggle, .bookmark-corner { border: none; background: transparent; border-radius: var(--r-sm); padding: var(--space-hair); cursor: pointer; }
+  .bookmark-toggle:hover, .bookmark-corner:hover { background: var(--hover); }
+  .bookmark-toggle:disabled, .bookmark-corner:disabled { cursor: default; opacity: 0.5; }
+  .msg .bubble { position: relative; }
+  .bookmark-corner { position: absolute; top: -10px; right: -10px; background: var(--canvas); }
+  .bookmark-popover textarea::placeholder { color: var(--text-3); opacity: 1; }
   .bookmark-popover textarea { resize: none; max-height: 144px; border: none; outline: none; padding: var(--space-tight); background: transparent; }
   .bookmark-popover [role="alert"] { color: var(--danger); margin-top: var(--space-control); font-size: var(--fs-secondary); }
 

@@ -5,6 +5,7 @@
  * wording here AND noting it in the glossary so regeneration keeps it.
  */
 const catalog: Record<string, string> = {
+  "Open bookmark note": "打开收藏备注",
   "Bookmark": "收藏",
   "Note…": "备注…",
   "More message actions": "更多消息操作",

@@ -268,13 +268,14 @@ export async function fetchBookmarks(sessionId: string): Promise<NodeBookmark[]>
   return ((await res.json()) as { bookmarks: NodeBookmark[] }).bookmarks;
 }
 
-export async function saveBookmark(sessionId: string, row: string, note: string | null): Promise<void> {
+export async function saveBookmark(sessionId: string, row: string, note: string | null): Promise<NodeBookmark[]> {
   const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/bookmarks`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ row, note }),
   });
   if (!res.ok) throw new Error(`Saving bookmark failed (${res.status})`);
+  return ((await res.json()) as { bookmarks: NodeBookmark[] }).bookmarks;
 }
 
 export async function fetchMarks(sessionId: string): Promise<TextMark[]> {

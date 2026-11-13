@@ -154,8 +154,11 @@ surfaces remain designation-gated and absent for everyone else.
 - **Messages**
   - User and assistant text nodes have a trailing three-dot menu after all
     existing actions. Its experimental Bookmark action saves the node and opens
-    a small note popover beside the trigger. Notes save after a typing pause
-    and when closed; the same menu reopens the note or removes the bookmark.
+    a small note card beside the trigger. Saved nodes also carry an independent
+    top-right bookmark entry; it and the menu open the same card. The card's
+    top-left icon toggles bookmarking (solid blue when saved, an outline when
+    unsaved), keeping its draft text while open. Notes save after a typing pause
+    and when closed; the menu also retains a remove-bookmark action.
     There is no separate note action, collection page, tag UI, or export UI.
   - On an ordinary user message, the pencil means **Edit and compare**, including
     while its answer runs. Editing
