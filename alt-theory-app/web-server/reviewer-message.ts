@@ -82,6 +82,14 @@ function recentLines(rows: TranscriptMessage[]): string[] {
   ]);
 }
 
+/** The latest task the lead sent this agent (a subagent's first mail is its task). */
+function latestTask(rows: TranscriptMessage[]): string | null {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rowKind(rows[i]) === "mail" && rows[i].mail?.from === "lead" && !rows[i].mail?.event) return rows[i].text;
+  }
+  return null;
+}
+
 function latestSaid(rows: TranscriptMessage[]): string | null {
   for (let i = rows.length - 1; i >= 0; i--) if (rows[i].role === "user") return rows[i].text;
   return null;
@@ -160,7 +168,10 @@ export function reviewerMessage(
     "Latest user request:",
     latestUser ? clip(latestUser, 4_000) : "<none>",
     ...(leadRequest
-      ? ["", "This agent is a subagent. The lead conversation's latest user request:", clip(leadRequest, 4_000)]
+      ? [
+          "", "This agent is a subagent. The lead conversation's latest user request:", clip(leadRequest, 4_000),
+          ...(latestTask(own) ? ["", "The task the lead gave this agent:", clip(latestTask(own)!, 4_000)] : []),
+        ]
       : []),
     ...(message ? ["", ...contactSection(own, lead, String(request.input.agent ?? ""))] : []),
     "",

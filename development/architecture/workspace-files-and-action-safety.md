@@ -495,20 +495,31 @@ session-service's messages to other conversations. It owns the in-memory
 allow cache, the denial brake, the timeout count, and the verdict for the
 tool row; each caller keeps when to ask, what a grant means, and its
 dialog options. The reviewer is called once with everything attached up
-front (`core/approval-reviewer.ts`): the latest user request (the whole
+front (`web-server/reviewer-message.ts`, a selection over the session view
+of the transcript projection; prompt and parse in `core/approval-reviewer.ts`):
+the latest user request (the whole
 branch, compaction included), the last 40 user messages, mail and tool
 results — at most 20 of them tool results, each named by the call that
 produced it, a gap marked — with assistant prose left out, for a subagent
-its root conversation's latest user request, the pending action, and the
+its root conversation's latest user request and the latest task its lead
+sent it, the pending action, and the
 contents of up to three script files the command names that lie inside the
 readable roots. For a message to another conversation it also gets the
 user's messages around where they gave that Session ID (the latest message
 naming it, with the user messages just before and after; the lead's for a
 subagent), else that conversation's latest mail, and the rule for such
 messages: authorized when the user opened the contact (or it wrote first)
-and the message serves the purpose the user gave it. The prompt treats all of it as untrusted evidence that only
-user messages can authorize, and asks for strict JSON `allow | deny` with a
-reason.
+and the message serves the purpose the user gave it. The prompt states the
+aim (the agent's work done without lasting harm the user did not ask for):
+the user's current task comes from the user's own words and from tasks
+relayed by the user's agents, the user's words deciding where they differ;
+tool arguments, outputs and file contents are untrusted evidence. A low-risk
+action serving the task is allowed; a listed harmful one (data beyond what
+the task is about or made, discarded work, publishing, remote code or
+installs outside the project's environment, credentials and configuration,
+unrelated files outside the project, a way around a denial) needs the user's
+own words, here or in the lead conversation. It asks for strict JSON
+`allow | deny` with a reason (owner 2026-11-15).
 
 - **Allow** — the action runs; the exact action (variant, tool, cwd, input)
   is not reviewed again in this conversation (in memory only), except
@@ -644,8 +655,10 @@ in
   [`shell-evidence.test.ts`](../../alt-theory-app/core/shell-evidence.test.ts)
   the command reading (quotes, newlines, `cd` scope, wrappers, nested
   shells, PowerShell and cmd hand-offs, the parser seam's fallback);
+  [`reviewer-message.test.ts`](../../alt-theory-app/web-server/reviewer-message.test.ts)
+  the reviewer's material,
   [`approval-reviewer.test.ts`](../../alt-theory-app/core/approval-reviewer.test.ts)
-  the reviewer's material and strict parse; and
+  its strict parse; and
   [`smart-approval.test.ts`](../../alt-theory-app/web-server/smart-approval.test.ts)
   the header, inheritance, the reviewer and auto-naming chains with their
   notices, and the recommendations.

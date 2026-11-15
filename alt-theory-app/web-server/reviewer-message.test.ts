@@ -33,6 +33,7 @@ test("the reviewer receives the task, recent context, the action, and the named 
   assert.match(text, /tool: 3 files/);
   assert.doesNotMatch(text, /I will run the preview/, "assistant prose is left out");
   assert.match(text, /lead conversation's latest user request:\nTidy the project/);
+  assert.doesNotMatch(text, /The task the lead gave this agent/, "no task mail here");
   assert.match(text, /"command": "python cleanup.py --apply --preview"/);
   assert.match(text, /Contents of .*cleanup\.py:\n```\nif args\.preview:/);
   assert.match(text, /Earlier actions denied in this turn: 1\./);
@@ -151,4 +152,15 @@ test("a call id reused across turns pairs each result with its own call", () => 
   ];
   const text = reviewerMessage({ toolName: "bash", input: { command: "ls" }, cwd: "/tmp", title: "Run", entries, readableFile: () => null });
   assert.match(text, /tool \(bash: ls build\): a\.o\ntool \(bash: rm build\/a\.o\): removed/);
+});
+
+test("a subagent's reviewer sees the lead's task even after it leaves the recent window", () => {
+  const entries: unknown[] = [message("user", '<agent-team-mail from="lead">\nRefactor the parser and run the tests.\n</agent-team-mail>')];
+  for (let i = 1; i <= 45; i++) entries.push(message("user", `<agent-team-mail from="Scout" event="update">\nstep ${i}\n</agent-team-mail>`));
+  const text = reviewerMessage(
+    { toolName: "bash", input: { command: "npm test" }, cwd: "/tmp", title: "Run", entries, readableFile: () => null },
+    { leadEntries: [message("user", "Clean up the parser code.")] },
+  );
+  assert.doesNotMatch(text.split("Recent context")[1], /Refactor the parser/);
+  assert.match(text, /The task the lead gave this agent:\nRefactor the parser and run the tests\./);
 });
