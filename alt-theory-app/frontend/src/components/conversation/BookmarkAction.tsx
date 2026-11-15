@@ -132,6 +132,10 @@ export function BookmarkAction({ row }: { row: string }) {
               setBusy(true);
               void persist(null).catch(report).finally(() => setBusy(false));
             } }] : []),
+            // The model reads this back in one call (read_conversation).
+            { label: t("Copy reference"), icon: "ph-link-simple", onSelect: () => {
+              navigator.clipboard?.writeText(`conversation:${sessionId}#${row}`).catch(report);
+            } },
           ], source);
         } catch (reason) { report(reason); }
         finally { setBusy(false); }

@@ -116,6 +116,22 @@ export function toolLabel(
       pending: t("Reading the web page did not complete"),
     });
   }
+  if (name === "read_conversation") {
+    return lines({
+      running: t("Reading conversation history…"),
+      finished: t("Read conversation history"),
+      failed: t("Conversation history was not read"),
+      pending: t("Reading conversation history did not complete"),
+    });
+  }
+  if (name === "find_conversations") {
+    return lines({
+      running: t("Searching conversations…"),
+      finished: t("Searched conversations"),
+      failed: t("Conversation search failed"),
+      pending: t("Conversation search did not complete"),
+    });
+  }
   if (name === "spawn_agent") {
     return lines({
       running: t("Creating a subagent…"),

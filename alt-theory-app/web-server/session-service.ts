@@ -17,6 +17,7 @@ import {
 } from "../core/approval-reviewer.js";
 import {
   APPROVAL_ALLOW_ONCE,
+  APPROVAL_ALLOW_SESSION,
   APPROVAL_DENY,
   approvalGrantCovers,
   type SecurityAuditEntry,
@@ -90,6 +91,7 @@ import {
   promoteToMainlineRecords,
   readSessionDetail,
   readVisibleTranscript,
+  familyMemberIds,
   readSessionAccessSummary,
   getSessionRootForRequest,
   stripSkillWrapper,
@@ -139,6 +141,7 @@ import {
   turnRows,
 } from "../frontend/src/lib/transcriptWindow.js";
 import { selectRows, viewToLines, type ViewSelection } from "../frontend/src/lib/sessionView.js";
+import { createHistoryTools, type HistoryBridge } from "./history-tools.js";
 import { TRANSCRIPT_PAGE_MAX, TRANSCRIPT_TAIL_ROWS } from "./limits.js";
 import { continueAgentTurnAfterModelSwitch } from "../core/model-switch.js";
 import { AGENT_MAIL_TAG } from "../core/agent-mail-frame.js";
@@ -541,7 +544,7 @@ function isUserQueueText(text: string): boolean {
   return !text.startsWith(`<${AGENT_MAIL_TAG}`);
 }
 
-export class SessionService implements AgentTeamBridge {
+export class SessionService implements AgentTeamBridge, HistoryBridge {
   private readonly sessions = new Map<string, ManagedSession>();
   /**
    * Subscribers per logical conversation id, not per managed instance: an
@@ -3362,9 +3365,10 @@ export class SessionService implements AgentTeamBridge {
     const roleIds = listRolePresets(this.config.rolePresetsDir).map(
       (asset) => asset.slug,
     );
+    const historyTools = createHistoryTools(this, sessionId, this.config.dataDir);
     if (purpose === "subagent") {
       return {
-        extraTools: createAgentTeamTools(this, sessionId, "subagent", roleIds),
+        extraTools: [...createAgentTeamTools(this, sessionId, "subagent", roleIds), ...historyTools],
         extraPromptSections: [
           SUBAGENT_PROMPT_SECTION,
           LEAD_DELEGATION_PROMPT_SECTION,
@@ -3376,7 +3380,7 @@ export class SessionService implements AgentTeamBridge {
       return { extraTools: [], extraPromptSections: [] };
     }
     return {
-      extraTools: createAgentTeamTools(this, sessionId, "lead", roleIds),
+      extraTools: [...createAgentTeamTools(this, sessionId, "lead", roleIds), ...historyTools],
       extraPromptSections: [
         LEAD_DELEGATION_PROMPT_SECTION,
         formatSubagentConfigForPrompt(subagentConfig, roleIds),
@@ -4127,6 +4131,70 @@ export class SessionService implements AgentTeamBridge {
       { triggerTurn: false },
     );
     return "Queued: the subagent sees your message with its next turn.";
+  }
+
+  /**
+   * Who may read a conversation's history (history tools): this one and its
+   * family freely — a branch already carries its parent's history, a
+   * subagent is the user's own thread. Any other needs the user: their own
+   * words in this conversation name its Session ID, or they approve here
+   * (Full Access reads; read-only asks each time). `"*"` = every conversation.
+   */
+  async authorizeHistory(fromId: string, targetId: string, signal: AbortSignal | undefined, toolCallId: string): Promise<string | null> {
+    const from = this.requireSession(fromId);
+    const all = targetId === "*";
+    if (!all) {
+      const summary = readSessionAccessSummary(this.config.dataDir, targetId);
+      if (!summary || summary.deletedAt) return `No conversation with Session ID ${targetId}.`;
+      if (targetId === fromId || familyMemberIds(this.config.dataDir, fromId).includes(targetId)) return null;
+    }
+    if (from.isFullAccessEffective()) return null;
+    const key = `history:${targetId}`;
+    const readOnly = from.mediatesReadOnly();
+    if (!readOnly && from.getGrants().includes(key)) return null;
+    if (!all && userNamedSessionId(from.session.sessionManager.getBranch(), targetId)) return null;
+    const audit = (action: SecurityAuditEntry["action"], detail: string) =>
+      from.recordAudit({ timestamp: new Date().toISOString(), toolName: "history", toolCallId, action, rule: "history_read", detail: `${targetId}: ${detail}` });
+    const title = all
+      ? "Search and list all conversations"
+      : `Read another conversation: ${this.sessionAlias(targetId) ?? targetId} (${targetId})`;
+    const ended = await from.approver.ask(
+      (dialogTitle, choices, dialog) => from.approvalBridge.uiContext.select(dialogTitle, choices, dialog),
+      title,
+      readOnly ? [APPROVAL_ALLOW_ONCE, APPROVAL_DENY] : [APPROVAL_ALLOW_SESSION, APPROVAL_ALLOW_ONCE, APPROVAL_DENY],
+      signal,
+    );
+    if ("stopped" in ended) return "Not read: the run was stopped.";
+    if ("timedOut" in ended) {
+      audit("blocked", "approval timed out");
+      return `Not read: ${ended.timedOut}`;
+    }
+    if (ended.answered === APPROVAL_ALLOW_ONCE) {
+      audit("approved-once", "one read");
+      return null;
+    }
+    if (ended.answered === APPROVAL_ALLOW_SESSION) {
+      from.addGrant(key);
+      audit("approved-session", "reads allowed for this conversation");
+      return null;
+    }
+    audit("blocked", "declined by the user");
+    return all
+      ? "The user declined reading other conversations. This conversation and its family stay readable."
+      : "The user declined reading that conversation. Ask the user for what you need from it.";
+  }
+
+  /** An export lands inside this conversation's working folder, never under read-only. */
+  historyExportPath(fromId: string, path: string): string | Error {
+    const from = this.requireSession(fromId);
+    if (from.mediatesReadOnly()) return new Error("this conversation is read-only.");
+    const primaryDir = from.getWorkspace().primaryDir;
+    const target = resolve(primaryDir, path);
+    if (!target.toLowerCase().endsWith(".md")) return new Error("save_to must name a .md file.");
+    if (verdict(target, "write", { writable: [{ path: primaryDir, reason: "cwd" }] }).outcome !== "inside") {
+      return new Error(`save_to must be inside the working folder ${primaryDir}.`);
+    }
+    return target;
   }
 
   /**
@@ -5681,6 +5749,12 @@ const CHECK_AGENT_LAST_OUTPUT: ViewSelection = {
   kinds: ["assistant"],
   maxChars: { assistant: 800 },
 };
+
+/** The user's own words on this branch name `sessionId` (whole ID; mail and tool output do not count). */
+function userNamedSessionId(entries: unknown[], sessionId: string): boolean {
+  const named = new RegExp(`(?<![\\w-])${sessionId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w-])`);
+  return buildTranscriptFromEntries(entries).some((row) => row.role === "user" && named.test(row.text));
+}
 
 function clip(text: string, maxChars: number): string {
   return text.length > maxChars ? `${text.slice(0, maxChars)}…` : text;
