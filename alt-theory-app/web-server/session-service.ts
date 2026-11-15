@@ -89,6 +89,7 @@ import {
   buildTranscriptFromEntries,
   promoteToMainlineRecords,
   readSessionDetail,
+  readVisibleTranscript,
   readSessionAccessSummary,
   getSessionRootForRequest,
   stripSkillWrapper,
@@ -137,6 +138,7 @@ import {
   transcriptWindow,
   turnRows,
 } from "../frontend/src/lib/transcriptWindow.js";
+import { selectRows, viewToLines, type ViewSelection } from "../frontend/src/lib/sessionView.js";
 import { TRANSCRIPT_PAGE_MAX, TRANSCRIPT_TAIL_ROWS } from "./limits.js";
 import { continueAgentTurnAfterModelSwitch } from "../core/model-switch.js";
 import { AGENT_MAIL_TAG } from "../core/agent-mail-frame.js";
@@ -4174,15 +4176,13 @@ export class SessionService implements AgentTeamBridge {
     if (!target) throw new Error(`Cannot check agent "${agent}". Use a subagent name or the Session ID of an agent you can message or have communicated with.`);
     const lines = [this.agentStatusLine(target.id)];
     if (!target.isChild) return lines[0];
+    const transcript = readVisibleTranscript(this.config.dataDir, target.id);
     if (verbose) {
-      const transcript =
-        readSessionDetail(this.config.dataDir, target.id)?.transcript ?? [];
-      for (const message of transcript.slice(-6)) {
-        lines.push(`${message.role}: ${clip(message.text, 300)}`);
-      }
+      const { rows } = selectRows(transcript, CHECK_AGENT_TAIL);
+      lines.push(...viewToLines(rows));
     } else {
-      const result = this.subagentResultText(target.id, 800);
-      if (result) lines.push(`last output: ${result}`);
+      const last = selectRows(transcript, CHECK_AGENT_LAST_OUTPUT).rows[0];
+      lines.push(`last output: ${last?.text.trim() || "(the subagent has produced no text answer yet)"}`);
     }
     return lines.join("\n");
   }
@@ -4393,19 +4393,6 @@ export class SessionService implements AgentTeamBridge {
   }
 
   /** Final answer text of a subagent's latest completed turn. */
-  private subagentResultText(sessionId: string, maxChars = 4000): string {
-    const transcript =
-      readSessionDetail(this.config.dataDir, sessionId)?.transcript ?? [];
-    const lastAssistant = [...transcript]
-      .reverse()
-      .find((message) => message.role === "assistant" && message.text.trim());
-    return clip(
-      lastAssistant?.text.trim() ??
-        "(the subagent has produced no text answer yet)",
-      maxChars,
-    );
-  }
-
   /**
    * Start (or queue) a subagent turn. Background subagent turns are capped at
    * SUBAGENT_CONCURRENCY; excess first-runs start FIFO as slots free up.
@@ -5681,6 +5668,19 @@ export function retryPromptFromStoredUserContent(content: string): string {
 export function displayUserTextFromPrompt(prompt: string): string | null {
   return retryPromptFromStoredUserContent(prompt).trim() || null;
 }
+
+/** check_agent's view of a subagent: its last six rows, 300 characters each. */
+const CHECK_AGENT_TAIL: ViewSelection = {
+  range: { last: 6 },
+  kinds: ["user", "assistant", "tool", "toolResult", "mail", "system"],
+  maxChars: { user: 300, assistant: 300, toolResult: 300, mail: 300, system: 300 },
+};
+/** check_agent's short answer: the subagent's last answer text, 800 characters. */
+const CHECK_AGENT_LAST_OUTPUT: ViewSelection = {
+  range: { last: 1 },
+  kinds: ["assistant"],
+  maxChars: { assistant: 800 },
+};
 
 function clip(text: string, maxChars: number): string {
   return text.length > maxChars ? `${text.slice(0, maxChars)}…` : text;
