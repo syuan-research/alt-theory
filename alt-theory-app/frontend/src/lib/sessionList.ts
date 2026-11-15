@@ -12,7 +12,7 @@ export { isListMember };
 
 export type DisplayNames = Record<string, { alias: string; snippet: string }>;
 
-type RelatedPurpose = "fork" | "side" | "subagent";
+type RelatedPurpose = "fork" | "side" | "subagent" | "advisor";
 
 /** Marker tokens (owner 2026-08-06): br / btw / h / sa, one segment per
  *  level, e.g. "br1-btw2" = second BTW of the first branch. */
@@ -20,6 +20,7 @@ const LINEAGE_TOKEN: Record<RelatedPurpose, string> = {
   fork: "br",
   side: "btw",
   subagent: "sa",
+  advisor: "adv",
 };
 
 /**
@@ -246,6 +247,8 @@ export function purposeIcon(session: SessionSummary): string {
       return "ph-arrow-elbow-down-right";
     case "side":
       return "ph-equals";
+    case "advisor":
+      return "ph-compass";
     case "ab-arm":
       return "ph-git-fork";
     default:
@@ -254,8 +257,8 @@ export function purposeIcon(session: SessionSummary): string {
 }
 
 /** The kinds a related row can be grouped and filtered by. */
-export type RelatedKind = "fork" | "subagent" | "side";
-export const RELATED_KINDS: RelatedKind[] = ["fork", "subagent", "side"];
+export type RelatedKind = "fork" | "subagent" | "side" | "advisor";
+export const RELATED_KINDS: RelatedKind[] = ["fork", "subagent", "side", "advisor"];
 
 export interface RelatedRow {
   session: SessionSummary;
@@ -417,6 +420,7 @@ export function relatedKindLabel(kind: RelatedKind): string {
     fork: t("Branches"),
     subagent: t("Subagents"),
     side: t("BTW"),
+    advisor: t("Advisors"),
   }[kind];
 }
 
@@ -427,6 +431,7 @@ export function listedOriginLabel(session: SessionSummary): string | null {
   if (!fork.listed) return null;
   if (fork.purpose === "subagent") return "From subagent";
   if (fork.purpose === "side") return "From BTW";
+  if (fork.purpose === "advisor") return "From advisor";
   return null;
 }
 

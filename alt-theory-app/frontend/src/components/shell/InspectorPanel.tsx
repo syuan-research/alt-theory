@@ -427,7 +427,7 @@ function RelatedConversations({ list }: { list: ReturnType<typeof useRelatedList
           <button
             key={row.session.sessionId}
             className={row.session.sessionId === activeChildId ? "on" : ""}
-            data-tip={row.kind ? `${t({ subagent: "Subagent", fork: "Branch", side: "BTW" }[row.kind])} · ${titleOf(row.session)}` : titleOf(row.session)}
+            data-tip={row.kind ? `${t({ subagent: "Subagent", fork: "Branch", side: "BTW", advisor: "Advisor" }[row.kind])} · ${titleOf(row.session)}` : titleOf(row.session)}
             onContextMenu={(event) => menu.open(event, sessionMenuItems(row.session))}
             onKeyDown={(event) => openMenuFromKey(event, row.session)}
             onClick={() => {
@@ -489,6 +489,8 @@ function RelatedConversations({ list }: { list: ReturnType<typeof useRelatedList
           : t("Subagent · {count} messages", { count });
       case "fork":
         return t("Branch · {count} messages", { count });
+      case "advisor":
+        return t("Advisor · {count} messages", { count });
       default:
         return t("Side conversation · {count} messages", { count });
     }

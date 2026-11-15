@@ -3154,18 +3154,14 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               break;
             }
             try {
-              const related = await sessionService.forkSession(
-                attachedSessionId,
-                "side",
-                msg.payload.forkPointEntryId,
-              );
+              const purpose = msg.payload.purpose === "advisor" ? "advisor" : "side";
+              const related = purpose === "advisor"
+                ? await sessionService.createAdvisorSession(attachedSessionId)
+                : await sessionService.forkSession(attachedSessionId, "side", msg.payload.forkPointEntryId);
               if (!closed) {
                 send({
                   type: "related_session_created",
-                  payload: {
-                    sessionId: related.sessionId,
-                    purpose: "side",
-                  },
+                  payload: { sessionId: related.sessionId, purpose },
                 });
               }
             } catch (error) {

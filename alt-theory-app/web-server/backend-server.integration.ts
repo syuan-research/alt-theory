@@ -1584,6 +1584,7 @@ test("WebSocket open_session and side-chat placement preserve the intended cente
   writeFileSync(appContextPath, "WS open app context", "utf-8");
   writeFileSync(soulPath, "WS open soul", "utf-8");
   writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8",);
+  writeFileSync(join(rolePresets, "role-advisor.md"), "Advisor role", "utf-8");
 
   const existingDirs = createSessionDirs(dataDir, "session-ws-open");
   const existing = await createAltTheorySession({
@@ -1802,6 +1803,14 @@ test("WebSocket open_session and side-chat placement preserve the intended cente
       sessionId: "session-ws-open",
       purpose: "side",
     });
+
+    const advisorCreatedPromise = waitForType(ws, "related_session_created");
+    ws.send(JSON.stringify({ type: "create_related_session", payload: { purpose: "advisor" } }));
+    const advisorCreated = await advisorCreatedPromise;
+    assert.equal(advisorCreated.payload.purpose, "advisor");
+    const advisorHeader = JSON.parse(readFileSync(
+      join(dataDir, "sessions", advisorCreated.payload.sessionId, "records", "session.json"), "utf-8"));
+    assert.deepEqual(advisorHeader.forkedFrom, { sessionId: "session-ws-open", purpose: "advisor" });
 
     // Creating the child does not move the socket away from its parent.
     const parentUpdated = waitForType(ws, "session_updated");

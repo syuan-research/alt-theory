@@ -504,6 +504,8 @@ interface ReclaimedRuntime {
 const SUBAGENT_CONCURRENCY = 10;
 /** Messages each way one approval allows between two conversations (owner 2026-10-12: default starting point). */
 const PEER_MESSAGE_ALLOWANCE = 5;
+/** The role an /advisor conversation starts with (agent-assets/role-presets). */
+export const ADVISOR_ROLE = "role-advisor";
 export const PEER_ALLOW_MESSAGES = "Allow 5 messages each way";
 export const PEER_ALLOW_ALWAYS = "Always allow between these conversations";
 
@@ -3502,7 +3504,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
       throw new Error("Only a related child can be added to the list");
     }
     if (
-      !(["side", "subagent"] as ForkPurpose[]).includes(
+      !(["side", "subagent", "advisor"] as ForkPurpose[]).includes(
         header.forkedFrom.purpose,
       )
     ) {
@@ -3742,6 +3744,35 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
         ? { thinkingLevel: resolved.thinkingLevel }
         : {}),
     };
+  }
+
+  /**
+   * /advisor: a fresh conversation beside `sourceId` — no history copied, it
+   * reads the source with the history tools — in the source's family, with
+   * the advisor role and the source's permission, folder and model. The
+   * client sends its first message (the source's Session ID and the user's
+   * words), like any seeded BTW.
+   */
+  async createAdvisorSession(sourceId: string): Promise<SessionSnapshot> {
+    const source = this.requireSession(sourceId);
+    const header = readV4SessionHeader(source.manifest.recordsDir);
+    const mode = source.getAltMode();
+    const advisor = await this.createSession({ ...source.selectors, rolePresetSlug: ADVISOR_ROLE }, {
+      visibility: header?.visibility ?? this.fallbackVisibility,
+      consentSnapshot: header?.consentSnapshot ?? null,
+      workspace: header?.workspace ?? null,
+      studyTag: header?.studyTag ?? null,
+      modelOverride: header?.modelOverride ?? null,
+      forkedFrom: { sessionId: sourceId, purpose: "advisor" },
+      mode,
+      smartApproval: inheritsSmartApproval(source, mode),
+    });
+    writeJsonAtomic(join(this.requireSession(advisor.sessionId).manifest.recordsDir, "ui-alias.json"), {
+      schemaVersion: 1,
+      alias: "Advisor",
+      updatedAt: new Date().toISOString(),
+    });
+    return advisor;
   }
 
   async spawnSubagent(

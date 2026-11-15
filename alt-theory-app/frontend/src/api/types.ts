@@ -329,7 +329,7 @@ export interface SessionSummary {
   /** Fork lineage (M5 substrate); null = a root conversation. */
   forkedFrom: {
     sessionId: string;
-    purpose: "fork" | "side" | "ab-arm" | "subagent";
+    purpose: "fork" | "side" | "ab-arm" | "subagent" | "advisor";
     /** Added to the conversation list by the user, purpose kept (alpha.6). */
     listed?: boolean;
   } | null;
@@ -717,7 +717,8 @@ export type ClientMessageBody =
   | {
       type: "create_related_session";
       payload: {
-        purpose: "side";
+        /** advisor: a fresh conversation with the advisor role, no history copied. */
+        purpose: "side" | "advisor";
         forkPointEntryId?: string;
       };
     }
@@ -774,7 +775,7 @@ export type ServerMessage =
   | { type: "transcript_page"; payload: { before: string; messages: TranscriptMessage[]; hasMore: boolean } }
   | {
       type: "related_session_created";
-      payload: { sessionId: string; purpose: "side" | "subagent" };
+      payload: { sessionId: string; purpose: "side" | "subagent" | "advisor" };
     }
   | {
       type: "branch_created";

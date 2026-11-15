@@ -431,6 +431,9 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
         purpose === "side"
           ? send({ type: "create_related_session", payload: { purpose } }, { seed })
           : send({ type: "fork_session", payload: { purpose } }, { seed }),
+      /** /advisor: a fresh advisor conversation beside this one; `seed` is its first message. */
+      advise: (seed?: PendingRequest["seed"]) =>
+        send({ type: "create_related_session", payload: { purpose: "advisor" } }, { seed }),
       duplicate: (sourceSessionId: string) =>
         send({ type: "fork_session", payload: { purpose: "fork", sourceSessionId } }),
       /** The next page above the loaded rows — or everything from the row

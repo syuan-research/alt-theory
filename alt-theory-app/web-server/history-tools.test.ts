@@ -6,7 +6,8 @@ import { APPROVAL_ALLOW_SESSION } from "../core/security-extension.js";
 import { createTestService, setupFixture } from "./session-service.fixture.js";
 import { createHistoryTools, REFERENCE_PATTERN } from "./history-tools.js";
 import { readVisibleTranscript } from "./session-store.js";
-import type { SessionService } from "./session-service.js";
+import { ADVISOR_ROLE, type SessionService } from "./session-service.js";
+import { listSessionSummaries } from "./session-store.js";
 
 const SELECTORS = { rolePresetSlug: "role-conceptual-theory-companion", kbDomain: "ep-core", soulSlug: "soul-latest" };
 
@@ -128,4 +129,22 @@ test("history tools: export writes the whole conversation inside the working fol
   assert.match(written.text, /^Wrote /);
   assert.ok(existsSync(path));
   assert.match(readFileSync(path, "utf-8"), /## User `[^`]+`\n\nDraft the memo/);
+});
+
+test("/advisor: a fresh conversation in the source's family, with the advisor role, that reads the source freely", async () => {
+  const fixture = setupFixture();
+  writeFileSync(join(fixture.rolePresetsDir, `${ADVISOR_ROLE}.md`), "Advisor role", "utf-8");
+  const service = createTestService(fixture);
+  const source = (await service.createSession(SELECTORS)).sessionId;
+  say(service, source, "Is the argument in section 2 circular?", "It leans on its own conclusion");
+  const advisor = await service.createAdvisorSession(source);
+  assert.equal(advisor.rolePresetSlug, ADVISOR_ROLE);
+  assert.equal(readVisibleTranscript(fixture.dataDir, advisor.sessionId).length, 0, "no history copied");
+  say(service, advisor.sessionId, `Source conversation: ${source}`, "reading it");
+  const summary = listSessionSummaries(fixture.dataDir).sessions.find((s) => s.sessionId === advisor.sessionId);
+  assert.deepEqual(summary?.forkedFrom, { sessionId: source, purpose: "advisor" });
+  assert.equal(summary?.lineageMarker, "adv1");
+  const read = await run(service, advisor.sessionId, "read_conversation", { session_id: source });
+  assert.equal(read.asked, null);
+  assert.match(read.text, /section 2 circular/);
 });

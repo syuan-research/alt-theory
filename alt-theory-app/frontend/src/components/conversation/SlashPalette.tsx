@@ -48,6 +48,19 @@ export function useSlashCommands({
               immediate: true,
             },
             {
+              name: "advisor",
+              description: t("Open an advisor conversation on this one"),
+              // The advisor starts from this conversation's Session ID and
+              // the words typed after the command; it reads the rest itself.
+              run: (args: string) => {
+                if (!conversation.sessionId) return;
+                const words = args.trim();
+                const source = t("Source conversation: {sessionId}", { sessionId: conversation.sessionId });
+                void conversation.advise({ text: words ? `${source}\n\n${words}` : source, autoSend: true });
+              },
+              immediate: true,
+            },
+            {
               name: "compact",
               description: t("Compact this conversation to free context space"),
               run: () => void (liveSession() && !conversation.isRunning && conversation.compact()),

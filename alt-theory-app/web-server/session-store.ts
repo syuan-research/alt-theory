@@ -258,6 +258,7 @@ const LINEAGE_TOKEN: Record<ForkPurpose, string> = {
   side: "btw",
   subagent: "sa",
   "ab-arm": "ab",
+  advisor: "adv",
 };
 
 /**
