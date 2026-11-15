@@ -1,5 +1,5 @@
 import { copyMarks } from "./session-marks.js";
-import { cpSync, existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, } from "fs";
+import { cpSync, existsSync, lstatSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, } from "fs";
 import { randomUUID } from "crypto";
 import type {
   AgentSession,
@@ -4222,7 +4222,8 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
     const primaryDir = from.getWorkspace().primaryDir;
     const target = resolve(primaryDir, path);
     if (!target.toLowerCase().endsWith(".md")) return new Error("save_to must name a .md file.");
-    if (verdict(target, "write", { writable: [{ path: primaryDir, reason: "cwd" }] }).outcome !== "inside") {
+    if (lstatSync(target, { throwIfNoEntry: false })?.isSymbolicLink() ||
+      verdict(target, "write", { writable: [{ path: primaryDir, reason: "cwd" }] }).outcome !== "inside") {
       return new Error(`save_to must be inside the working folder ${primaryDir}.`);
     }
     return target;

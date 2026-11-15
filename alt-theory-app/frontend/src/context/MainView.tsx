@@ -47,6 +47,8 @@ export interface MainViewValue {
   duplicateSession: (sessionId: string) => void;
   /** Draft for a just-created child; helper sends immediately, compare waits. */
   childSeed: { sessionId: string; text: string; autoSend: boolean } | null;
+  /** A child pane's created conversation starts from its seed the same way. */
+  seedChild: (seed: { sessionId: string; text: string; autoSend: boolean }) => void;
   clearChildSeed: () => void;
   promoteRelatedSession: (sessionId: string) => Promise<void>;
   renameSession: (sessionId: string, name: string) => Promise<boolean>;
@@ -290,6 +292,7 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
       askAboutAlt,
       duplicateSession,
       childSeed,
+      seedChild: setChildSeed,
       clearChildSeed,
       promoteRelatedSession,
       renameSession,

@@ -44,10 +44,12 @@ function reviewerRows(entries: unknown[]): TranscriptMessage[] {
   const rows: TranscriptMessage[] = [];
   for (const row of buildTranscriptFromEntries(entries)) {
     const kind = rowKind(row);
-    if (kind === "mail" && row.mail) {
-      rows.push(row.mail.from === "user"
-        ? { ...row, role: "user", marker: undefined, text: row.mail.body }
-        : { ...row, text: row.mail.body });
+    if (kind === "mail") {
+      // Mail stored before the one frame (1893d7e) has no sender: a notice.
+      const mail = row.mail ?? { from: "notice", event: null, body: row.text };
+      rows.push(mail.from === "user"
+        ? { ...row, role: "user", marker: undefined, text: mail.body }
+        : { ...row, mail, text: mail.body });
     } else if (kind === "tool") {
       if (toolResultOf(row)) rows.push(row);
     } else if (kind === "user") {

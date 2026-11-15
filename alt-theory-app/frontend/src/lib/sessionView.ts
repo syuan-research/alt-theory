@@ -16,6 +16,7 @@ export interface ViewSelection {
   /** Which rows: the last N, a span around one row id, or a row-id span
    *  (inclusive; either end open). All rows when absent. */
   range?:
+    | { first: number }
     | { last: number }
     | { around: string; before: number; after: number }
     | { from?: string; to?: string };
@@ -131,7 +132,9 @@ export function selectRows(all: readonly TranscriptMessage[], selection: ViewSel
       gapsBefore: order.map((index) => gaps.get(index) ?? 0),
     };
   }
-  if (range && "last" in range) {
+  if (range && "first" in range) {
+    end = Math.min(kept.length, range.first);
+  } else if (range && "last" in range) {
     start = Math.max(0, kept.length - range.last);
   } else if (range && "around" in range) {
     const at = indexOf(range.around);
@@ -169,7 +172,7 @@ export function selectRows(all: readonly TranscriptMessage[], selection: ViewSel
 /** A tool row as one model-facing phrase: name, command or path, outcome. */
 export function toolPhrase(row: TranscriptMessage): string {
   const name = row.toolName ?? "tool";
-  const command = row.toolDetail?.kind === "command" ? row.toolDetail.body.split("\n")[0] : null;
+  const command = row.toolDetail?.kind === "command" ? clipText(row.toolDetail.body.split("\n")[0], 300).text : null;
   const target = command ? `: ${command}` : row.toolPath ? ` ${row.toolPath}` : "";
   const outcome = row.success === false ? " (failed)" : row.success === undefined ? " (no result)" : "";
   return `${name}${target}${outcome}`;

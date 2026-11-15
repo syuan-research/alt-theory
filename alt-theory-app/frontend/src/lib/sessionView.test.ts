@@ -31,6 +31,8 @@ test("ranges: last N, around a row, a row-id span, a missing id", () => {
   const filtered = selectRows(rows, { kinds: ["user", "tool"], range: { around: "a1:0", before: 0, after: 0 } });
   assert.deepEqual(filtered.rows.map((row) => row.rowId), ["a1:1"]);
   assert.deepEqual(selectRows(rows, { range: { from: "a2:0", to: "m1:0" } }).rows.map((row) => row.rowId), ["a2:0", "m1:0"]);
+  // first N counts the rows kept, not the rows the kind filter removed.
+  assert.deepEqual(selectRows(rows, { kinds: ["user", "assistant"], range: { first: 2 } }).rows.map((row) => row.rowId), ["u1:0", "a2:0"]);
   const missing = selectRows(rows, { range: { around: "nope:0", before: 2, after: 2 } });
   assert.equal(missing.missing, "nope:0");
   assert.equal(missing.rows.length, 0);

@@ -119,6 +119,29 @@ test("a message to another conversation: the user's words around its Session ID,
   assert.doesNotMatch(command, /How to judge this message|Session ID/);
 });
 
+test("one message reusing a call id pairs its results in call order", () => {
+  const entries = [
+    { type: "message", id: "a1", message: { role: "assistant", content: [
+      { type: "toolCall", id: "x", name: "bash", arguments: { command: "echo A" } },
+      { type: "toolCall", id: "x", name: "bash", arguments: { command: "echo B" } },
+    ] } },
+    { type: "message", id: "r1", message: { role: "toolResult", toolCallId: "x", content: [{ type: "text", text: "A out" }] } },
+    { type: "message", id: "r2", message: { role: "toolResult", toolCallId: "x", content: [{ type: "text", text: "B out" }] } },
+  ];
+  const text = reviewerMessage({ toolName: "bash", input: { command: "ls" }, cwd: "/tmp", title: "Run", entries, readableFile: () => null });
+  assert.match(text, /tool \(bash: echo A\): A out\ntool \(bash: echo B\): B out/);
+});
+
+test("mail stored before the one frame reads as a notice, not the user's words", () => {
+  const entries = [
+    { type: "message", id: "u1", message: { role: "user", content: [{ type: "text", text: "Keep notes." }] } },
+    { type: "custom_message", id: "m1", customType: "agent-team", content: "Subagent finished: here is the report" },
+  ];
+  const text = reviewerMessage({ toolName: "bash", input: { command: "ls" }, cwd: "/tmp", title: "Run", entries, readableFile: () => null });
+  assert.match(text, /Latest user request:\nKeep notes\./);
+  assert.match(text, /mail from notice: Subagent finished/);
+});
+
 test("a call id reused across turns pairs each result with its own call", () => {
   const entries = [
     { type: "message", id: "a1", message: { role: "assistant", content: [{ type: "toolCall", id: "c1", name: "bash", arguments: { command: "ls build" } }] } },

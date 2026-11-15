@@ -2347,13 +2347,15 @@ export function buildTranscriptFromEntries(
       );
       // The latest call with this id still waiting for its result: some
       // providers reuse short call ids across turns.
+      // Within one message results arrive in call order: take the earliest
+      // pending call of the latest entry that has one.
       let callIndex = -1;
       for (let index = transcript.length - 1; toolCallId && index >= 0; index--) {
         const message = transcript[index];
-        if (message.role === "tool" && message.toolType === "call" && message.toolCallId === toolCallId) {
-          if (message.success === undefined) callIndex = index;
-          if (callIndex >= 0 || message.success !== undefined) break;
-        }
+        if (message.role !== "tool" || message.toolType !== "call" || message.toolCallId !== toolCallId) continue;
+        if (callIndex >= 0 && message.entryId !== transcript[callIndex].entryId) break;
+        if (message.success === undefined) callIndex = index;
+        else if (callIndex < 0) break;
       }
       // Smart approval's verdict rides on the result's details; a denial
       // blocks the call, and Pi's blocked result is only the reason text.

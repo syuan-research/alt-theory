@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, readFileSync, symlinkSync, writeFileSync } from "fs";
 import { join } from "path";
 import test from "node:test";
 import { APPROVAL_ALLOW_SESSION } from "../core/security-extension.js";
@@ -113,6 +113,15 @@ test("history tools: another conversation needs the user's Session ID or approva
   assert.equal(pasted.asked, null);
   assert.match(pasted.text, /user: other/);
 
+  // Approval for b covers b only: its branch is not searched through b.
+  const bBranch = (await service.createSession(SELECTORS, { forkedFrom: { sessionId: b, purpose: "branch" } })).sessionId;
+  say(service, bBranch, "secret in the branch", "ok");
+  const viaB = await run(service, a, "find_conversations", { session_id: b, query: "secret" });
+  assert.equal(viaB.asked, null, "b is already allowed for this conversation");
+  assert.match(viaB.text, /secret plan/);
+  assert.doesNotMatch(viaB.text, /secret in the branch/);
+  assert.match(viaB.text, /Only .* itself was searched/);
+
   const all = await run(service, a, "find_conversations", { scope: "all", query: "secret" });
   assert.match(all.asked ?? "", /all conversations/);
 });
@@ -124,6 +133,11 @@ test("history tools: export writes the whole conversation inside the working fol
   say(service, a, "Draft the memo", "Here is the memo");
   const outside = await run(service, a, "read_conversation", { save_to: "../escape.md" });
   assert.match(outside.text, /^Not written: save_to must be inside the working folder/);
+  const primaryDir = managedOf(service, a).getWorkspace().primaryDir;
+  symlinkSync(join(fixture.root, "planted.md"), join(primaryDir, "link.md"));
+  const linked = await run(service, a, "read_conversation", { save_to: "link.md" });
+  assert.match(linked.text, /^Not written/);
+  assert.ok(!existsSync(join(fixture.root, "planted.md")));
   const written = await run(service, a, "read_conversation", { save_to: "exports/memo.md" });
   const path = join(managedOf(service, a).getWorkspace().primaryDir, "exports", "memo.md");
   assert.match(written.text, /^Wrote /);

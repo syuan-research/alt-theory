@@ -145,7 +145,7 @@ export function readConversationText(dataDir: string, sessionId: string, params:
   const view = params.row
     ? selectRows(transcript, { ...HISTORY_READ, range: { around: params.row, before: count, after: count } })
     : selectRows(transcript, params.part === "start"
-      ? { ...HISTORY_READ, range: { from: transcript[0].rowId, to: transcript[Math.min(count, transcript.length) - 1].rowId } }
+      ? { ...HISTORY_READ, range: { first: count } }
       : { ...HISTORY_READ, range: { last: count } });
   if (view.missing) return `${head}: no row ${view.missing}. Row ids look like "abc123:0".`;
   const end = view.start + view.rows.length;
@@ -307,12 +307,17 @@ export function createHistoryTools(bridge: HistoryBridge, sessionId: string, dat
       const scope = params.scope ?? "family";
       const refused = await bridge.authorizeHistory(sessionId, scope === "all" ? "*" : anchor, signal, id);
       if (refused) return text(refused);
-      const ids = scope === "this"
+      // Reading an outside conversation was granted for it alone: its other
+      // members are asked for one by one, through read_conversation.
+      const own = anchor === sessionId || familyMemberIds(dataDir, sessionId).includes(anchor);
+      const narrowed = scope === "family" && !own;
+      const ids = scope === "this" || narrowed
         ? [anchor]
         : scope === "family"
           ? familyMemberIds(dataDir, anchor).length ? familyMemberIds(dataDir, anchor) : [anchor]
           : listSessionSummaries(dataDir).sessions.map((summary) => summary.sessionId);
-      return text(await findConversationsText(dataDir, sessionId, anchor, params, ids));
+      const found = await findConversationsText(dataDir, sessionId, anchor, narrowed && params.query ? { ...params, scope: "this" } : params, ids);
+      return text(narrowed ? `${found}\nOnly ${anchor} itself was searched or listed: its family is outside this one, and each of its other conversations is read with read_conversation by its Session ID.` : found);
     },
   };
 

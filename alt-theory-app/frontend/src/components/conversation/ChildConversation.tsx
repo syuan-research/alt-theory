@@ -43,6 +43,7 @@ export function ChildConversation({
 }) {
   const app = useApp();
   const shell = useShell();
+  const main = useMainView();
   const { conversation, parts } = useConversation({
     sessionId,
     enabled: true,
@@ -60,8 +61,9 @@ export function ChildConversation({
           // A subagent spawned from this pane never opens the rail; its
           // Related row is the feedback. btw/helper keep taking over.
           if (message.payload.purpose !== "subagent") {
-            const seed = conversation.requests.find((request) => request.status === "sent" && request.seed)?.seed;
-            if (seed) updateDraft(message.payload.sessionId, (draft) => ({ ...draft, text: seed.text }));
+            const seed = conversation.requests.find((request) =>
+              request.status === "sent" && request.seed && request.message.type === "create_related_session")?.seed;
+            if (seed) main.seedChild({ sessionId: message.payload.sessionId, ...seed });
             shell.openTarget({ kind: "conversation", sessionId: message.payload.sessionId });
           }
           void app.refreshSessions();

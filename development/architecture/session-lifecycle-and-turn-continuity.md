@@ -714,7 +714,9 @@ Markdown with row ids into the working folder (`save_to`, not under
 Read-only). `find_conversations` searches user, assistant and mail text and
 bookmark notes in one conversation, its family or all conversations, or,
 without a query, lists bookmarks and marks, the family, or recent
-conversations; a reply says what it searched when nothing matched. Replies
+conversations; a reply says what it searched when nothing matched. Anchored
+on a conversation outside this family, it searches and lists that
+conversation alone. A `save_to` target that is a symlink is refused. Replies
 are marked as a record of past messages. Access
 (`SessionService.authorizeHistory`): this conversation and its family read
 freely; another conversation reads when the user's own words on this branch
