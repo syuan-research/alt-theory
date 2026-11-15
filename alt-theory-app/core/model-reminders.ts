@@ -60,7 +60,7 @@ export function createModelRemindersExtension(
       if (
         modelHooksEnabled &&
         /^gpt-[56]/i.test(ctx.model?.id ?? "") &&
-        shouldShowGptWritingReminder(event.prompt, turn)
+        shouldShowGptWritingReminder(event.messageType === "user" ? event.prompt : "", turn)
       ) {
         sections.push(GPT_WRITING_REMINDER);
       }

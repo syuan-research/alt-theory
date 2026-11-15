@@ -271,7 +271,7 @@ export interface AltTheoryConfig extends SessionDirectories {
   extraPromptSections?: string[];
   /**
    * Experiment arm (v1.4 round 1): in Alt Theory Work mode, strip the
-   * "expert coding assistant" identity line and the "Be concise" style
+   * "coding assistant" identity line and the "Be concise" style
    * directive from Pi's base prompt, leaving its tool facts intact.
    */
   trimmedPiBasePrompt?: boolean;
@@ -314,7 +314,7 @@ const WORK_MODE_PREFACE = [
 function trimPiBasePrompt(base: string): string {
   return base
     .replace(
-      "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+      "You are a coding assistant running inside pi, a coding agent harness. Help users inspect files, run commands, and modify code.",
       "You are operating inside pi, an agent harness that provides your tools for reading files, executing commands, and editing or writing files. Who you are and how you work with the user are defined by the Alt Theory sections below.",
     )
     .replace("- Be concise in your responses\n", "");
