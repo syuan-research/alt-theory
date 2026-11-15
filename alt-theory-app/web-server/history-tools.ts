@@ -273,7 +273,7 @@ export function createHistoryTools(bridge: HistoryBridge, sessionId: string, dat
     name: "read_conversation",
     label: "Read conversation",
     description:
-      "Read the original messages of this conversation (including before compaction), another in its family, or one whose Session ID the user gave you. Returns rows with their ids and the user's bookmarks and marks on them; long text is cut, read one row with full: true for all of it.",
+      "Read the original messages of a conversation as the user sees them: this one (including before compaction), another in its family, or one whose Session ID the user gave you. A reference the user copies from a message looks like conversation:<Session ID>#<row id>. Returns rows with their ids and the user's bookmarks and marks on them; long text is cut, read one row with full: true for all of it.",
     parameters: readSchema,
     async execute(id, params, signal) {
       const target = params.session_id?.trim() || sessionId;
@@ -300,7 +300,7 @@ export function createHistoryTools(bridge: HistoryBridge, sessionId: string, dat
     name: "find_conversations",
     label: "Find in conversations",
     description:
-      "Search old conversation text, or list a conversation family, recent conversations, or a conversation's bookmarks and marks. Matches come with Session IDs and row ids for read_conversation.",
+      "Search the text of conversations as the user sees them, or list a conversation family, recent conversations, or a conversation's bookmarks and marks. Matches come with Session IDs and row ids for read_conversation.",
     parameters: findSchema,
     async execute(id, params, signal) {
       const anchor = params.session_id?.trim() || sessionId;

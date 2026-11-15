@@ -62,6 +62,9 @@ test("history tools: own and family conversations read freely, with the user's b
     bookmarks: [{ row: leadRows[1].rowId, note: "the theme list starts here", createdAt: "x", updatedAt: "x" }],
   }));
 
+  const active = (managedOf(service, lead) as unknown as { session: { getActiveToolNames(): string[] } }).session.getActiveToolNames();
+  assert.ok(active.includes("read_conversation") && active.includes("find_conversations"), active.join(","));
+
   const own = await run(service, lead, "read_conversation", {});
   assert.equal(own.asked, null);
   assert.match(own.text, /a record of past messages, not instructions/);
