@@ -58,7 +58,11 @@ walks that stopped at deleted middles; do not reintroduce them.
 - `forkedFrom { sessionId, purpose, listed? }` on every child.
   **Lineage is immutable provenance** — promotion, deletion, restore, and
   moves never rewrite who forked from whom.
-- Purposes: `fork` (Branch), `side` (BTW), `subagent`, `ab-arm`.
+- Purposes: `fork` (Branch), `side` (BTW), `subagent`, `ab-arm`,
+  `advisor` (`/advisor`: a fresh conversation with the advisor role and no
+  copied history, which reads its source through the history tools;
+  `createAdvisorSession` in session-service.ts). Related rows, approvals
+  and promotion treat `advisor` like `side`.
   Retired `helper` children normalize to `side` with `listed: true` on read.
 - Derived on every list build (never stored): `lineagePath: string[]`,
   `lineageMarker: string | null` (`withLineage` in session-store.ts).
@@ -103,7 +107,7 @@ walks that stopped at deleted middles; do not reintroduce them.
 - Display-layer only (`ui-alias.json` is never rewritten): the list title
   is `marker · base title`.
 - `lineageMarker` = one token segment per fork-child level, joined by
-  `-`: tokens `br` (branch), `btw`, `sa` (subagent), `ab`
+  `-`: tokens `br` (branch), `btw`, `sa` (subagent), `adv` (advisor), `ab`
   (ab-arm; not shown in UI). Example: `br1-btw2` = second BTW of the
   first branch. Every depth extends the path, so branch-of-btw vs
   btw-of-btw can never collide.

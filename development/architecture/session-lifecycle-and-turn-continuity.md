@@ -418,7 +418,9 @@ sender; the user's own words are never framed. The transcript shows a framed
 text as a line naming its sender, not as a user bubble, and smart approval's
 reviewer labels each context line by source (`user`, `mail from …`, `tool`)
 and takes the latest user request only from the user's own words
-(`core/approval-reviewer.ts`, for a subagent from its lead's entries).
+(`web-server/reviewer-message.ts`, a selection over the session view of the
+transcript projection; for a subagent also from its lead's entries; the
+prompt and verdict parse are `core/approval-reviewer.ts`).
 
 Which subagents a conversation can address, and where a subagent reports,
 are two separate derivations (`session-service.ts`):
@@ -691,6 +693,38 @@ Run phases currently include `connecting`, `processing`, `thinking`, `tool`,
 `compacting`, `retrying`, `awaiting-user`, `idle`, and `error`. Attached panes
 receive these events through the session service; the frontend decides how to
 render them.
+
+## Reading old conversations
+
+Every reader of an old conversation's text cuts the same transcript
+projection (`buildTranscriptFromEntries`) through the session view,
+`frontend/src/lib/sessionView.ts` (pure; the backend imports it like
+`transcriptWindow`): a selection names a range (last N rows, rows around a
+row id, a row-id span), the kinds kept, per-kind character caps and per-kind
+row caps, and renders model lines or Markdown. The Markdown download,
+`check_agent`, the history tools and smart approval's reviewer are
+selections kept next to their readers. Mail rows carry their sender, event
+and body; call rows carry their arguments cut to 200 characters.
+
+The history tools (`web-server/history-tools.ts`, every lead and subagent):
+`read_conversation` reads rows of a conversation by row id or from its start
+or end — the pre-compaction part included — with the user's bookmarks and
+marks on them, one row whole with `full`, or the whole conversation as
+Markdown with row ids into the working folder (`save_to`, not under
+Read-only). `find_conversations` searches user, assistant and mail text and
+bookmark notes in one conversation, its family or all conversations, or,
+without a query, lists bookmarks and marks, the family, or recent
+conversations; a reply says what it searched when nothing matched. Replies
+are marked as a record of past messages. Access
+(`SessionService.authorizeHistory`): this conversation and its family read
+freely; another conversation reads when the user's own words on this branch
+name its Session ID, under Full Access, or after approval (Allow for this
+conversation / once / deny; Read-only asks each time; grants
+`history:<id>`, `history:*` for all), audited as rule `history_read`. A
+message's menu offers Copy reference, `conversation:<Session ID>#<row id>`.
+After compaction the summary's prefix and the one-time context recovery
+reminder say the original messages are kept and name the two tools
+(`core/turn-continuity.ts`, `core/model-reminders.ts`).
 
 ## Boundary clarity
 

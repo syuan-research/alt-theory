@@ -148,6 +148,11 @@ Switching the application to Native Pi does not rewrite a session's Alt
 selections; it makes the Alt behavior inactive, and switching back restores
 it.
 
+`/advisor` opens a related conversation with the bundled
+`role-advisor` Role (`agent-assets/role-presets/role-advisor.md`, a
+placeholder until its content is written); the Role is an ordinary
+selection, so the user can change it like any other.
+
 ## 6. Role selection for managed subagents
 
 `spawn_agent` may name an existing Role independently of its agent execution
