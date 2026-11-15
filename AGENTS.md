@@ -118,6 +118,13 @@ agents mistake them for in-progress work.
 - `main` — active product line.
 - `kb-libraries-and-skill` — merged into main for Owner testing on Windows
   (2026-11-08): `at-kb.md` knowledge bases and the bundled `at-knowledge-base` skill.
+- `archive/wp-session-view` — merged into main (Pi 1.5.2; the session view
+  `frontend/src/lib/sessionView.ts` as the one cut of the transcript for every
+  reader: Markdown download, check_agent, history tools, smart approval's
+  reviewer; `read_conversation` / `find_conversations` with family-free and
+  user-named access; Copy reference; compaction pointer; `/advisor` related
+  conversations; the reviewer reads relayed tasks as the user's intent;
+  owner 2026-11-15); archived after the reviewed merge.
 - `work/artifact-preview` — active isolated image/HTML preview work; not merged
   or approved for a release. Rebase onto main before Owner trial bundles.
 - `archive/wp-right-pane-sort` — merged into main (Changes, Files and
