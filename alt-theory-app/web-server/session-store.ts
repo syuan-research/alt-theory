@@ -26,7 +26,7 @@ import {
 } from "../core/data-dir.js";
 import { canonicalPathKey, isPathInside, verdict } from "../core/path-verdict.js";
 import { approvalFromResult } from "../core/approval-ask.js";
-import { TOOL_RESULT_HEAD, TOOL_RESULT_TAIL } from "./limits.js";
+import { TOOL_INPUT_PREVIEW, TOOL_RESULT_HEAD, TOOL_RESULT_TAIL } from "./limits.js";
 import type { Root } from "../core/root-policy.js";
 import { describeWorkingFolders } from "./workspace-files.js";
 import {
@@ -2244,6 +2244,7 @@ export function buildTranscriptFromEntries(
         role: "system",
         marker: "agent-team",
         text: agentMailDisplayText(value.content),
+        ...mailFields(value.content),
         timestamp: normalizeTimestamp(value.timestamp),
       });
       return;
@@ -2297,6 +2298,7 @@ export function buildTranscriptFromEntries(
           role: "system",
           marker: "agent-team",
           text: agentMailDisplayText(text),
+          mail: { from: mail.fromLabel, event: mail.event, body: mail.body },
           timestamp,
           // A wake turn starts here: the turn cut finds it by entry.
           entryId: value.id ?? null,
@@ -2343,14 +2345,16 @@ export function buildTranscriptFromEntries(
         value.message.isError === true ||
         value.message.details?.is_error === true
       );
-      const callIndex = toolCallId
-        ? transcript.findIndex(
-            (message) =>
-              message.role === "tool" &&
-              message.toolType === "call" &&
-              message.toolCallId === toolCallId,
-          )
-        : -1;
+      // The latest call with this id still waiting for its result: some
+      // providers reuse short call ids across turns.
+      let callIndex = -1;
+      for (let index = transcript.length - 1; toolCallId && index >= 0; index--) {
+        const message = transcript[index];
+        if (message.role === "tool" && message.toolType === "call" && message.toolCallId === toolCallId) {
+          if (message.success === undefined) callIndex = index;
+          if (callIndex >= 0 || message.success !== undefined) break;
+        }
+      }
       // Smart approval's verdict rides on the result's details; a denial
       // blocks the call, and Pi's blocked result is only the reason text.
       const approval = approvalFromResult(value.message.details, !success, full);
@@ -2457,6 +2461,7 @@ function assistantContentToTranscript(
           typeof typedPart.id === "string" ? typedPart.id : undefined,
         toolPath: extractToolPath(typedPart.arguments),
         toolDetail: extractToolDetail(toolName, typedPart.arguments) ?? undefined,
+        toolInput: toolInputPreview(typedPart.arguments),
         // No result yet: a call in an aborted/error message is never run by
         // Pi, so `success` stays unset and the row reads as not completed.
         timestamp,
@@ -2516,6 +2521,17 @@ function agentMailEventLabel(event: string): string {
     default:
       return event;
   }
+}
+
+function mailFields(raw: string): Pick<TranscriptMessage, "mail"> {
+  const mail = parseAgentMailFrame(raw);
+  return mail ? { mail: { from: mail.fromLabel, event: mail.event, body: mail.body } } : {};
+}
+
+function toolInputPreview(args: unknown): string | undefined {
+  if (args === undefined) return undefined;
+  const json = JSON.stringify(args) ?? "";
+  return json.length > TOOL_INPUT_PREVIEW ? json.slice(0, TOOL_INPUT_PREVIEW) : json;
 }
 
 function agentMailDisplayText(raw: string): string {

@@ -263,12 +263,16 @@ export interface TranscriptMessage {
   toolName?: string;
   toolPath?: string | null;
   toolDetail?: ToolDetail;
+  /** The call's arguments as JSON, cut to 200 characters (history readers). */
+  toolInput?: string;
   success?: boolean;
   /** Smart approval's verdict on this tool call (the reviewer model's). */
   approval?: import("../../../core/approval-ask").ApprovalRecord;
   truncated?: boolean;
   /** Non-message boundary markers rendered specially (e.g. context compaction). */
   marker?: "compaction" | "imported-context" | "agent-team";
+  /** An agent-team row's sender label, event and body as delivered (`text` is the display line). */
+  mail?: { from: string; event: string | null; body: string };
   sourceRole?: "system" | "developer";
   /**
    * Pi's stop reason, on every visible row of a stopped or failed attempt

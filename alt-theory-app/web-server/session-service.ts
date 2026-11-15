@@ -11,10 +11,10 @@ import { resolveCliModel } from "@earendil-works/pi-coding-agent";
 import {
   parseReviewReply,
   REVIEWER_SYSTEM_PROMPT,
-  reviewerMessage,
   type ReviewRequest,
   type ReviewVerdict,
 } from "../core/approval-reviewer.js";
+import { reviewerMessage } from "./reviewer-message.js";
 import {
   APPROVAL_ALLOW_ONCE,
   APPROVAL_ALLOW_SESSION,

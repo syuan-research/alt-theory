@@ -8,6 +8,8 @@
  *  result; the full text stays in the Pi history. */
 export const TOOL_RESULT_HEAD = 32 * 1024;
 export const TOOL_RESULT_TAIL = 32 * 1024;
+/** A tool call row keeps this much of its arguments as JSON (history readers, smart approval). */
+export const TOOL_INPUT_PREVIEW = 200;
 
 /** Live conversation runtimes (perf plan WP 2.1): an unwatched, idle runtime
  *  is released after RUNTIME_IDLE_MS; above RUNTIME_HIGH_WATER live ones the

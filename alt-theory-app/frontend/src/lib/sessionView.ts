@@ -23,6 +23,10 @@ export interface ViewSelection {
   kinds?: readonly ViewKind[];
   /** Per-kind character cap; the cut is marked with the count left out. */
   maxChars?: Partial<Record<ViewKind, number>>;
+  /** With `range.last`: at most this many rows of a kind, the latest kept;
+   *  the rest are left out, do not count toward `last`, and are counted in
+   *  `gapsBefore`. */
+  maxRows?: Partial<Record<ViewKind, number>>;
 }
 
 export interface SessionView {
@@ -35,6 +39,8 @@ export interface SessionView {
   missing?: string;
   /** Some text was cut to a cap. */
   clipped: boolean;
+  /** Rows left out by `maxRows` just before each returned row (0 = none). */
+  gapsBefore?: number[];
 }
 
 export function rowKind(row: TranscriptMessage): ViewKind {
@@ -97,6 +103,34 @@ export function selectRows(all: readonly TranscriptMessage[], selection: ViewSel
   let end = kept.length;
   let missing: string | undefined;
   const range = selection.range;
+  if (range && "last" in range && selection.maxRows) {
+    const caps = selection.maxRows;
+    const counts = new Map<ViewKind, number>();
+    const picked: number[] = []; // kept indices, newest first
+    const gaps = new Map<number, number>();
+    let skipped = 0;
+    for (let index = kept.length - 1; index >= 0 && picked.length < range.last; index--) {
+      const kind = rowKind(kept[index].row);
+      const cap = caps[kind];
+      if (cap !== undefined && (counts.get(kind) ?? 0) >= cap) {
+        skipped += 1;
+        continue;
+      }
+      if (skipped) gaps.set(picked[picked.length - 1], skipped);
+      skipped = 0;
+      counts.set(kind, (counts.get(kind) ?? 0) + 1);
+      picked.push(index);
+    }
+    if (skipped && picked.length) gaps.set(picked[picked.length - 1], (gaps.get(picked[picked.length - 1]) ?? 0) + skipped);
+    const order = picked.reverse();
+    return {
+      rows: order.map((index) => kept[index].row),
+      total: kept.length,
+      start: order[0] ?? kept.length,
+      clipped,
+      gapsBefore: order.map((index) => gaps.get(index) ?? 0),
+    };
+  }
   if (range && "last" in range) {
     start = Math.max(0, kept.length - range.last);
   } else if (range && "around" in range) {
