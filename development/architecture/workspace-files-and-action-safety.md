@@ -175,12 +175,11 @@ Session file routes are authorized through the session content-access check.
 They expose text and JSON records under a session's `records/` or managed
 `workspace/` roots; `resolveSessionTextFile` resolves each requested path
 through the shared path verdict, with an extension allowlist and size limits.
-Attached files (paperclip, a pasted file or image, and a drop under
-Read-only) go through `POST /api/attachments/stage` before any conversation
+Attached files (paperclip, a pasted file or image, and a drop without a local
+path) go through `POST /api/attachments/stage` before any conversation
 needs to exist: the file is copied into
-`<dataDir>/attachment-staging/<uuid>/uploads/` and a DOCX/PDF/XLSX/PPTX is
-converted to text beside it under `extracted/` (a failed conversion attaches
-the copy and reports why). The message's send — in the WebSocket `prompt`
+`<dataDir>/attachment-staging/<uuid>/uploads/` in its original format.
+The message's send — in the WebSocket `prompt`
 handler, after the conversation exists — copies the named staged files into
 that conversation's managed `workspace/uploads/` and `workspace/extracted/`
 (a taken name gets ` (2)`, ` (3)`…) and rewrites their paths in the text and
@@ -190,6 +189,21 @@ before its run hands back a draft whose files still exist; nothing sweeps the
 staging folder yet. Upload names keep letters of any script (multer reads
 them as UTF-8; `sanitizeUploadName`). See
 [`attachment-staging.ts`](../../alt-theory-app/web-server/attachment-staging.ts).
+Desktop drops with absolute paths reference the original in every permission,
+whether the conversation has a project or is independent. The classify-drop
+route keeps its existing credential-path check; ordinary out-of-root reads use
+the normal tool approval rather than triggering a copy and conversion.
+
+`convert_document(path)` (`web-server/document-tool.ts`) is an on-demand fallback
+for PDF, DOCX, XLSX and PPTX, available in read-only and work conversations.
+Its description prioritizes existing document-reading/conversion tools and skills;
+it is for missing usable conversion capability or a conversion that cannot run
+because of missing dependencies or execution failure. It uses the existing bundled
+Node extractors, writes the complete derived text to the managed workspace's
+`extracted/`, and returns that path for `read` offset/limit or search. It does not
+modify the source. Input access uses the same security-extension read policy as
+the other file readers; writing this app-managed derivative is part of the read.
+
 The per-session workspace upload route
 accepts the configured text types and DOCX/XLSX/PDF binaries, sanitizes the
 filename, applies per-file and per-session quotas, and stores binaries

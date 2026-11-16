@@ -14,7 +14,6 @@ import type {
 export function classifyDroppedFiles(input: {
   paths: string[];
   sessionId: string | null;
-  workspacePrimaryDir: string | null;
   fullAccess: boolean;
 }): Promise<Array<"reference" | "copy" | "blocked">> {
   return fetchJson("/api/attachments/classify-drop", {
@@ -175,20 +174,20 @@ export async function missingAttachments(
 }
 
 /**
- * Attach a file by copy (paperclip, read-only drop, pasted image): the
- * server copies it, converts office/PDF files to text, and returns the path
+ * Attach a file by copy (paperclip, browser drop, pasted image): the
+ * server preserves the original format and returns the path
  * to attach; the send moves it into the conversation's folder.
  */
 export async function stageAttachmentFile(
   file: File,
-): Promise<{ path: string; extractError?: string }> {
+): Promise<{ path: string }> {
   const form = new FormData();
   form.append("file", file);
   const res = await fetch("/api/attachments/stage", { method: "POST", body: form });
   if (!res.ok) {
     throw new ApiError(await readErrorMessage(res), res.status);
   }
-  return res.json() as Promise<{ path: string; extractError?: string }>;
+  return res.json() as Promise<{ path: string }>;
 }
 
 /** An executable/resource URL on the file-only preview origin. */

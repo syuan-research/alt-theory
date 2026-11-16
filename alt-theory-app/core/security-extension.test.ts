@@ -114,6 +114,17 @@ function harness(
   };
 }
 
+test("document conversion uses the existing read approval path, including read-only", async () => {
+  const h = harness();
+  h.setReadOnly(true);
+  assert.equal(await h.call("convert_document", { path: join(h.project, "paper.pdf") }), undefined);
+  assert.equal(h.asked.length, 0);
+  h.answer(APPROVAL_ALLOW_ONCE);
+  assert.equal(await h.call("convert_document", { path: join(h.root, "outside.pdf") }), undefined);
+  assert.equal(h.asked.length, 1);
+  assert.match(h.asked[0].title, /Read outside/);
+});
+
 test("Ask: ordinary work runs without asking", async () => {
   const h = harness();
   for (const command of [

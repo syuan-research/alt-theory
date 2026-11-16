@@ -155,6 +155,11 @@ selection, so the user can change it like any other.
 
 ## 6. Role selection for managed subagents
 
+Spawned conversations default to completing their assigned task themselves.
+Their Subagent Role prompt permits further `spawn_agent` use only when explicitly
+requested by the user or the lead agent. The tool remains available; this is a
+behavior instruction, with no new delegation-depth cap or approval mechanism.
+
 `spawn_agent` may name an existing Role independently of its agent execution
 preset, model override, and permission. Omitting `role` inherits the
 parent conversation's Role. A named Role is validated before the child session

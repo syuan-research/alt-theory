@@ -126,10 +126,11 @@ async function extractPptxNode(filePath: string): Promise<ExtractResult> {
 }
 
 export async function extractUploadedBinary(
-  filePath: string
+  filePath: string,
+  cli = useCliBackend(),
 ): Promise<ExtractResult> {
   const ext = extname(filePath).toLowerCase();
-  if (useCliBackend()) {
+  if (cli) {
     if (ext === ".docx") return extractDocxCli(filePath);
     if (ext === ".pdf") return extractPdfCli(filePath);
   }

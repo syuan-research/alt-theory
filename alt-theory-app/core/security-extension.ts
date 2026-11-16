@@ -634,7 +634,7 @@ export function createSecurityExtension(
 
       if (full) return undefined;
 
-      if (["read", "grep", "find", "ls"].includes(event.toolName)) {
+      if (["read", "grep", "find", "ls", "convert_document"].includes(event.toolName)) {
         if (!path) return undefined;
         const resolved = toolPath(sessionCwd, path);
         // Reads reaching outside the readable roots escalate to approval

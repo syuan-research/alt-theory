@@ -142,6 +142,7 @@ import {
 } from "../frontend/src/lib/transcriptWindow.js";
 import { selectRows, viewToLines, type ViewSelection } from "../frontend/src/lib/sessionView.js";
 import { createHistoryTools, type HistoryBridge } from "./history-tools.js";
+import { createDocumentTool } from "./document-tool.js";
 import { TRANSCRIPT_PAGE_MAX, TRANSCRIPT_TAIL_ROWS } from "./limits.js";
 import { continueAgentTurnAfterModelSwitch } from "../core/model-switch.js";
 import { AGENT_MAIL_TAG } from "../core/agent-mail-frame.js";
@@ -3015,28 +3016,16 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
   }
 
   classifyDroppedFiles(
-    paths: string[], sessionId: string | null, draftPrimaryDir: string | null, draftFullAccess: boolean,
+    paths: string[], sessionId: string | null, draftFullAccess: boolean,
   ): Array<"reference" | "copy" | "blocked"> {
     const managed = sessionId ? this.requireSession(sessionId) : null;
-    const readable: Root[] = managed ? managed.getReadableRoots() : [];
-    if (!managed) {
-      const folders = folderPolicyFor(readAppSettings(this.config.dataDir), draftPrimaryDir);
-      if (draftPrimaryDir) readable.push({ path: draftPrimaryDir, reason: "cwd" });
-      readable.push(
-        ...folders.projectSecondaryDirs.map((path): Root => ({ path, reason: "project-secondary" })),
-        ...folders.globalFolders.map(({ path }): Root => ({ path, reason: "global-list" })),
-      );
-    }
     const full = managed?.isFullAccessEffective() ?? draftFullAccess;
-    const grants = new Set(managed?.getGrants());
     return paths.map((path) => {
       if (!isAbsolute(path)) return "copy";
       if (full) return "reference";
-      const check = verdict(path, "read", { readable });
+      const check = verdict(path, "read", { readable: [] });
       if (check.outcome === "sensitive") return "blocked";
-      return check.outcome === "inside" ||
-        approvalGrantCovers(grants, `read:${canonicalPathKey(dirname(path))}`)
-        ? "reference" : "copy";
+      return "reference";
     });
   }
 
@@ -3368,9 +3357,14 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
       (asset) => asset.slug,
     );
     const historyTools = createHistoryTools(this, sessionId, this.config.dataDir);
+    const documentTool = createDocumentTool(() => {
+      const managed = this.requireSession(sessionId);
+      const dirs = getSessionDirs(this.config.dataDir, sessionId)!;
+      return { cwd: managed.manifest.sessionCwd, extractedDir: join(dirs.sessionCwd, "extracted") };
+    });
     if (purpose === "subagent") {
       return {
-        extraTools: [...createAgentTeamTools(this, sessionId, "subagent", roleIds), ...historyTools],
+        extraTools: [...createAgentTeamTools(this, sessionId, "subagent", roleIds), ...historyTools, documentTool],
         extraPromptSections: [
           SUBAGENT_PROMPT_SECTION,
           LEAD_DELEGATION_PROMPT_SECTION,
@@ -3382,7 +3376,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
       return { extraTools: [], extraPromptSections: [] };
     }
     return {
-      extraTools: [...createAgentTeamTools(this, sessionId, "lead", roleIds), ...historyTools],
+      extraTools: [...createAgentTeamTools(this, sessionId, "lead", roleIds), ...historyTools, documentTool],
       extraPromptSections: [
         LEAD_DELEGATION_PROMPT_SECTION,
         formatSubagentConfigForPrompt(subagentConfig, roleIds),

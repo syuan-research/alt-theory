@@ -1956,7 +1956,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     },
   );
   app.post("/api/attachments/classify-drop", (req, res) => {
-    const body = (req.body ?? {}) as { paths?: unknown; sessionId?: unknown; workspacePrimaryDir?: unknown; fullAccess?: unknown };
+    const body = (req.body ?? {}) as { paths?: unknown; sessionId?: unknown; fullAccess?: unknown };
     if (!Array.isArray(body.paths) || !body.paths.every((path) => typeof path === "string")) {
       res.status(400).json({ error: "paths must be an array of strings" });
       return;
@@ -1964,15 +1964,12 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     const sessionId = typeof body.sessionId === "string" && body.sessionId ? body.sessionId : null;
     if (sessionId && !requireSessionRestContentAccess(req, res, sessionId)) return;
     try {
-      const primaryDir = typeof body.workspacePrimaryDir === "string" && body.workspacePrimaryDir
-        ? resolve(body.workspacePrimaryDir) : null;
-      res.json(sessionService.classifyDroppedFiles(body.paths, sessionId, primaryDir, body.fullAccess === true));
+      res.json(sessionService.classifyDroppedFiles(body.paths, sessionId, body.fullAccess === true));
     } catch (error) {
       sendFileApiError(res, error);
     }
   });
-  // Attached files (paperclip, drop that needs a copy, pasted image): copied and
-  // converted before any conversation exists; the send moves them into it.
+  // Attach original files before any conversation exists; send moves the copies into it.
   app.post("/api/attachments/stage", workspaceUpload.single("file"), async (req, res) => {
     if (!req.file) {
       res.status(400).json({ error: "file is required" });

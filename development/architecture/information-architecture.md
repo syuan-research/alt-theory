@@ -112,11 +112,13 @@ surfaces remain designation-gated and absent for everyone else.
     listed on a conversation already using it). While a conversation is on smart
     approval with the auto reviewer, a line above the composer says so, with
     a way to Settings and "Don't show again". The first-level paperclip
-    adds a file by copy (into the conversation's folder, converted to text for
-    office/PDF files) in every conversation. A pasted file or image does the
+    adds a file by copy (into the conversation's folder, preserving the original
+    format) in every conversation. A pasted file or image does the
     same. Both composers accept file drops. A desktop drop links the
-    original when the conversation can already read it, and otherwise
-    attaches a copy. Browser drops without a local path attach a copy.
+    original in both independent and project conversations, regardless of
+    permission. Reading it uses the ordinary file-access policy. Browser drops
+    without a local path attach a copy. Attachment insertion does not convert
+    files; the agent can use the fallback `convert_document` when needed.
   - Live composer chrome carries permission, model and effective thinking effort,
     role, knowledge, workspace context where applicable, and run controls.
     Its toolbar stays on one line: as the composer narrows, the permission

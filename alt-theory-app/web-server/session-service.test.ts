@@ -4187,7 +4187,7 @@ test("stop applies the pending switch; Full Access off is live during a run", as
   }
 });
 
-test("dropped files reference readable workspace paths and copy files outside a draft's folders", async () => {
+test("desktop drops reference originals in both independent and project conversations, including read-only", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const project = join(fixture.root, "project");
@@ -4198,12 +4198,21 @@ test("dropped files reference readable workspace paths and copy files outside a 
   writeFileSync(inProject, "notes");
   writeFileSync(outside, "source");
   try {
-    assert.deepEqual(service.classifyDroppedFiles([inProject, outside, credential], null, project, false),
-      ["reference", "copy", "blocked"]);
+    assert.deepEqual(service.classifyDroppedFiles([inProject, outside, credential, ""], null, false),
+      ["reference", "reference", "blocked", "copy"]);
     const session = await service.createSession({
       rolePresetSlug: null, soulSlug: "soul-latest", kbDomain: "ep-core",
     }, { mode: "read-only", workspace: { primaryDir: project } });
-    assert.deepEqual(service.classifyDroppedFiles([inProject], session.sessionId, null, false), ["reference"]);
+    assert.deepEqual(service.classifyDroppedFiles([inProject, outside], session.sessionId, false), ["reference", "reference"]);
+    const independent = await service.createSession({
+      rolePresetSlug: null, soulSlug: "soul-latest", kbDomain: "ep-core",
+    }, { mode: "read-only" });
+    assert.deepEqual(service.classifyDroppedFiles([outside], independent.sessionId, false), ["reference"]);
+    const runtime = (service as unknown as {
+      sessions: Map<string, { session: { getActiveToolNames(): string[] } }>;
+    }).sessions.get(independent.sessionId)!;
+    assert.ok(runtime.session.getActiveToolNames().includes("convert_document"));
+    assert.ok(!runtime.session.getActiveToolNames().includes("bash"));
   } finally {
     await service.disposeAll();
     rmSync(fixture.root, { recursive: true, force: true });

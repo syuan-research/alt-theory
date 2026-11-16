@@ -8,21 +8,15 @@ import { t } from "@/i18n";
 
 export function useComposerAttachments() {
   const conversation = useConversationContext();
-  const { sessionId, sessionReady, workspacePrimaryDir, permission } = conversation;
+  const { sessionId, sessionReady, permission } = conversation;
   const [dragOver, setDragOver] = useState(false);
   const stage = (path: string) => stageInDraft(sessionId ?? NEW_DRAFT, [path]);
   const reportError = (error: unknown) => window.alert(error instanceof Error ? error.message : String(error));
 
   const attachCopies = (files: File[]) => {
     for (const file of files) {
-      void stageAttachmentFile(file).then(({ path, extractError }) => {
+      void stageAttachmentFile(file).then(({ path }) => {
         stage(path);
-        if (extractError) {
-          window.alert(t("{name} was attached, but its text could not be read: {error}", {
-            name: file.name,
-            error: extractError,
-          }));
-        }
       }).catch(reportError);
     }
   };
@@ -33,7 +27,7 @@ export function useComposerAttachments() {
   async function attachDroppedFiles(files: File[]) {
     const paths = files.map((file) => pathsFromDroppedFiles([file])[0] ?? "");
     const choices = paths.some(Boolean)
-      ? await classifyDroppedFiles({ paths, sessionId, workspacePrimaryDir, fullAccess: permission === "full" })
+      ? await classifyDroppedFiles({ paths, sessionId, fullAccess: permission === "full" })
       : [];
     files.forEach((file, index) => {
       const choice = choices[index];

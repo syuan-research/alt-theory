@@ -353,7 +353,7 @@ const SHELL_BUNDLED_SKILLS = new Set(["at-web-search", "at-page-fetch", "at-doc-
 
 const READ_ONLY_PROMPT_SECTION = [
   "## Permission: Read-only",
-  "The user chose read-only permission for this conversation. There is no shell. Every file write or edit asks the user for approval before it happens; a denied write is the user's choice, not an error to route around. Live web lookup is unavailable here; files the user attached are already converted to text you can read.",
+  "The user chose read-only permission for this conversation. There is no shell. Every file write or edit asks the user for approval before it happens; a denied write is the user's choice, not an error to route around. Live web lookup is unavailable here. Attachments retain their original format; convert_document is a fallback when no usable document conversion capability is available.",
 ].join("\n");
 
 const NO_MODEL_PROVIDER = "__alt_theory_no_model__";
