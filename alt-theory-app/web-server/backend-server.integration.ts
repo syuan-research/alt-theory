@@ -1694,7 +1694,7 @@ test("WebSocket open_session and side-chat placement preserve the intended cente
     const initialDraft = await initialDraftPromise;
     assert.equal(initialDraft.payload.status, "draft");
     assert.equal(initialDraft.payload.rolePresetSlug, "role-conceptual-theory-companion-latest",);
-    assert.equal(initialDraft.payload.currentDomain, "ep-core");
+    assert.equal(initialDraft.payload.currentDomain, "none");
     const sessionRootsAfterConnect = readdirSync(join(dataDir, "sessions"));
     assert.deepEqual(sessionRootsAfterConnect, ["session-ws-open"]);
 
@@ -2115,7 +2115,7 @@ test("REST discovery lists assets; a connection holds no draft and greets with t
     ws2.send(JSON.stringify({ type: "get_session_metadata" }));
     const ws2Draft = await ws2DraftPromise;
     for (const draft of [reopened1, ws2Draft]) {
-      assert.equal(draft.payload.currentDomain, "ep-core");
+      assert.equal(draft.payload.currentDomain, "none");
       assert.equal(draft.payload.rolePresetSlug, "role-conceptual-theory-companion-latest");
       assert.equal(draft.payload.soulSlug, "soul-latest");
       assert.equal(draft.payload.customInstructionRef, "default.md");

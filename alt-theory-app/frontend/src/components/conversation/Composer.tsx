@@ -499,7 +499,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               <button
                 className="general-work-preset"
                 disabled={app.runtimeMode !== "alt-theory"}
-                data-tip={t("Temporary preset: Work mode, no role, and no knowledge base. You can edit every choice before Send.")}
+                data-tip={t("Temporary preset: no role and no knowledge base. You can edit every choice before Send.")}
                 onClick={applyGeneralKnowledgeWork}
               >
                 <i className="ph ph-briefcase" />

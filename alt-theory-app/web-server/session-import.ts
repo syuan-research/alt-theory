@@ -25,6 +25,7 @@ import type {
   AltMode,
 } from "../core/alt-theory-core.js";
 import { emptyFileRef } from "../core/agent-assets.js";
+import { KB_DISABLED_DOMAIN } from "../core/kb-metadata.js";
 import {
   allocateReadableSessionId,
   createSessionDirs,
@@ -569,12 +570,12 @@ function registerPreparedImport(
         promptTemplatesDir: null,
         promptTemplatesExist: false,
       },
-      kbDomain: "all",
+      kbDomain: KB_DISABLED_DOMAIN,
       kb: {
         rootDir: "",
-        domain: "all",
+        domain: KB_DISABLED_DOMAIN,
         domainPath: null,
-        domainExists: true,
+        domainExists: false,
         libraries: [],
       },
       sessionCwd: workspacePrimaryDir,

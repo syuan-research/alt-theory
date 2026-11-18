@@ -2412,7 +2412,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   function createDraftSelectors(): SessionSelectors {
     return {
       rolePresetSlug: defaultRolePresetSlug(),
-      kbDomain: "ep-core",
+      kbDomain: KB_DISABLED_DOMAIN,
       soulSlug: defaultSoulSlug(),
       customInstructionRef: defaultInstructionRef(),
     };

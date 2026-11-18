@@ -68,7 +68,7 @@ export interface AppSettings {
     fallbackModels?: string[];
   };
   /**
-   * Which permission a new conversation starts with. Absent = Ask. The per-conversation control is
+   * Which permission a new conversation starts with. Absent = smart approval. The per-conversation control is
    * unaffected — this only seeds new drafts.
    */
   defaultPermission?: Permission;

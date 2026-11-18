@@ -29,7 +29,7 @@ const snap = (patch: Partial<SessionSnapshot> = {}): SessionSnapshot => ({
 const draft: SessionDraftSnapshot = {
   status: "draft",
   visibility: "no-export",
-  currentDomain: "ep-core",
+  currentDomain: "none",
   rolePresetSlug: null,
   soulSlug: null,
   mode: "work",
@@ -289,10 +289,10 @@ test("a lost send with nothing to hand back is dropped without a notice", () => 
 
 test("the new-conversation screen shows the user's choices, over what New inherited, over the defaults", () => {
   const detached = play([{ type: "socket", status: "open" }, server({ type: "session_draft", payload: draft })]);
-  assert.equal(effectiveSettings(detached).selectors.currentDomain, "ep-core");
+  assert.equal(effectiveSettings(detached).selectors.currentDomain, "none", "a new conversation loads no knowledge base");
   const inherited = { kbDomain: "all", rolePresetSlug: "tutor", soulSlug: null };
-  const both = effectiveSettings(detached, { inherited, settings: { kbDomain: "none", mode: "work", fullAccess: true } });
-  assert.equal(both.selectors.currentDomain, "none", "the user's choice wins");
+  const both = effectiveSettings(detached, { inherited, settings: { kbDomain: "ep-core", mode: "work", fullAccess: true } });
+  assert.equal(both.selectors.currentDomain, "ep-core", "the user's choice wins");
   assert.equal(both.selectors.rolePresetSlug, "tutor", "inherited over the default");
   assert.equal(both.selectors.soulSlug, null, "an inherited null is a choice too");
   assert.equal(both.mode, "work");

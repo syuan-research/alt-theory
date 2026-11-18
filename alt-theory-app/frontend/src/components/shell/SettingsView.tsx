@@ -1898,7 +1898,7 @@ function RoleKbPanel() {
   return (
     <div className="set-panel">
       <h2>{t("Role & knowledge")}</h2>
-      <p className="sub">{t("Customize behavior for different scenarios (roles) and domain knowledge.")}</p>
+      <p className="sub">{t("Customize behavior for different scenarios (roles) and domain knowledge.")} {t("New conversations start with the Conceptual Theory Companion role and no knowledge base.")}</p>
       {notice ? <p className="sub">{notice}</p> : null}
       <div className="set-card">
         <div className="row2">

@@ -784,7 +784,7 @@ export function effectiveSettings(
   const pick = <T,>(chosen: T | undefined, current: T): T => (chosen !== undefined ? chosen : current);
   return {
     selectors: {
-      currentDomain: pick(pending.kbDomain, source?.currentDomain || "ep-core"),
+      currentDomain: pick(pending.kbDomain, source?.currentDomain || "none"),
       rolePresetSlug: pick(pending.rolePresetSlug, source?.rolePresetSlug ?? null),
       soulSlug: pick(pending.soulSlug, source?.soulSlug ?? null),
       customInstructionRef: pick(pending.customInstructionRef, source?.customInstructionRef ?? null),
