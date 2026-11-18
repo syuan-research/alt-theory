@@ -2,7 +2,8 @@
 
 User documentation is **not** bundled inside this skill.
 
-Canonical trees (paths from repository root):
+The paths below are relative to the repository root in a checkout or to
+`ALT_THEORY_RESOURCE_ROOT` in the desktop bundle.
 
 - English: `docs/en/`
 - Simplified Chinese: `docs/zh-Hans/`
@@ -33,7 +34,8 @@ below.
   `docs/en/system-guide/models-providers-access.md` and Settings → Models.
 - **Code structure / modifying the app**:
   `docs/en/advanced/modifying-alt-theory.md` and
-  `development/architecture/` — do not invent code maps from memory.
+  `development/architecture/`. The desktop bundle ships the architecture
+  directory at the same relative path.
 - **Native Pi engine behavior** (not Alt product policy): https://pi.dev
 - **Something is wrong / limits / terms**:
   `docs/en/help/` — common questions, compatibility and limitations,

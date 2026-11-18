@@ -90,6 +90,10 @@
       {
         "from": "docs/zh-Hans",
         "to": "docs/zh-Hans"
+      },
+      {
+        "from": "development/architecture",
+        "to": "development/architecture"
       }
     ],
     "mac": {

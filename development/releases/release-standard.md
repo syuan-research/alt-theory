@@ -300,6 +300,8 @@ The executable source of truth is `build.files` plus `build.extraResources` in
   runtime roles, souls, skills, KBs, and Alt Theory guidance;
 - `docs/en/` and `docs/zh-Hans/`: external ordinary Help sources under
   `resources/docs/`;
+- `development/architecture/`: public architecture documents under
+  `resources/development/architecture/`, available to the Help skill;
 - `package.json` and required production `node_modules/`.
 
 The package intentionally excludes:
@@ -310,7 +312,7 @@ The package intentionally excludes:
   those files caused the Alpha 6 Windows path-length failure.
 
 Application code and production dependencies are packaged in
-`resources/app.asar`. Runtime assets and Help docs that require real paths stay
+`resources/app.asar`. Runtime assets, Help docs and architecture docs stay
 outside it as `extraResources`. Packaged mode resolves code from
 `app.getAppPath()` and physical resources from `process.resourcesPath`; repo
 mode resolves both from the checkout root. Do not point `process.cwd()` at
