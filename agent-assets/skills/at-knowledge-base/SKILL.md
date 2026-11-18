@@ -1,12 +1,12 @@
 ---
 name: at-knowledge-base
 description: Use when the user wants a paper or other material summarized faithfully — in chat, beside the original, or wherever they say — or added to an Alt Theory knowledge base, including its at-kb.md card and at-kb-index.tsv. Explicit user instructions override this skill's defaults.
-version: 0.4.6
+version: 0.4.7
 status: baseline
-supersedes: ../v0.4.5/SKILL.md
+supersedes: ../v0.4.6/SKILL.md
 ---
 
-# Paper summaries for knowledge bases (0.4.6)
+# Paper summaries for knowledge bases (0.4.7)
 
 ## Routes
 
@@ -109,7 +109,8 @@ paper. Typical cases, as heuristics:
 
 - An empirical study that uses or tests existing theory is evidence; one
   that tests a theory proposed by itself or traced to it by experts in the
-  paper's field also earns theory.
+  paper's field also earns theory, so the reader keeps the content experts
+  count among this paper's contributions.
 - A method paper's validation of its own method belongs to method; its
   findings also earn evidence when, apart from the method, they would be
   the main result of an ordinary empirical paper.
@@ -126,7 +127,8 @@ framework named in the title.
 
 ## Universal writing rules
 
-1. **Fidelity first.** Judge as an expert in the paper's field. The summary
+1. **Fidelity first.** You must judge as if you are an expert in the
+   paper's field. The summary
    reports what the paper did, said, and found, as the paper presents it,
    with the certainty the authors give it; nothing else goes in. What the
    results mean and how they should be used are the reader's to judge.
@@ -164,9 +166,12 @@ framework named in the title.
 
    Each category beyond the first adds up to 200 (at most two), to the
    sections that carry it. A whole book (not a chapter) stays within 2000.
-   The count is the whole file. When a draft runs over, cut once, to
-   100–200 words under its limit — a target for that one cut; any count
-   below the limit passes, no further cutting.
+   The count is the whole file. The summary's substance is worth the
+   fewest tokens and the least time: one write under the limit the ladder
+   gives; if it runs over, one cut, deep enough to finish — about 100
+   words below the original limit usually does it — and anything under
+   the original limit is done. At most two writes reach the file, the
+   first and the cut; piecewise writing is no exemption.
 6. **Self-check.** After finishing the summary, count its words
    (`wc -w <summary.md>`) and report the count.
 
