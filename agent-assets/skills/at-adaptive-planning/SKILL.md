@@ -34,11 +34,11 @@ Use `Stage` as the default name for the major planned unit below the whole plan-
 
 **A Stage is a substantial, self-contained arc of work.** It includes the production, checking, and basic verification needed to understand what the work actually achieved. Do not split making something from its ordinary checks merely because they are different activities.
 
-Smaller execution units belong inside the Stage as sub-stages or local work items. If finishing a proposed Stage would not justify stopping with the user to reconsider what follows, it is probably not a Stage-level boundary.
+If finishing a proposed Stage would not justify stopping with the user to reconsider what follows, it is probably not a Stage-level boundary. When two activities repeatedly inform each other before there is a result worth reflecting on, keep them in one Stage. Label its sub-stages with letters (1a, 1b or 1.2a, 1.2b), in execution order where order matters.
 
 **Every Stage is action for reflection.** Doing real work also tests the current understanding of the problem and route. Some Stages largely confirm the current map; others expose a false premise or reorganize it.
 
-Plan the current Stage concretely enough to guide discussion and action. Keep later Stages tentative and directional. Their shape should develop through action and future user decisions rather than early speculation.
+Unless the user specifies the Stages, propose one or two at a time. Plan the current Stage concretely enough to guide discussion and action. Keep later Stages tentative and directional; their shape should develop through action and future user decisions.
 
 When a consequential question can only be judged against a concrete artifact, result, or exact wording, record what must become visible before the user decides. Do not force an early decision to make the plan appear complete.
 

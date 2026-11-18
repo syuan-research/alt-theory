@@ -32,12 +32,22 @@ test("model reminders use the live model and recover once after compaction", () 
   const other = { model: { id: "claude-opus" }, sessionManager };
 
   assert.match(before(event, gpt).systemPrompt, /STOP PILING/);
-  assert.equal(before(event, gpt), undefined);
+  const nextGptTurn = before(event, gpt).systemPrompt;
+  assert.match(nextGptTurn, /enable and empower/);
+  assert.doesNotMatch(nextGptTurn, /STOP PILING/);
   compact();
   const recovered = before(event, other);
   assert.match(recovered.systemPrompt, /Context recovery reminder/);
   assert.doesNotMatch(recovered.systemPrompt, /STOP PILING/);
   assert.equal(before(event, other), undefined);
+
+  const withModel = (id: string) => before(event, { model: { id }, sessionManager });
+  for (const id of ["deepseek-flash", "deepseek/deepseek-v4.1-flash", "deepseek-4.4-flash"]) {
+    assert.match(withModel(id).systemPrompt, /enable and empower/);
+  }
+  assert.equal(withModel("deepseek-v4.5-flash"), undefined);
+  assert.equal(withModel("deepseek-v4-pro"), undefined);
+  assert.match(withModel("MiniMax-M3.1-Flash-Preview").systemPrompt, /DIRECTLY DIRECTLY DIRECTLY/);
 
   altTheory = false;
   compact();

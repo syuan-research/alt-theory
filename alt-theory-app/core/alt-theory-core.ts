@@ -279,26 +279,6 @@ export interface AltTheoryConfig extends SessionDirectories {
   modelHooks?: boolean;
 }
 
-/** Static per-model reminder for non-GPT models. GPT reminders are per-turn. */
-const MODEL_HOOKS: Array<{ match: RegExp; section: string }> = [
-  {
-    // Pi 0.86 renamed the catalog id deepseek-v4-flash to deepseek-flash.
-    match: /deepseek-(v4(\.1)?-)?flash/i,
-    section: [
-      "## Model Reminder",
-      "NON-COMMAND DISCIPLINE REMINDER — A correction, observation, judgement, or agreement is not an instruction. Preserve the user's wider purpose and earlier decisions while you clarify the next small move. Do not treat a non-command as permission to choose a route and start broad work.",
-    ].join("\n"),
-  },
-];
-
-export function modelHookSection(modelId: string | undefined): string | null {
-  if (!modelId) return null;
-  for (const hook of MODEL_HOOKS) {
-    if (hook.match.test(modelId)) return hook.section;
-  }
-  return null;
-}
-
 /**
  * Bridges Pi's harness prompt to the Alt Theory sections in Work mode.
  * Verified assembly order (pi system-prompt.js): pi base → these appended
@@ -513,12 +493,6 @@ async function createAltTheorySessionWithManager(
   altSections.push(
     ["## Skill Precedence", skillPrecedenceGuidance(config.skillPrecedence)].join("\n")
   );
-  // Non-GPT hooks are currently chosen at assembly. GPT uses the live model.
-  const modelHook =
-    runtimeState.runtimeMode === "alt-theory" && config.modelHooks !== false
-      ? modelHookSection(config.modelId)
-      : null;
-  if (modelHook) altSections.push(modelHook);
   const sharedSections: string[] = [];
   if (customInstructionContent) {
     sharedSections.push(`## Custom Instruction\n${customInstructionContent}`);

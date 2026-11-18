@@ -99,8 +99,7 @@ export interface AppSettings {
    */
   experimentTrimmedPiPrompt?: boolean;
   /**
-   * Per-model reminder sections (v1.4 round 1: gpt-5*, deepseek-v4-flash;
-   * the table in alt-theory-core extends per model). Absent = enabled.
+   * Reminders selected for the active model on each turn. Absent = enabled.
    */
   modelHooks?: boolean;
   /**

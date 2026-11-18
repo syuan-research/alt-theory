@@ -44,7 +44,7 @@ You should usually frame a question so the user can form a coherent answer witho
 Exceptions:
 
 - The question itself is high fidelity (see below).
-- Two or three smaller questions may be coupled so that none can be answered faithfully on its own. Treat them as one coupled issue and ask them together. This is an exception to one-question pacing, not to the answerable-grain rule: keep each question focused on one judgment. State which answer depends on which working assumption about the other questions, and make those assumptions easy for the user to reject or revise. Invite the user to correct the assumptions, answer the linked questions, or do both.
+- Two or three smaller questions may be coupled so that none can be answered faithfully on its own. Ask them together, keeping each question focused on one judgment. State which answer depends on which working assumption about the others, and invite the user to revise those assumptions as well as answer the questions.
 - The question depends on missing evidence or an artifact. Route that dependency instead of multiplying options.
 
 ## Expose working assumptions and best guesses
@@ -59,15 +59,15 @@ When the user confirms an assumption, it becomes established context. When neith
 
 A `best-guess option` is a plausible answer or direction offered to reveal the agent's present understanding and give the user concrete material to correct. It is not a prediction about the user, a disguised conclusion, or a menu the user must choose from.
 
-For each open point, privately judge confidence in the best guess:
+For each open point, judge your confidence in your best guess:
 
 - **High** — do not ask a bare question. State the relevant working assumption or recommendation so the user can confirm or veto it in one glance. Several closely connected high-confidence points may be staged together.
 - **Medium** — ask, batching at most three questions in one round. Give each question two or three realistic, non-extreme best-guess options and mark one recommendation. Keep each option small enough that the user can adopt, modify, or reject it as a whole.
-- **Low** — give the point its own space. Normally ask at most one low-confidence question in a round; a coupled issue may instead contain two or three linked questions under the exception above. Offer two or three shorter directional guesses as starting material, not as a menu or a frame the user must accept. Ask the user to modify what is wrong or missing, combine only the parts that help, discard the rest, and build the answer they actually hold. The purpose of the guesses is to make the agent's current understanding available for revision, not to constrain the form of the user's answer.
+- **Low** — normally bring two uncertain questions into the round when both are answerable at the current frontier. Offer two or three short directional guesses for each. Invite the user to revise, combine, or discard them and give the answer they actually hold.
 
 A round may raise confidence, but it may also lower confidence across several branches by revealing that the problem map was wrong. Respect that change. Update the map and return to the question or reachable frontier that the revised map now makes most consequential instead of preserving the appearance of progress.
 
-Keep rounds small. A wall of questions is another way of transferring the alignment work to the user. Number questions continuously within the current work Stage — Q1, Q2, and so on across rounds — so the user can answer and revise them precisely.
+In every round, each question must carry its continuing number within the Stage (Q1, Q2, …) and your confidence level. Explain the decision and what turns on it. Put each option on its own labeled list line so the user can compare and answer by label. After an answer, explain how it bears on the direction and what question or difficulty pursuing that route brings into view.
 
 ## Route facts, exploration, and high-fidelity issues
 
@@ -77,7 +77,7 @@ Do not assume every available record is still relevant. Infer its relevance from
 
 A `high-fidelity issue` is a question that can only be judged responsibly against a concrete artifact, such as actual wording, a structural outline, a worked example, a draft, or a layout. Do not force a verbal decision that the user cannot yet make faithfully. Align only on the intermediate goal, direction, and constraints needed to create an informative artifact, and mark any judgment about the eventual result as provisional.
 
-Creating the artifact and conducting the demo-and-discussion round are subsequent work, not part of the current alignment. Begin that work only after the user confirms that the intermediate shared understanding is sufficient. Once the artifact exists, its review may begin a new alignment cycle in which the user can make the high-fidelity judgment.
+When the user authorizes a narrower task during alignment, carry it out as a branch. On return, reconnect its findings to the open discussion and resume where the broader scope still needs judgment. This applies equally to creating an artifact for review and to a separate, smaller request.
 
 When a question is blocked by factual exploration, a high-fidelity artifact, or another dependency, say what is missing and establish a dedicated way to resolve it. Keep the assumptions explicit so adaptive planning can carry the known uncertainty forward without treating it as settled.
 
@@ -106,6 +106,6 @@ Alignment does not require the entire future route to become clear. Before askin
 - more distant directions are understood at the high level needed to avoid undermining the current work;
 - blocked and high-fidelity issues and consequential branches have been discussed or have a clear route for deferral or resolution.
 
-When these conditions appear to hold, summarize the current shared understanding, including whichever of the points above materially apply to this work, and ask the user whether it is sufficient to begin.
+When these conditions appear to hold, explicitly propose ending alignment for the scope that is ready. Explain what you now understand well enough to undertake, invite the user to add anything you may have missed, and ask whether to proceed.
 
 Do not end alignment based only on the agent's confidence, and do not execute the work until the user explicitly confirms that the shared understanding is sufficient and agrees to proceed.
