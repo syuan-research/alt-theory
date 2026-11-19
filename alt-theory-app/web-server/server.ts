@@ -1561,11 +1561,16 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       res.status(409).json({ failure: describeFailure(error, "retract_queued") });
     }
   });
-  app.post("/api/sessions/:sessionId/promote", (req, res) => {
+  app.post("/api/sessions/:sessionId/list-membership", (req, res) => {
     const sessionId = req.params.sessionId;
     if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    const listed = (req.body as { listed?: unknown } | undefined)?.listed;
+    if (typeof listed !== "boolean") {
+      res.status(400).json({ error: "listed must be a boolean" });
+      return;
+    }
     try {
-      const snapshot = sessionService.promoteRelatedSession(sessionId);
+      const snapshot = sessionService.setRelatedSessionListed(sessionId, listed);
       sessionService.listChanged(sessionId);
       res.json({ sessionId, snapshot });
     } catch (error) {

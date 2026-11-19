@@ -242,9 +242,10 @@ surfaces remain designation-gated and absent for everyone else.
     ordinary list rows unless the user promotes them. Branches are
     list members by nature.
   - BTW and subagent conversations are attached to their family. **Show in
-    conversation list** is an identity and lifecycle transition for those
-    children, not merely a display toggle. Legacy Helper children read as listed
-    side conversations; legacy root Helpers read as ordinary roots.
+    conversation list** and **Hide from conversation list** change identity and
+    lifecycle membership for those children, not merely their display. Legacy
+    Helper children read as listed side conversations; legacy root Helpers read
+    as ordinary roots.
   - Related children in the list or Related switcher show a **lineage-marker
     prefix plus the real title**, not a rename: the marker is the machine token
     from `lineageMarker` — e.g. `br1 · …`, `br1-btw2 · …`, `sa1 · …`.

@@ -3485,34 +3485,32 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
   }
 
   /**
-   * "Add to conversation list" (alpha.6): the child earns a place in the
-   * session list while KEEPING its purpose, so the list can say where it came
-   * from ("From subagent", "From BTW"). Renaming a subagent into a branch was the
-   * old behavior and it read as a lie.
+   * Change a related child's conversation-list membership while KEEPING its
+   * purpose, so the list can say where it came from ("From subagent", "From BTW").
    */
-  promoteRelatedSession(sessionId: string): SessionSnapshot | null {
+  setRelatedSessionListed(sessionId: string, listed: boolean): SessionSnapshot | null {
     const dirs = getSessionDirs(this.config.dataDir, sessionId);
     if (!dirs) throw new Error(`Unknown session id: ${sessionId}`);
     const header = readV4SessionHeader(dirs.recordsDir);
     if (!header?.forkedFrom) {
-      throw new Error("Only a related child can be added to the list");
+      throw new Error("Only a related child can change list membership");
     }
     if (
       !(["side", "subagent", "advisor"] as ForkPurpose[]).includes(
         header.forkedFrom.purpose,
       )
     ) {
-      throw new Error("This related conversation is already in the list");
+      throw new Error("This related conversation is always in the list");
     }
     const previousPurpose = header.forkedFrom.purpose;
     writeSessionHeader(dirs.recordsDir, {
       ...header,
-      forkedFrom: { ...header.forkedFrom, listed: true },
+      forkedFrom: { ...header.forkedFrom, listed },
     });
     appendSessionEvent(dirs.recordsDir, {
       sessionId,
-      type: "related_session_promoted",
-      details: { previousPurpose, purpose: previousPurpose, listed: true },
+      type: listed ? "related_session_promoted" : "related_session_unlisted",
+      details: { previousPurpose, purpose: previousPurpose, listed },
     });
     const live = this.sessions.get(sessionId);
     return live ? this.snapshot(live) : null;

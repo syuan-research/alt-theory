@@ -71,8 +71,8 @@ walks that stopped at deleted middles; do not reintroduce them.
 - `delisted?: boolean` + `delistedFor?: string` exist on ROOTS only:
   a demoted old mainline and who took its spot.
 - `fork.listed === true` has TWO meanings by context:
-  - on side/subagent: user added it to the conversation list
-    (membership itself — never clear it as a side effect);
+  - on side/subagent: explicit user list membership, which can be added or
+    removed (membership itself — never clear it as a side effect);
   - on a fork child: promotion anchor. Branches are list members by
     nature, so for them the flag only marks "user chose this one as the
     family head" (rootless families, §4).

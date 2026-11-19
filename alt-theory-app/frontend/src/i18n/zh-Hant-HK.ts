@@ -428,6 +428,7 @@ const catalog: Record<string, string> = {
   "Grok": "Grok",
   "Grok Build": "Grok Build",
   "Heads this family — its original main conversation was deleted": "此對話現為該系列主對話——原始主對話已被刪除",
+  "Hide from conversation list": "從對話列表隱藏",
   "Help": "幫助",
   "Help center": "幫助中心",
   "Help me connect a model or API provider.": "幫我連接模型或 API 服務商。",

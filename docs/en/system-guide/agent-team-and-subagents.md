@@ -38,7 +38,8 @@ between children from the row of buttons above the side conversation.
 A subagent can be added to the conversation list as its own conversation.
 Its origin is kept as a label (From subagent) rather than renamed. This is
 the same "add to conversation list" action as for branches and side
-conversations.
+conversations. A listed subagent can later be hidden from the list without
+deleting it; it remains available from its family's Related rail.
 
 ## Recovery
 

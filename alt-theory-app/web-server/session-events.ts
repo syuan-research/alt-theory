@@ -24,6 +24,7 @@ export type SessionEventType =
   | "session_forked_from"
   | "related_session_created"
   | "related_session_promoted"
+  | "related_session_unlisted"
   | "mainline_promoted"
   | "subagent_spawned"
   | "visibility_changed"

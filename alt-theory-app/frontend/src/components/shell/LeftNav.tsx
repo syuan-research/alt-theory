@@ -1340,6 +1340,9 @@ function SessionNode({
     onConfirm: () => main.deleteSessionFamily(session.sessionId),
   });
   const contextItems = (): ContextMenuItem[] => [
+    ...(session.forkedFrom && session.forkedFrom.purpose !== "fork" && isListMember(session) ? [{
+      label: t("Hide from conversation list"), icon: "ph-list-minus", onSelect: () => void main.setRelatedSessionListed(session.sessionId, false),
+    }] : []),
     ...(canTakeMainline(session, app.sessions) ? [{
       label: t("Make this the main conversation"), icon: "ph-crown-simple", onSelect: promote,
     }] : []),
