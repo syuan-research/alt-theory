@@ -108,7 +108,18 @@ export function useSlashPalette({
   const matches = useMemo(() => {
     if (query === null) return [];
     const token = query.split(/\s+/, 1)[0].toLowerCase();
-    return commands.filter((command) => command.name.toLowerCase().includes(token) || command.displayName?.toLowerCase().includes(token));
+    if (!token) return commands;
+    return commands
+      .map((command, index) => {
+        const names = [command.name.toLowerCase(), command.displayName?.toLowerCase() ?? ""];
+        const rank = names.some((name) => name === token) ? 0
+          : names.some((name) => name.startsWith(token)) ? 1
+          : names.some((name) => name.includes(token)) ? 2 : 3;
+        return { command, index, rank };
+      })
+      .filter((entry) => entry.rank < 3)
+      .sort((a, b) => a.rank - b.rank || a.index - b.index)
+      .map((entry) => entry.command);
   }, [commands, query]);
   const open = !dismissed && matches.length > 0;
   useEffect(() => setIndex(0), [matches.length]);
