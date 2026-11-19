@@ -108,7 +108,7 @@ export function useSlashPalette({
   const matches = useMemo(() => {
     if (query === null) return [];
     const token = query.split(/\s+/, 1)[0].toLowerCase();
-    return commands.filter((command) => command.name.toLowerCase().startsWith(token) || command.displayName?.toLowerCase().startsWith(token));
+    return commands.filter((command) => command.name.toLowerCase().includes(token) || command.displayName?.toLowerCase().includes(token));
   }, [commands, query]);
   const open = !dismissed && matches.length > 0;
   useEffect(() => setIndex(0), [matches.length]);
