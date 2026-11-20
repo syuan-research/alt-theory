@@ -232,9 +232,8 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
     async (target: string, listed: boolean) => {
       await setRelatedSessionListedRequest(target, listed);
       await app.refreshSessions();
-      if (listed) openCatalogSession(target);
     },
-    [app, openCatalogSession],
+    [app],
   );
 
   const renameSession = useCallback(
