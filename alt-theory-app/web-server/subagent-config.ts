@@ -207,7 +207,7 @@ export function formatSubagentConfigForPrompt(
     `Model override candidates: ${subagentModelCandidates(config).join(", ")}.`,
     "Follow the user's custom subagent configuration first. Otherwise, use general-low, general-medium, and general-high as described above, preferring a lower configured tier that can reliably complete the delegated subtask.",
     "Prefer reusing an existing subagent for similar tasks over spawning another.",
-    "Normally use the selected agent type's configured model chain. Use model overrides only when the user requests one; append :off|minimal|low|medium|high|xhigh|max to override thinking for this spawn.",
+    "Normally use the selected agent type's configured model chain. For a user-requested model override, include :thinking. Use the user's requested effort. Otherwise infer low or medium from context, defaulting to low.",
     `Available roles: ${roleIds.length ? roleIds.join(", ") : "(none)"}.`,
     "spawn_agent role names one of these; an unknown role fails and creates no child. Omit to inherit this conversation's role.",
   ].join("\n");
