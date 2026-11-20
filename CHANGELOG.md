@@ -5,6 +5,32 @@
 
 ---
 
+## v1.13.0 — 2026-11-20
+
+This update helps the agent recover useful material from earlier conversations and lets you bookmark messages with notes. Updated model guidance helps supported models stay focused on your goal.
+
+### Conversations
+
+- Ask the agent to find, read, or export earlier conversations.
+- After context compaction, the agent can return to the original messages. It reads the conversation text first, skipping reasoning traces and long tool outputs to save tokens.
+- Branches and new conversations can draw on multiple earlier conversations to extract useful material and reflect on what worked when developing rules or skills.
+- Bookmark your messages or model replies and add notes to revisit later. (Experimental)
+
+### Files and knowledge bases
+
+- Attachments retain the original file. When the agent cannot read a document directly, it can convert the document before reading it.
+- New and imported conversations start with no knowledge base selected.
+
+### Models and coordination
+
+- Updated guidance for GPT and DeepSeek Flash prioritizes moving toward your goal and reduces defensive replies and unnecessary checks of your request.
+- Updated guidance for MiniMax 3.1 Flash asks it to answer promptly from the material it has, with fewer extra searches and repeat checks.
+- When you name a model for a subagent, the lead agent specifies its thinking effort. If you leave the effort open, the lead chooses low or medium based on the task and defaults to low when unsure.
+
+### Permissions and safety
+
+- Smart approval can consult relevant conversation history, including your original intent when a task is relayed from another conversation.
+
 ## v1.12.0 — 2026-11-12
 
 This update lets you build and use your own knowledge bases with the agent.
