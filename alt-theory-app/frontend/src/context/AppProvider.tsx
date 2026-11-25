@@ -16,6 +16,7 @@ import { fetchSessionList } from "@/api/sessions";
 import type {
   DiscoveryLists,
   ActiveSubagentDispatch,
+  SubagentDispatchOutcome,
   SessionSummary,
   TranscriptView,
   ViewMode,
@@ -84,6 +85,7 @@ export interface AppContextValue {
    */
   applyActivity: (message: ActivityMessage) => ActivityChange[];
   subagentDispatches: Record<string, ActiveSubagentDispatch>;
+  subagentOutcomes: Record<string, SubagentDispatchOutcome>;
   resetSubagentDispatches: () => void;
   sessionDisplayNames: Record<string, { alias: string; snippet: string }>;
   setSessionDisplayName: (sessionId: string, alias: string) => void;
@@ -259,6 +261,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [activity, setActivity] = useState<ActivityMap>(null);
   const activityRef = useRef(activity);
   const [subagentDispatches, setSubagentDispatches] = useState<Record<string, ActiveSubagentDispatch>>({});
+  const [subagentOutcomes, setSubagentOutcomes] = useState<Record<string, SubagentDispatchOutcome>>({});
   const resetSubagentDispatches = useCallback(() => setSubagentDispatches({}), []);
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
@@ -276,7 +279,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (message.type === "activity_snapshot") {
         setSubagentDispatches(message.payload.subagentDispatches ?? {});
       } else {
-        const { sessionId, subagentDispatch } = message.payload;
+        const { sessionId, subagentDispatch, endedSubagentDispatch } = message.payload;
+        if (endedSubagentDispatch) {
+          const { id, outcome } = endedSubagentDispatch;
+          setSubagentOutcomes((current) => ({ ...current, [id]: outcome }));
+        }
         if (subagentDispatch !== undefined) {
           setSubagentDispatches((current) => {
             const next = { ...current };
@@ -507,6 +514,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sessions: listed,
       applyActivity,
       subagentDispatches,
+      subagentOutcomes,
       resetSubagentDispatches,
       sessionDisplayNames,
       setSessionDisplayName,
@@ -543,6 +551,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       listed,
       applyActivity,
       subagentDispatches,
+      subagentOutcomes,
       resetSubagentDispatches,
       sessionDisplayNames,
       setSessionDisplayName,

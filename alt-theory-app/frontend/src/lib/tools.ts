@@ -34,6 +34,7 @@ export function toolLabel(
   detail?: ToolDetail | null,
   state: ToolState = "finished",
   skillDisplayName?: string,
+  agentName?: string,
 ): string {
   if (detail?.kind === "skill" && detail.skillName) {
     return t("Using the {skillName} skill", { skillName: skillDisplayName ?? detail.skillName });
@@ -138,6 +139,49 @@ export function toolLabel(
       finished: t("Created a subagent"),
       failed: t("Subagent was not created"),
       pending: t("Subagent creation did not complete"),
+    });
+  }
+  if (name === "send_to_agent" || name === "message_parent") {
+    const recipient = agentName ?? t("the agent");
+    return lines({
+      running: t("Sending a message to {name}…", { name: recipient }),
+      finished: t("Sent a message to {name}", { name: recipient }),
+      failed: t("Could not send a message to {name}", { name: recipient }),
+      pending: t("Message to {name} did not go through", { name: recipient }),
+    });
+  }
+  if (name === "check_agent") {
+    const target = agentName ?? t("the agent");
+    return lines({
+      running: t("Checking {name}’s progress…", { name: target }),
+      finished: t("Checked {name}’s progress", { name: target }),
+      failed: t("Could not check {name}’s progress", { name: target }),
+      pending: t("Checking {name}’s progress did not complete", { name: target }),
+    });
+  }
+  if (name === "interrupt_agent") {
+    const target = agentName ?? t("the agent");
+    return lines({
+      running: t("Stopping {name}…", { name: target }),
+      finished: t("Asked {name} to stop", { name: target }),
+      failed: t("Could not stop {name}", { name: target }),
+      pending: t("Stop request for {name} did not complete", { name: target }),
+    });
+  }
+  if (name === "wait_for_agents") {
+    return lines({
+      running: t("Waiting for agents…"),
+      finished: t("Waited for agents"),
+      failed: t("Could not wait for agents"),
+      pending: t("Waiting for agents did not complete"),
+    });
+  }
+  if (name === "list_agents") {
+    return lines({
+      running: t("Listing subagents…"),
+      finished: t("Listed subagents"),
+      failed: t("Could not list subagents"),
+      pending: t("Listing subagents did not complete"),
     });
   }
   return lines({

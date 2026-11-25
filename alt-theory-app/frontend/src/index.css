@@ -768,6 +768,12 @@
   /* the user message under the pointer while dragging the rail (WP 2.2 ii) */
   .scrub-tip { position: absolute; right: 44px; max-width: 320px; transform: translateY(-50%); padding: var(--space-tight) var(--space-control); background: var(--card-2); border: 1px solid var(--hairline); border-radius: var(--r-md); font-size: var(--fs-secondary); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; z-index: 31; }
   .tool-result { margin-top: var(--space-tight); }
+  .agent-reference { display: inline; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+  .agent-tool-message { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .agent-tool-fields { display: flex; flex-wrap: wrap; gap: var(--space-tight) var(--space-block); margin: var(--space-tight) 0; }
+  .agent-tool-fields > div { display: flex; gap: var(--space-tight); overflow-wrap: anywhere; }
+  .agent-tool-fields dt { color: var(--text-3); white-space: nowrap; }
+  .agent-tool-fields dd { margin: 0; }
   .find-bar .find-more { white-space: nowrap; font-size: var(--fs-secondary); }
   .msg { max-width: 660px; margin: 0 auto var(--space-column); padding: 0 var(--space-column); display: flex; flex-direction: column; }
   .msg .who { font-size: var(--fs-secondary); color: var(--text-3); margin-bottom: var(--space-hair); }

@@ -27,6 +27,7 @@ export type SessionEventType =
   | "related_session_unlisted"
   | "mainline_promoted"
   | "subagent_spawned"
+  | "subagent_dispatch_ended"
   | "visibility_changed"
   | "latest_turn_deleted"
   | "run_completed"

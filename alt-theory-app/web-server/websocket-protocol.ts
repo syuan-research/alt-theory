@@ -10,6 +10,8 @@
 
 export type {
   ActiveSubagentDispatch,
+  EndedSubagentDispatch,
+  SubagentDispatchOutcome,
   ClientMessage,
   ServerMessage,
   SessionSnapshot,

@@ -479,8 +479,8 @@ function onServer(state: ConversationState, message: ServerMessage): Conversatio
       return { ...state, turn: { ...state.turn, parts: appendText(state.turn.parts, "thinking", message.payload.text) } };
 
     case "tool_started": {
-      const { toolName, callId, path, detail, preparing } = message.payload;
-      const tool: ActiveToolState = { callId, toolName, path, detail, status: preparing ? "preparing" : "running" };
+      const { toolName, callId, path, detail, preparing, input, agentRefs } = message.payload;
+      const tool: ActiveToolState = { callId, toolName, path, detail, input, agentRefs, status: preparing ? "preparing" : "running" };
       return {
         ...state,
         turn: {
@@ -516,6 +516,8 @@ function onServer(state: ConversationState, message: ServerMessage): Conversatio
             success: message.payload.success,
             approval: message.payload.approval,
             subagentAction: message.payload.subagentAction,
+            agentRefs: message.payload.agentRefs ?? current.agentRefs,
+            result: typeof message.payload.output === "string" ? message.payload.output : undefined,
             progressText: undefined,
           })
         : state.turn.parts;

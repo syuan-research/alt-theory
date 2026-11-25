@@ -117,6 +117,7 @@ export function formatEnvelopeForContext(
     event: envelope.event,
     cause: envelope.cause,
     peer: envelope.peer,
+    fromSessionId: envelope.from === "user" ? undefined : envelope.from,
     body: envelope.body,
   });
 }

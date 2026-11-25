@@ -1337,6 +1337,13 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       ),
     });
   });
+  app.head("/api/sessions/:sessionId", (req, res) => {
+    const { sessionId } = req.params;
+    const summary = readSessionAccessSummary(dataDir, sessionId);
+    const available = summary && !summary.deletedAt &&
+      access.canList(req, sessionId) && access.canReadContent(req, sessionId);
+    res.sendStatus(available ? 200 : 404);
+  });
   app.get("/api/sessions/:sessionId", (req, res) => {
     const sessionId = req.params.sessionId;
     const root = getSessionRootForRequest(dataDir, sessionId);

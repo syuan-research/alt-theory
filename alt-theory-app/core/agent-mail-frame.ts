@@ -17,6 +17,7 @@ export interface AgentMailFrame {
   cause?: string | null;
   /** Sent by another conversation (not a lead or own subagent). */
   peer?: boolean;
+  fromSessionId?: string;
   body: string;
 }
 
@@ -28,6 +29,7 @@ export function frameAgentMail(mail: AgentMailFrame): string {
     mail.event ? `event="${mail.event}"` : null,
     mail.cause ? `cause="${mail.cause}"` : null,
     mail.peer ? `peer="true"` : null,
+    mail.fromSessionId ? `session="${mail.fromSessionId.replace(/"/g, "'")}"` : null,
   ]
     .filter(Boolean)
     .join(" ");
@@ -42,11 +44,12 @@ export function parseAgentMailFrame(text: string): {
   event: string | null;
   cause: string | null;
   peer: boolean;
+  fromSessionId?: string;
   body: string;
 } | null {
   const match = text.match(
     new RegExp(
-      `^<${AGENT_MAIL_TAG} from="([^"]*)"(?: event="([^"]*)")?(?: cause="([^"]*)")?( peer="true")?>\\n([\\s\\S]*)\\n</${AGENT_MAIL_TAG}>$`,
+      `^<${AGENT_MAIL_TAG} from="([^"]*)"(?: event="([^"]*)")?(?: cause="([^"]*)")?( peer="true")?(?: session="([^"]*)")?>\\n([\\s\\S]*)\\n</${AGENT_MAIL_TAG}>$`,
     ),
   );
   if (!match) return null;
@@ -55,6 +58,7 @@ export function parseAgentMailFrame(text: string): {
     event: match[2] ?? null,
     cause: match[3] ?? null,
     peer: Boolean(match[4]),
-    body: match[5],
+    ...(match[5] ? { fromSessionId: match[5] } : {}),
+    body: match[6],
   };
 }

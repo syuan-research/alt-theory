@@ -48,8 +48,11 @@ import {
   extractToolPath as extractSharedToolPath,
 } from "./tool-detail.js";
 import type { SessionMetrics, TranscriptMessage } from "./websocket-protocol.js";
+import type { SubagentDispatchOutcome } from "./websocket-protocol.js";
 import { isListMember } from "../frontend/src/lib/listMember.js";
 import { subagentActionFromResult } from "./agent-team.js";
+import { requestedAgentReferences } from "../shared/agent-tool-inspection.js";
+import { agentReferencesFromResult } from "./agent-team.js";
 import { parseAgentMailFrame } from "../core/agent-mail-frame.js";
 import { t } from "./i18n.js";
 import {
@@ -1554,6 +1557,18 @@ function readSessionEvents(
   return events;
 }
 
+export function readSubagentDispatchOutcomes(recordsDir: string): Map<string, SubagentDispatchOutcome> {
+  const outcomes = new Map<string, SubagentDispatchOutcome>();
+  for (const event of readSessionEvents(recordsDir, { hasError: false, warnings: [] })) {
+    if (event.type !== "subagent_dispatch_ended") continue;
+    const { dispatchId, outcome } = event.details ?? {};
+    if (typeof dispatchId === "string" && (outcome === "completed" || outcome === "failed" || outcome === "stopped")) {
+      outcomes.set(dispatchId, outcome);
+    }
+  }
+  return outcomes;
+}
+
 function hasDurableLifecycleEvent(parts: SessionParts): boolean {
   // A run Pi accepted is real work in flight: its record lands in runs.jsonl
   // before the model is called, so a freshly accepted session (e.g. a spawned
@@ -2247,7 +2262,7 @@ export function buildTranscriptFromEntries(
       };
       customType?: string;
       content?: unknown;
-      details?: { sourceRole?: unknown; markerText?: unknown };
+      details?: { sourceRole?: unknown; markerText?: unknown; from?: unknown };
       summary?: unknown;
     };
     if (
@@ -2259,7 +2274,7 @@ export function buildTranscriptFromEntries(
         role: "system",
         marker: "agent-team",
         text: agentMailDisplayText(value.content),
-        ...mailFields(value.content),
+        ...mailFields(value.content, typeof value.details?.from === "string" ? value.details.from : undefined),
         timestamp: normalizeTimestamp(value.timestamp),
       });
       return;
@@ -2313,7 +2328,7 @@ export function buildTranscriptFromEntries(
           role: "system",
           marker: "agent-team",
           text: agentMailDisplayText(text),
-          mail: { from: mail.fromLabel, event: mail.event, body: mail.body },
+          ...mailFields(text),
           timestamp,
           // A wake turn starts here: the turn cut finds it by entry.
           entryId: value.id ?? null,
@@ -2377,6 +2392,7 @@ export function buildTranscriptFromEntries(
       const approval = approvalFromResult(value.message.details, !success, full);
       const subagentAction = success
         ? subagentActionFromResult(toolName, value.message.details, full) : undefined;
+      const agentRefs = success ? agentReferencesFromResult(toolName, value.message.details, full) : [];
       if (callIndex >= 0) {
         transcript[callIndex] = {
           ...transcript[callIndex],
@@ -2385,6 +2401,7 @@ export function buildTranscriptFromEntries(
           ...(truncated ? { truncated } : {}),
           ...(approval ? { approval } : {}),
           ...(subagentAction ? { subagentAction } : {}),
+          ...(agentRefs.length ? { agentRefs } : {}),
         };
         return;
       }
@@ -2398,6 +2415,7 @@ export function buildTranscriptFromEntries(
         truncated,
         ...(approval ? { approval } : {}),
         ...(subagentAction ? { subagentAction } : {}),
+        ...(agentRefs.length ? { agentRefs } : {}),
         timestamp,
       });
     }
@@ -2473,6 +2491,7 @@ function assistantContentToTranscript(
     if (typedPart.type === "toolCall") {
       flushAssistant();
       const toolName = String(typedPart.name ?? "tool");
+      const agentRefs = requestedAgentReferences(toolName, typedPart.arguments);
       messages.push({
         role: "tool",
         toolType: "call",
@@ -2483,6 +2502,7 @@ function assistantContentToTranscript(
         toolPath: extractToolPath(typedPart.arguments),
         toolDetail: extractToolDetail(toolName, typedPart.arguments) ?? undefined,
         toolInput: toolInputPreview(typedPart.arguments),
+        ...(agentRefs.length ? { agentRefs } : {}),
         // No result yet: a call in an aborted/error message is never run by
         // Pi, so `success` stays unset and the row reads as not completed.
         timestamp,
@@ -2548,9 +2568,12 @@ function agentMailEventLabel(event: string): string {
   }
 }
 
-function mailFields(raw: string): Pick<TranscriptMessage, "mail"> {
+function mailFields(raw: string, from?: string): Pick<TranscriptMessage, "mail"> {
   const mail = parseAgentMailFrame(raw);
-  return mail ? { mail: { from: mail.fromLabel, event: mail.event, body: mail.body } } : {};
+  if (!mail) return {};
+  const sessionId = mail.fromSessionId ?? (from === "user" ? undefined : from)
+    ?? mail.fromLabel.match(/\(Session ID ([^)]+)\)$/)?.[1];
+  return { mail: { from: mail.fromLabel, event: mail.event, body: mail.body, ...(sessionId && { sessionId }) } };
 }
 
 function toolInputPreview(args: unknown): string | undefined {
