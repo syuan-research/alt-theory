@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, symlinkSync, writeFileSync } from "fs";
+import { writeFileSync } from "fs";
 import { join } from "path";
 import test from "node:test";
 import { APPROVAL_ALLOW_SESSION } from "../core/security-extension.js";
@@ -19,7 +19,6 @@ type Managed = {
     respond(approvalId: string, response: { choice?: string | null }): boolean;
   };
   getGrants(): string[];
-  getWorkspace(): { primaryDir: string };
 };
 
 function managedOf(service: SessionService, id: string): Managed {
@@ -124,25 +123,6 @@ test("history tools: another conversation needs the user's Session ID or approva
 
   const all = await run(service, a, "find_conversations", { scope: "all", query: "secret" });
   assert.match(all.asked ?? "", /all conversations/);
-});
-
-test("history tools: export writes the whole conversation inside the working folder", async () => {
-  const fixture = setupFixture();
-  const service = createTestService(fixture);
-  const a = (await service.createSession(SELECTORS)).sessionId;
-  say(service, a, "Draft the memo", "Here is the memo");
-  const outside = await run(service, a, "read_conversation", { save_to: "../escape.md" });
-  assert.match(outside.text, /^Not written: save_to must be inside the working folder/);
-  const primaryDir = managedOf(service, a).getWorkspace().primaryDir;
-  symlinkSync(join(fixture.root, "planted.md"), join(primaryDir, "link.md"));
-  const linked = await run(service, a, "read_conversation", { save_to: "link.md" });
-  assert.match(linked.text, /^Not written/);
-  assert.ok(!existsSync(join(fixture.root, "planted.md")));
-  const written = await run(service, a, "read_conversation", { save_to: "exports/memo.md" });
-  const path = join(managedOf(service, a).getWorkspace().primaryDir, "exports", "memo.md");
-  assert.match(written.text, /^Wrote /);
-  assert.ok(existsSync(path));
-  assert.match(readFileSync(path, "utf-8"), /## User `[^`]+`\n\nDraft the memo/);
 });
 
 test("/advisor: a fresh conversation in the source's family, with the advisor role, that reads the source freely", async () => {

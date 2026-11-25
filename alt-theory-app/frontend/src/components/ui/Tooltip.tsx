@@ -9,6 +9,7 @@
  *   <button data-tip={t("Stop")} />                  — body only
  *   <button data-tip-title={t("Context usage")}      — optional small-caps
  *            data-tip={usageSummary} />                label above the body
+ *   <button data-tip={action} data-tip-note={note} /> — bold action with an inline note
  *
  * Body lines: a line of the exact form [[label]] renders as a small-caps
  * group label (the same level as the title); every other line is a value
@@ -64,10 +65,17 @@ export function TooltipRoot() {
     const render = (el: Element) => {
       const titleText = el.getAttribute("data-tip-title");
       const bodyText = el.getAttribute("data-tip");
+      const note = el.getAttribute("data-tip-note");
       if (!bodyText) return;
       title.textContent = titleText ?? "";
       title.style.display = titleText ? "" : "none";
-      renderBody(body, bodyText);
+      if (note) {
+        const action = document.createElement("strong");
+        action.textContent = bodyText;
+        body.replaceChildren(action, ` ${note}`);
+      } else {
+        renderBody(body, bodyText);
+      }
       tip.classList.add("show");
       position(el);
     };

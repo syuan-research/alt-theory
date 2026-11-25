@@ -255,6 +255,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // (re)connect and every change after it; nothing polls.
   const [activity, setActivity] = useState<ActivityMap>(null);
   const activityRef = useRef(activity);
+  const runStarts = useRef(new Map<string, number>());
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
   const refreshTimer = useRef<number | null>(null);
@@ -268,6 +269,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const applyActivity = useCallback(
     (message: ActivityMessage): ActivityChange[] => {
       const { next, changes } = stepActivity(activityRef.current, message);
+      if (message.type === "activity_snapshot") runStarts.current.clear();
+      else for (const { sessionId, before, now } of changes) {
+        if (now === "idle" || now === "failed") runStarts.current.delete(sessionId);
+        else if (now === "running" && (before === "idle" || before === "failed")) {
+          runStarts.current.set(sessionId, Date.now());
+        }
+      }
       activityRef.current = next;
       setActivity(next);
       // The rows' other facts (order, snippet, message count, openable) move
@@ -285,7 +293,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const listed = useMemo(
     () =>
       activity
-        ? sessions.map((row) => ({ ...row, runStatus: activity[row.sessionId] ?? "idle" }))
+        ? sessions.map((row) => ({
+          ...row,
+          runStatus: activity[row.sessionId] ?? "idle",
+          runObservedAt: runStarts.current.get(row.sessionId),
+        }))
         : sessions,
     [activity, sessions],
   );

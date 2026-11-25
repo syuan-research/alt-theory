@@ -181,6 +181,7 @@ test("createAgentTeamTools lets spawned agents delegate and message their parent
   const leadNames = createAgentTeamTools(bridge, "s1", "lead").map((t) => t.name);
   assert.deepEqual(leadNames, [
     "spawn_agent",
+    "list_models",
     "send_to_agent",
     "check_agent",
     "wait_for_agents",
@@ -192,6 +193,7 @@ test("createAgentTeamTools lets spawned agents delegate and message their parent
   );
   assert.deepEqual(subagentNames, [
     "spawn_agent",
+    "list_models",
     "send_to_agent",
     "check_agent",
     "wait_for_agents",
@@ -752,7 +754,7 @@ function writeSubagentProbeConfig(
   );
 }
 
-test("an open parent validates spawns against its assembled subagent config snapshot", async () => {
+test("an open parent keeps its tier chain and can override it with a configured model", async () => {
   const fixture = setupFixture();
   writeSubagentProbeConfig(fixture.dataDir, "test/model-a", ["test/model-b"]);
   const service = createTestService(fixture);
@@ -768,7 +770,7 @@ test("an open parent validates spawns against its assembled subagent config snap
     // The file changes to B after this parent was assembled.
     writeSubagentProbeConfig(fixture.dataDir, "test/model-c", []);
 
-    // The open parent keeps snapshot A: B-only is rejected…
+    // The open parent keeps snapshot A.
     assert.equal(
       managedOf(service, parent.sessionId).subagentConfig.agents.find(
         (agent) => agent.id === "probe",
@@ -779,9 +781,9 @@ test("an open parent validates spawns against its assembled subagent config snap
       service.spawnSubagent(parent.sessionId, {
         message: "task",
         agentType: "probe",
-        model: "test/model-c",
+        model: "test/missing",
       }),
-      /not in the configured subagent candidates/,
+      /is not configured/,
     );
 
     // Queue the spawn so the child's first run starts only under stubs.
@@ -850,15 +852,20 @@ test("an open parent validates spawns against its assembled subagent config snap
     // A parent assembled after the change uses the current file (B).
     const parentTwo = await service.createSession(SELECTORS);
     stubEchoPrompt(managedOf(service, parentTwo.sessionId), "parent answer");
-    await assert.rejects(
-      service.spawnSubagent(parentTwo.sessionId, {
-        message: "task",
-        agentType: "probe",
-        model: "test/model-a",
-      }),
-      /not in the configured subagent candidates/,
-    );
     svc.runningSubagentRuns = 10;
+    assert.match(service.listModels(parentTwo.sessionId), /test\/model-c/);
+    assert.match(service.listModels(parentTwo.sessionId, "model-a test"), /^test\/model-a(?:\s|$)/);
+    const overridden = await service.spawnSubagent(parentTwo.sessionId, {
+      message: "task",
+      agentType: "probe",
+      model: "test/model-a:medium",
+    });
+    assert.deepEqual(
+      readV4SessionHeader(
+        managedOf(service, overridden.sessionId).manifest.recordsDir,
+      )?.modelOverride,
+      { provider: "test", modelId: "model-a", thinkingLevel: "medium", exactThinking: true },
+    );
     const spawnedB = await service.spawnSubagent(parentTwo.sessionId, {
       message: "task",
       agentType: "probe",
@@ -1092,6 +1099,52 @@ test("explicit interrupt sends exactly one interrupted outcome and the child sta
     await service.disposeAll();
   }
 });
+
+for (const action of ["user-guidance", "user-retry"] as const) {
+  test(`a subagent's ${action} reports the user's action and the replacement result`, async () => {
+    const service = createTestService(setupFixture());
+    try {
+      const parent = await service.createSession(SELECTORS);
+      const parentManaged = managedOf(service, parent.sessionId);
+      stubEchoPrompt(parentManaged, "noted");
+      const child = await service.createSession(SELECTORS, {
+        forkedFrom: { sessionId: parent.sessionId, purpose: "subagent" },
+      });
+      const childManaged = managedOf(service, child.sessionId);
+      let finishOriginal: (() => void) | undefined;
+      childManaged.session.prompt = (text: string) =>
+        new Promise<void>((resolve) => {
+          childManaged.session.sessionManager.appendMessage({
+            role: "user",
+            content: [{ type: "text", text }],
+            timestamp: Date.now(),
+          });
+          finishOriginal = resolve;
+        });
+      childManaged.session.abort = async () => { finishOriginal?.(); };
+      await service.sendToAgent(parent.sessionId, child.sessionId, "original task");
+      await waitFor(() => Boolean(finishOriginal));
+      stubEchoPrompt(childManaged, "replacement result");
+
+      if (action === "user-guidance") {
+        await service.queuePrompt(child.sessionId, "user correction", undefined, "steer");
+        await service.interruptAndSend(child.sessionId, "user correction");
+      } else {
+        await (await service.retryLatestFromStart(child.sessionId)).completion;
+      }
+
+      const notices = () => readAgentMail(parentManaged.manifest.recordsDir)
+        .filter((envelope) => envelope.from === child.sessionId);
+      await waitFor(() => notices().some((envelope) => envelope.event === "completed"));
+      assert.deepEqual(notices().map((envelope) => envelope.event), [action, "completed"]);
+      assert.match(notices()[0].body, /Normally no action is needed from you\. Await its subsequent result\./);
+      assert.doesNotMatch(notices()[0].body, /interrupt|user correction/i);
+      assert.equal(notices()[1].body, "replacement result");
+    } finally {
+      await service.disposeAll();
+    }
+  });
+}
 
 test("a user stop tells the lead the user stopped the child, and the status line is not idle", async () => {
   const fixture = setupFixture();

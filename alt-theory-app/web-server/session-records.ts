@@ -35,6 +35,7 @@ export interface SessionModelOverride {
   provider: string;
   modelId: string;
   thinkingLevel?: ThinkingLevel;
+  exactThinking?: true;
 }
 
 export interface RecordEnvelope {

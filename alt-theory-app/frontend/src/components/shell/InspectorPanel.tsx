@@ -365,7 +365,9 @@ function RelatedConversations({ list }: { list: ReturnType<typeof useRelatedList
       .catch((error) => window.alert(error instanceof Error ? error.message : String(error)));
     return [
       ...(!isListMember(child) ? [{
-        label: t("Show in conversation list"), icon: "ph-list-plus", onSelect: () => void main.promoteRelatedSession(child.sessionId),
+        label: t("Show in conversation list"), icon: "ph-list-plus", onSelect: () => void main.setRelatedSessionListed(child.sessionId, true),
+      }] : child.forkedFrom && child.forkedFrom.purpose !== "fork" ? [{
+        label: t("Hide from conversation list"), icon: "ph-list-minus", onSelect: () => void main.setRelatedSessionListed(child.sessionId, false),
       }] : []),
       ...(canTakeMainline(child, app.sessions) ? [{
         label: t("Make this the main conversation"), icon: "ph-crown-simple", onSelect: () => void promoteToMainline(child.sessionId)

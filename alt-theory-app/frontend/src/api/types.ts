@@ -131,6 +131,7 @@ export type RuntimeMode = "alt-theory" | "native-pi";
 
 export type InterruptionCause =
   | "user_abort"
+  | "user_continuation"
   | "lead_abort"
   | "process_exit"
   | "unknown";
@@ -261,6 +262,7 @@ export interface TranscriptMessage {
   toolType?: "call" | "result";
   toolCallId?: string;
   toolName?: string;
+  spawnedAgent?: { sessionId: string; label?: string };
   toolPath?: string | null;
   toolDetail?: ToolDetail;
   /** The call's arguments as JSON, cut to 200 characters (history readers). */
@@ -320,6 +322,8 @@ export interface SessionSummary {
   status: "available" | "incomplete" | "error";
   /** What the list shows; the client reads it from the pushed activity (WP-4). */
   runStatus?: ListActivity;
+  /** This window saw the current run start (local wall clock only). */
+  runObservedAt?: number;
   rolePresetSlug: string | null;
   kbDomain: string | null;
   provider: string | null;
@@ -809,9 +813,9 @@ export type ServerMessage =
         };
       };
     }
-  | { type: "tool_started"; payload: { toolName: string; callId: string; path?: string | null; detail?: ToolDetail } }
+  | { type: "tool_started"; payload: { toolName: string; callId: string; preparing?: true; path?: string | null; detail?: ToolDetail } }
   | { type: "tool_updated"; payload: { callId: string; text?: string; progress?: number } }
-  | { type: "tool_finished"; payload: { callId: string; success: boolean; output?: unknown; approval?: TranscriptMessage["approval"] } }
+  | { type: "tool_finished"; payload: { callId: string; success: boolean; output?: unknown; approval?: TranscriptMessage["approval"]; spawnedAgent?: TranscriptMessage["spawnedAgent"] } }
   /** The turn ended: the post-settle snapshot and the settled rows, applied together. */
   | { type: "run_completed"; payload: { snapshot: SessionSnapshot } & TurnRows }
   /** The run ended failed or stopped; the snapshot (read after settle) carries its recovery. */
@@ -862,11 +866,12 @@ export interface ActiveToolState {
   toolName: string;
   path?: string | null;
   detail?: ToolDetail | null;
-  status: "running" | "finished" | "failed" | "pending";
+  status: "preparing" | "running" | "finished" | "failed" | "pending";
   /** Last output line of a running command (Pi sends bash progress only). */
   progressText?: string;
   success?: boolean;
   approval?: TranscriptMessage["approval"];
+  spawnedAgent?: TranscriptMessage["spawnedAgent"];
 }
 
 /** One chunk of the in-progress assistant turn, in arrival order. */

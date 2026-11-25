@@ -12,7 +12,7 @@ import {
   deleteSession as deleteSessionRequest,
   deleteSessionFamily as deleteSessionFamilyRequest,
   normalizeSessionAlias,
-  promoteRelatedSession as promoteRelatedSessionRequest,
+  setRelatedSessionListed as setRelatedSessionListedRequest,
   saveSessionAlias,
 } from "@/api/sessions";
 import type { ServerMessage } from "@/api/types";
@@ -50,7 +50,7 @@ export interface MainViewValue {
   /** A child pane's created conversation starts from its seed the same way. */
   seedChild: (seed: { sessionId: string; text: string; autoSend: boolean }) => void;
   clearChildSeed: () => void;
-  promoteRelatedSession: (sessionId: string) => Promise<void>;
+  setRelatedSessionListed: (sessionId: string, listed: boolean) => Promise<void>;
   renameSession: (sessionId: string, name: string) => Promise<boolean>;
   deleteSession: (sessionId: string) => void;
   deleteSessionFamily: (sessionId: string) => void;
@@ -228,13 +228,12 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
 
   const clearChildSeed = useCallback(() => setChildSeed(null), []);
 
-  const promoteRelatedSession = useCallback(
-    async (target: string) => {
-      await promoteRelatedSessionRequest(target);
+  const setRelatedSessionListed = useCallback(
+    async (target: string, listed: boolean) => {
+      await setRelatedSessionListedRequest(target, listed);
       await app.refreshSessions();
-      openCatalogSession(target);
     },
-    [app, openCatalogSession],
+    [app],
   );
 
   const renameSession = useCallback(
@@ -294,7 +293,7 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
       childSeed,
       seedChild: setChildSeed,
       clearChildSeed,
-      promoteRelatedSession,
+      setRelatedSessionListed,
       renameSession,
       deleteSession: (target) => void deleteSessions(target, false),
       deleteSessionFamily: (target) => void deleteSessions(target, true),
@@ -312,7 +311,7 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
       duplicateSession,
       childSeed,
       clearChildSeed,
-      promoteRelatedSession,
+      setRelatedSessionListed,
       renameSession,
       deleteSessions,
     ],

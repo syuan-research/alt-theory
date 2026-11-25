@@ -93,6 +93,16 @@ export async function fetchToolResult(sessionId: string, toolCallId: string, ent
   return ((await res.json()) as { text: string }).text;
 }
 
+export async function fetchToolInput(sessionId: string, toolCallId: string, entryId: string, signal: AbortSignal): Promise<string> {
+  const query = new URLSearchParams({ entryId });
+  const res = await fetch(
+    `/api/sessions/${encodeURIComponent(sessionId)}/tool-input/${encodeURIComponent(toolCallId)}?${query}`,
+    { signal },
+  );
+  if (!res.ok) throw new Error(`Tool input failed (${res.status})`);
+  return ((await res.json()) as { text: string }).text;
+}
+
 export async function fetchSessionDetail(
   sessionId: string
 ): Promise<SessionDetailResponse> {
@@ -192,14 +202,18 @@ export function normalizeSessionAlias(value: string): string {
     .slice(0, 80);
 }
 
-export async function promoteRelatedSession(sessionId: string): Promise<void> {
+export async function setRelatedSessionListed(sessionId: string, listed: boolean): Promise<void> {
   const res = await fetch(
-    `/api/sessions/${encodeURIComponent(sessionId)}/promote`,
-    { method: "POST" }
+    `/api/sessions/${encodeURIComponent(sessionId)}/list-membership`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ listed }),
+    }
   );
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(body.error || `Promotion failed (${res.status})`);
+    throw new Error(body.error || `List membership change failed (${res.status})`);
   }
 }
 

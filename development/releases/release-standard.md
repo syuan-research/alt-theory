@@ -218,8 +218,9 @@ every release onward (Windows ZIP gets the `-win` file; macOS ZIP gets the
 ## Tag and version flow
 
 1. Decide the version (`X.Y.Z`) and the release date.
-2. Write the `CHANGELOG.md` section for it in the format above, and the two
-   Chinese sections. For every formal release, refresh the bundled models.dev
+2. Before building the release bundles, add the release notes to all three
+   changelogs under a `## vX.Y.Z — YYYY-MM-DD` heading whose version matches
+   the app version. For every formal release, refresh the bundled models.dev
    snapshot with `npx tsx scripts/refresh-models-dev-snapshot.ts` after restoring
    the locked dependencies. Include the generated snapshot in the committed
    release source before building; a failed fetch must not silently count as a

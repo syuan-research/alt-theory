@@ -46,6 +46,12 @@ export function describeChildOutcome(
   // Owner ruling 2026-09-02: a user stop is final for the lead; other causes
   // stay factual and leave the child continuable.
   switch (cause) {
+    case "user_continuation":
+      return {
+        ...interrupted,
+        body: "The user stopped this turn to continue the work.",
+        statusWord: "interrupted (user-directed continuation)",
+      };
     case "user_abort":
       return {
         ...interrupted,

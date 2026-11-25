@@ -29,6 +29,8 @@ export interface AgentMailEnvelope {
     | "completed"
     | "failed"
     | "interrupted"
+    | "user-guidance"
+    | "user-retry"
     | "input-requested"
     /** A message to this conversation could not be sent (approval timed out). */
     | "undelivered";

@@ -159,6 +159,7 @@ import { describeChildOutcome, type ChildOutcome } from "./child-outcome.js";
 import {
   clampSubagentMode,
   spawnedSessionId,
+  spawnedAgentFromResult,
   type SpawnResultDetails,
   inheritsSmartApproval,
   createAgentTeamTools,
@@ -342,12 +343,13 @@ export type SessionServiceEvent =
       payload: {
         toolName: string;
         callId: string;
+        preparing?: true;
         path?: string | null;
         detail?: ToolDetail;
       };
     }
   | { type: "tool_updated"; payload: { callId: string; text?: string } }
-  | { type: "tool_finished"; payload: { callId: string; success: boolean; approval?: TranscriptMessage["approval"] } }
+  | { type: "tool_finished"; payload: { callId: string; success: boolean; approval?: TranscriptMessage["approval"]; spawnedAgent?: TranscriptMessage["spawnedAgent"] } }
   | {
       type: "run_completed";
       payload: { snapshot: SessionSnapshot } & TurnRows;
@@ -449,6 +451,8 @@ interface ManagedSession {
   runSettlement: Promise<void> | null;
   /** Last run_phase sent, cleared by any other event but a thinking delta. */
   lastRunPhase?: string;
+  /** File calls already shown while Pi streams this assistant message. */
+  preparingToolCalls?: Set<string>;
   /** The thinking resolver's answer for the current model (card 3). */
   thinking: ResolvedThinking;
   nextTurnIndex: number;
@@ -646,9 +650,10 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
     managed: ManagedSession,
     chosen: ThinkingLevel | undefined,
     model: Model<any> | undefined = managed.session.model,
+    exactThinking = false,
   ): ResolvedThinking {
     const available =
-      model && !isNoModelPlaceholder(model) ? getSupportedThinkingLevels(model) : [];
+      !exactThinking && model && !isNoModelPlaceholder(model) ? getSupportedThinkingLevels(model) : [];
     const resolved = resolveThinkingLevel(available, chosen);
     managed.thinking = resolved;
     managed.session.setThinkingLevel(resolved.level);
@@ -677,7 +682,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
       thinkingLevel,
     );
     await managed.session.setModel(resolved);
-    this.applyThinking(managed, thinkingLevel, resolved);
+    this.applyThinking(managed, thinkingLevel, resolved, override?.exactThinking);
     managed.manifest.provider = resolved.provider;
     managed.manifest.model = resolved.id;
     this.persistManifestModel(managed);
@@ -1694,7 +1699,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
     ) {
       return this.invokeSkill(sessionId, "at-imported-session-context", text);
     }
-    return this.runPromptWithLineage(managed, text, { attachments });
+    return this.runPromptWithLineage(managed, text, { attachments, userSubagentAction: "user-guidance" });
   }
 
   reviseLatest(sessionId: string, text: string): RunHandle {
@@ -1708,7 +1713,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
   async retryLatestFromStart(sessionId: string): Promise<RunHandle> {
     const previous = this.requireSession(sessionId);
     if (!previous.runState.isIdle()) {
-      await this.abort(sessionId, "retry_latest", "user_abort");
+      await this.abort(sessionId, "retry_latest", "user_continuation");
       await previous.runSettlement;
     }
     const managed = this.requireSession(sessionId);
@@ -1739,7 +1744,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
     // `invokeSkill` also enters Pi through runPromptWithLineage(`/skill:…`).
     // Passing the reconstructed command here therefore re-runs the same skill
     // extension after reviseFromRun rewinds the old attempt.
-    return this.reviseAt(sessionId, entryId, text);
+    return this.reviseAt(sessionId, entryId, text, "user-retry");
   }
 
   latestUserEntryId(sessionId: string): string | null {
@@ -1944,7 +1949,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
    * turn after it are superseded; superseded entries stay in Pi's tree as
    * evidence, exactly like reviseLatest.
    */
-  reviseAt(sessionId: string, userEntryId: string, text: string): RunHandle {
+  reviseAt(sessionId: string, userEntryId: string, text: string, userSubagentAction?: "user-retry"): RunHandle {
     const managed = this.requireSession(sessionId);
     this.assertIdle(managed);
     if (
@@ -1984,6 +1989,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
         managed,
         target as RunRecord & { userEntryId: string },
         text,
+        userSubagentAction,
       );
     }
     // Inherited turn (fork or import history): the entry predates this
@@ -2016,13 +2022,14 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
     }
     resyncAgentContext(managed.session);
     this.publishCurrentBranchTranscript(managed, displayUserTextFromPrompt(text));
-    return this.runPromptWithLineage(managed, text);
+    return this.runPromptWithLineage(managed, text, { userSubagentAction });
   }
 
   private reviseFromRun(
     managed: ManagedSession,
     run: RunRecord & { userEntryId: string },
     text: string,
+    userSubagentAction?: "user-retry",
   ): RunHandle {
     const userEntry = managed.session.sessionManager.getEntry(run.userEntryId);
     if (!userEntry) {
@@ -2043,6 +2050,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
     return this.runPromptWithLineage(managed, text, {
       turnId: run.turnId,
       supersedesRunId: run.runId,
+      userSubagentAction,
     });
   }
 
@@ -2437,6 +2445,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
       attachments?: string[];
       /** Subagent runs started by the agent team: mail the outcome to the lead. */
       notifyParent?: boolean;
+      userSubagentAction?: "user-guidance" | "user-retry";
     } = {},
   ): RunHandle {
     const sessionId = managed.manifest.sessionId;
@@ -2475,6 +2484,11 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
     });
 
     this.emitRunPhase(managed, "connecting");
+
+    const notifyParent = managed.subagentParentId && (options.notifyParent || options.userSubagentAction);
+    if (options.userSubagentAction) {
+      this.notifyUserSubagentAction(managed, options.userSubagentAction);
+    }
 
     let outcome: RunOutcomeEvent = null;
     let userEntryId: string | null = null;
@@ -2552,7 +2566,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
             "run",
           ),
         };
-        if (options.notifyParent && managed.subagentParentId) {
+        if (notifyParent) {
           const outcome = describeChildOutcome(
             {
               status: interrupted ? "interrupted" : "failed",
@@ -2583,7 +2597,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
         completedAt: new Date().toISOString(),
       });
 
-      if (options.notifyParent && managed.subagentParentId) {
+      if (notifyParent) {
         const lastAssistant = entries
           .filter(
             (entry) =>
@@ -2822,7 +2836,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
       managed.session.clearQueue();
       managed.queuedAttachments.clear();
       managed.runState.queue = { steering: [], followUp: [] };
-      await this.abort(sessionId, "interrupt_send_now", "user_abort");
+      await this.abort(sessionId, "interrupt_send_now", "user_continuation");
       // The stopped run's final events (run_failed) must land before the
       // next message starts, or the client reads "stopped" while it runs.
       await managed.runSettlement;
@@ -3485,34 +3499,32 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
   }
 
   /**
-   * "Add to conversation list" (alpha.6): the child earns a place in the
-   * session list while KEEPING its purpose, so the list can say where it came
-   * from ("From subagent", "From BTW"). Renaming a subagent into a branch was the
-   * old behavior and it read as a lie.
+   * Change a related child's conversation-list membership while KEEPING its
+   * purpose, so the list can say where it came from ("From subagent", "From BTW").
    */
-  promoteRelatedSession(sessionId: string): SessionSnapshot | null {
+  setRelatedSessionListed(sessionId: string, listed: boolean): SessionSnapshot | null {
     const dirs = getSessionDirs(this.config.dataDir, sessionId);
     if (!dirs) throw new Error(`Unknown session id: ${sessionId}`);
     const header = readV4SessionHeader(dirs.recordsDir);
     if (!header?.forkedFrom) {
-      throw new Error("Only a related child can be added to the list");
+      throw new Error("Only a related child can change list membership");
     }
     if (
       !(["side", "subagent", "advisor"] as ForkPurpose[]).includes(
         header.forkedFrom.purpose,
       )
     ) {
-      throw new Error("This related conversation is already in the list");
+      throw new Error("This related conversation is always in the list");
     }
     const previousPurpose = header.forkedFrom.purpose;
     writeSessionHeader(dirs.recordsDir, {
       ...header,
-      forkedFrom: { ...header.forkedFrom, listed: true },
+      forkedFrom: { ...header.forkedFrom, listed },
     });
     appendSessionEvent(dirs.recordsDir, {
       sessionId,
-      type: "related_session_promoted",
-      details: { previousPurpose, purpose: previousPurpose, listed: true },
+      type: listed ? "related_session_promoted" : "related_session_unlisted",
+      details: { previousPurpose, purpose: previousPurpose, listed },
     });
     const live = this.sessions.get(sessionId);
     return live ? this.snapshot(live) : null;
@@ -3802,12 +3814,16 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
         `Unknown agent type "${agentType}". Available: ${config.agents.map((agent) => agent.id).join(", ")}`,
       );
     }
+    const overrideId = options.model && modelReferenceIdentity(options.model);
     if (
-      options.model &&
-      !subagentModelCandidates(config).includes(modelReferenceIdentity(options.model))
+      overrideId &&
+      !subagentModelCandidates(config).includes(overrideId) &&
+      !this.configuredModels(parent).some(
+        (model) => `${model.provider}/${model.id}` === overrideId,
+      )
     ) {
       throw new Error(
-        `Model override "${options.model}" is not in the configured subagent candidates.`,
+        `Model override "${options.model}" is not configured.`,
       );
     }
     const modelChain: SessionModelOverride[] = [];
@@ -3826,7 +3842,11 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
               entry.thinkingLevel === resolved.thinkingLevel,
           )
         ) {
-          modelChain.push(resolved);
+          modelChain.push(
+            reference === options.model && resolved.thinkingLevel !== undefined
+              ? { ...resolved, exactThinking: true }
+              : resolved,
+          );
         }
       } catch (error) {
         warnings.push(error instanceof Error ? error.message : String(error));
@@ -4335,7 +4355,25 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
       return "The subagent is not running; nothing to interrupt.";
     }
     await this.abort(childId, "interrupt_agent", "lead_abort");
+    await child.runSettlement;
     return "Interrupted. The subagent's completed work is kept; message it with send_to_agent to continue.";
+  }
+
+  private configuredModels(managed: ManagedSession) {
+    const runtime = managed.session.modelRuntime;
+    return [...runtime.getModels()].filter((model) => runtime.hasConfiguredAuth(model.provider));
+  }
+
+  listModels(sessionId: string, query?: string): string {
+    const terms = query?.trim().toLowerCase().split(/\s+/).filter(Boolean) ?? [];
+    const rows = this.configuredModels(this.requireSession(sessionId)).flatMap((model) => {
+      const id = `${model.provider}/${model.id}`;
+      const searchable = `${id} ${model.name}`.toLowerCase();
+      if (!terms.every((term) => searchable.includes(term))) return [];
+      const levels = getSupportedThinkingLevels(model);
+      return [levels.length ? `${id} [${levels.join(", ")}]` : id];
+    });
+    return rows.join("\n") || "No configured models match.";
   }
 
   async listSubagents(parentSessionId: string): Promise<string> {
@@ -4584,6 +4622,29 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
     child: ManagedSession,
     outcome: ChildOutcome,
   ): void {
+    // The replacement turn reports the user's action once it starts.
+    if (outcome.cause === "user_continuation") return;
+    this.deliverSubagentMail(child, outcome);
+  }
+
+  private notifyUserSubagentAction(
+    child: ManagedSession,
+    event: "user-guidance" | "user-retry",
+  ): void {
+    if (!child.subagentParentId) return;
+    const action = event === "user-retry"
+      ? "The user is retrying this subagent's turn."
+      : "The user sent new guidance directly to this subagent and may be adjusting its task.";
+    this.deliverSubagentMail(child, {
+      event,
+      body: `${action} Normally no action is needed from you. Await its subsequent result.`,
+    });
+  }
+
+  private deliverSubagentMail(
+    child: ManagedSession,
+    notice: Pick<AgentMailEnvelope, "event" | "cause" | "body">,
+  ): void {
     const leadId = this.subagentReplyTarget(child);
     if (!leadId) return;
     this.deliverEnvelope(leadId, {
@@ -4591,9 +4652,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
       from: child.manifest.sessionId,
       to: leadId,
       kind: "lifecycle",
-      event: outcome.event,
-      cause: outcome.cause,
-      body: outcome.body,
+      ...notice,
     });
   }
 
@@ -4611,7 +4670,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
     envelope: Omit<AgentMailEnvelope, "delivered">,
   ): void {
     const dirs = getSessionDirs(this.config.dataDir, targetSessionId);
-    if (!dirs) return;
+    if (!dirs || !existsSync(dirs.recordsDir)) return;
     const target = this.sessions.get(targetSessionId);
     if (!target) {
       appendAgentMail(dirs.recordsDir, { ...envelope, delivered: false });
@@ -5158,6 +5217,8 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
       (modelOverride ?? header?.modelOverride)
         ? (modelOverride ?? header?.modelOverride)?.thinkingLevel
         : this.resolveRuntimeModelConfig().thinkingLevel ?? this.config.thinkingLevel,
+      undefined,
+      (modelOverride ?? header?.modelOverride)?.exactThinking,
     );
     managed.internalUnsubscribe = managed.session.subscribe((event) =>
       this.handleAgentEvent(managed, event),
@@ -5368,6 +5429,18 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
             type: "assistant_delta",
             payload: { text: assistantEvent.delta ?? "" },
           });
+        } else if (assistantEvent?.type === "toolcall_start" || assistantEvent?.type === "toolcall_delta") {
+          const call = assistantEvent.partial.content[assistantEvent.contentIndex];
+          if (call?.type === "toolCall" && call.id && (call.name === "write" || call.name === "edit")) {
+            const shown = managed.preparingToolCalls ??= new Set();
+            if (!shown.has(call.id)) {
+              shown.add(call.id);
+              this.emit(managed, {
+                type: "tool_started",
+                payload: { toolName: call.name, callId: call.id, preparing: true },
+              });
+            }
+          }
         }
         break;
       }
@@ -5404,17 +5477,23 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
           },
         });
         break;
-      case "tool_execution_end":
+      case "tool_execution_end": {
         managed.counters.toolCallCount++;
+        const text = contentToText(event.result.content);
+        const spawnedAgent = event.toolName === "spawn_agent" && !event.isError
+          ? spawnedAgentFromResult(event.result.details, text) : undefined;
         this.emit(managed, {
           type: "tool_finished",
           payload: { callId: event.toolCallId, success: !event.isError,
-            approval: approvalFromResult(event.result.details, event.isError, contentToText(event.result.content)) },
+            approval: approvalFromResult(event.result.details, event.isError, text),
+            ...(spawnedAgent ? { spawnedAgent } : {}),
+          },
         });
         if (!managed.runState.isIdle()) {
           this.emitRunPhase(managed, "processing");
         }
         break;
+      }
       case "auto_retry_start":
         // Pi is waiting out a transient provider error before resuming the
         // turn from the last completed step. Completed tool calls stay in
@@ -5462,6 +5541,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
         break;
       }
       case "message_start": {
+        if (event.message.role === "assistant") managed.preparingToolCalls?.clear();
         // The one true delivery signal for a queued message (WP part 2,
         // 2026-09-13): Pi started a user turn with it. Only texts still
         // tracked as queued count — normal sends and already-retracted or
@@ -5476,6 +5556,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
         } else if (managed.queuedAttachments.has(text)) {
           managed.queuedAttachments.delete(text);
           this.emit(managed, { type: "user_steered", payload: { text } });
+          this.notifyUserSubagentAction(managed, "user-guidance");
         }
         break;
       }

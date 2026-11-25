@@ -170,10 +170,10 @@ surfaces remain designation-gated and absent for everyone else.
     Continue resumes from the breakpoint; Retry starts the same prompt again.
     Editing replaces the interrupted attempt in the current conversation. None
     of these recovery actions branches; `/branch` remains explicit.
-  - The edit state also offers `Adjust model or role…`. It opens an idle Related
-    branch, prefilled with the edit but forked before that user message, so the
-    user may change configuration before Send. Hover/focus may reveal the same
-    secondary action; it is not a separate mode.
+  - `Adjust model or role…` is a branch icon next to Edit and a text button in
+    the edit state. It opens an idle Related branch forked before that user
+    message, with the original prompt or current edit in the composer. The user
+    can change configuration before Send.
   - `Retry` reruns the latest user message from the start in the same visible
     conversation, whether the previous answer completed or was stopped. It does
     not create a Related child or list branch. Automatic provider retry remains
@@ -200,7 +200,8 @@ surfaces remain designation-gated and absent for everyone else.
   - Conversations with a project main folder are grouped under that project;
     folderless roots live in a separate collapsible **Independent
     conversations** section, listed above the Projects header (Owner
-    2026-09-25) and capped like a project group (four rows, then Show all).
+    2026-09-25). It previews five family heads, followed by Show all when
+    there are more.
     A project group carries the project's name
     (default: the main folder's). Its tooltip lists the main and companion
     paths; companions are not separate rail rows. The group menu offers Add
@@ -227,8 +228,11 @@ surfaces remain designation-gated and absent for everyone else.
     Related matches with its family context. Opening it places the nearest
     available listed ancestor in the center and the match in the right pane;
     clearing search leaves its list identity unchanged.
-  - A family head may collapse or expand its descendants without changing their
-    list membership. Session identifiers and local session-folder paths remain
+  - An expanded family previews five descendants in list order, keeping the
+    selected branch and its ancestors visible. Larger families offer Show all
+    and Show less. Search bypasses the preview. The family chevron still
+    collapses or expands its descendants without changing list membership.
+    Session identifiers and local session-folder paths remain
     available on demand through the row actions rather than default labels.
   - Root conversations and Branches (purpose `fork`) have the same functional
     status: both are first-class conversations that users may compare, keep, or
@@ -242,9 +246,10 @@ surfaces remain designation-gated and absent for everyone else.
     ordinary list rows unless the user promotes them. Branches are
     list members by nature.
   - BTW and subagent conversations are attached to their family. **Show in
-    conversation list** is an identity and lifecycle transition for those
-    children, not merely a display toggle. Legacy Helper children read as listed
-    side conversations; legacy root Helpers read as ordinary roots.
+    conversation list** and **Hide from conversation list** change identity and
+    lifecycle membership for those children, not merely their display. Legacy
+    Helper children read as listed side conversations; legacy root Helpers read
+    as ordinary roots.
   - Related children in the list or Related switcher show a **lineage-marker
     prefix plus the real title**, not a rename: the marker is the machine token
     from `lineageMarker` — e.g. `br1 · …`, `br1-btw2 · …`, `sa1 · …`.

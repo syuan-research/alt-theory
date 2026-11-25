@@ -70,6 +70,7 @@ import {
   softDeleteSessionFamily,
   sweepExpiredDeletedSessions,
   readToolResultText,
+  readToolInputText,
   writeSessionTextFile,
 } from "./session-store.js";
 import { fileKind, listConversationFiles } from "./conversation-files.js";
@@ -1561,11 +1562,16 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       res.status(409).json({ failure: describeFailure(error, "retract_queued") });
     }
   });
-  app.post("/api/sessions/:sessionId/promote", (req, res) => {
+  app.post("/api/sessions/:sessionId/list-membership", (req, res) => {
     const sessionId = req.params.sessionId;
     if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    const listed = (req.body as { listed?: unknown } | undefined)?.listed;
+    if (typeof listed !== "boolean") {
+      res.status(400).json({ error: "listed must be a boolean" });
+      return;
+    }
     try {
-      const snapshot = sessionService.promoteRelatedSession(sessionId);
+      const snapshot = sessionService.setRelatedSessionListed(sessionId, listed);
       sessionService.listChanged(sessionId);
       res.json({ sessionId, snapshot });
     } catch (error) {
@@ -1786,6 +1792,17 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     const text = readToolResultText(dataDir, sessionId, toolCallId, after);
     if (text === null) {
       res.status(404).json({ error: `No result for tool call ${toolCallId}` });
+      return;
+    }
+    res.json({ text });
+  });
+  app.get("/api/sessions/:sessionId/tool-input/:toolCallId", (req, res) => {
+    const { sessionId, toolCallId } = req.params;
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    const entryId = typeof req.query.entryId === "string" ? req.query.entryId : "";
+    const text = entryId ? readToolInputText(dataDir, sessionId, toolCallId, entryId) : null;
+    if (text === null) {
+      res.status(404).json({ error: `No input for tool call ${toolCallId}` });
       return;
     }
     res.json({ text });

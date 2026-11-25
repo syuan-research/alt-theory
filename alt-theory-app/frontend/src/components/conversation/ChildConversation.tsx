@@ -227,12 +227,26 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
             <i className="ph ph-crown-simple" aria-hidden="true" />{" "}
             {mainlineAction}
           </button>
-        ) : inList ? null : (
+        ) : null}
+        {inList ? (
+          summary?.forkedFrom && summary.forkedFrom.purpose !== "fork" ? (
+            <button
+              className="flat promote-action"
+              data-tip={t("Hide from conversation list")}
+              onClick={() => {
+                void main.setRelatedSessionListed(sessionId, false).catch(reportError);
+              }}
+            >
+              <i className="ph ph-list-minus" aria-hidden="true" />{" "}
+              {t("Hide from conversation list")}
+            </button>
+          ) : null
+        ) : (
           <button
             className="flat promote-action"
             data-tip={t("Keep this conversation in your list, with where it came from.")}
             onClick={() => {
-              void main.promoteRelatedSession(sessionId).catch(reportError);
+              void main.setRelatedSessionListed(sessionId, true).catch(reportError);
             }}
           >
             <i className="ph ph-arrow-line-up" aria-hidden="true" />{" "}
