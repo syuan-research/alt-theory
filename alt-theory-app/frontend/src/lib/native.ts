@@ -51,7 +51,10 @@ export function desktopFiles() {
   return bridge()?.desktopFiles;
 }
 
-/** True when running inside the Electron bundle (native dialogs available). */
+/** True when running inside the Electron bundle (native dialogs available).
+ *  Not a reason to leave an action out of the page (owner 2026-11-25): the
+ *  browser shows what the desktop app shows, and an action the bridge lacks
+ *  does nothing there. */
 export function hasNativeBridge(): boolean {
   return bridge() !== null;
 }

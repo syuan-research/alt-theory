@@ -4,14 +4,14 @@ import { sessionArtifactUrl, type FileOwner } from "@/api/session-files";
 import type { FileRef } from "@/lib/fileContent";
 import { isImagePath } from "../../../../shared/artifact-types";
 import { t } from "@/i18n";
-import { desktopFiles, hasNativeBridge, openPath } from "@/lib/native";
+import { desktopFiles, openPath } from "@/lib/native";
 
 export function PreviewOpenError({ error, absolutePath }: { error: string; absolutePath?: string }) {
   const [openError, setOpenError] = useState("");
   return (
     <div className="rp-empty">
       <div>{openError || error}</div>
-      {absolutePath && hasNativeBridge() && (
+      {absolutePath && (
         <button className="flat" onClick={() => void openPath(absolutePath).catch((e) => setOpenError(String(e)))}>
           {t("Open with default app")}
         </button>

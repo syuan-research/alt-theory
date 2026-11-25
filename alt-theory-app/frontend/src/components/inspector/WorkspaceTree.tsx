@@ -18,7 +18,6 @@ import { t } from "@/i18n";
 import { useConversationContext } from "@/context/ConversationContext";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
-import { hasNativeBridge } from "@/lib/native";
 import { WORKSPACE_PATH_MIME } from "@/lib/workspace";
 import { FolderHead, ListTools, MenuButton } from "@/components/inspector/FolderList";
 import { fmtTime } from "@/lib/format";
@@ -551,7 +550,7 @@ function WorkingTree({
       <FileTree
         entries={entries}
         onOpenFile={onOpenFile}
-        canOpen={(entry) => !entry.isDirectory && (entry.previewable || hasNativeBridge())}
+        canOpen={(entry) => !entry.isDirectory}
         onExpandFolder={(entry) => void loadDirectory(entry.path)}
         initiallyExpanded={false}
         expandNewFolders={false}

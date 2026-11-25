@@ -33,7 +33,7 @@ import { useContextMenu, type ContextMenuItem } from "@/components/shell/Context
 import { TabStrip } from "@/components/shell/TabStrip";
 import { fetchSessionDetail, promoteToMainline } from "@/api/sessions";
 import { copyText } from "@/lib/clipboard";
-import { hasNativeBridge, revealPath } from "@/lib/native";
+import { revealPath } from "@/lib/native";
 import { paneMemory, usePaneMemory } from "@/lib/paneMemory";
 import { downloadMarkdown, markdownFileName, sessionTranscriptToMarkdown } from "@/lib/sessionMarkdown";
 import { useFindTarget } from "@/lib/find";
@@ -399,7 +399,7 @@ function RelatedConversations({ list }: { list: ReturnType<typeof useRelatedList
       { label: t("Export Markdown"), icon: "ph-download-simple", separator: true, onSelect: exportMarkdown },
       { label: t("Copy Session ID"), icon: "ph-identification-card", onSelect: () => void copyText(child.sessionId) },
       { label: t("Copy session folder path"), icon: "ph-copy", onSelect: copyFolder },
-      ...(hasNativeBridge() ? [{ label: t("Open session folder"), icon: "ph-folder-open", onSelect: openFolder }] : []),
+      { label: t("Open session folder"), icon: "ph-folder-open", onSelect: openFolder },
     ];
   };
 

@@ -55,7 +55,6 @@ import { Button } from "@/components/ui/Button";
 import {
   applyTitlebarVar,
   getViewSize,
-  hasNativeBridge,
   pickDirectory,
   pickFiles,
   revealPath,
@@ -1216,7 +1215,7 @@ function GeneralPanel() {
           />
         </div>
       </div>
-      {hasNativeBridge() ? <ViewSizeCard /> : null}
+      <ViewSizeCard />
       <div className="set-card">
         <div className="row2">
           <div>
@@ -1958,17 +1957,15 @@ function AboutPanel() {
     <div className="set-panel">
       <h2>{t("About")}</h2>
       <p className="sub">Alt Theory v{version}.</p>
-      {hasNativeBridge() ? (
-        <div className="set-card">
-          <div className="row2">
-            <div>
-              <h4>{t("Versions")}</h4>
-              <p>{t("View release notes and check for updates.")}</p>
-            </div>
-            <Button onClick={() => versions.setOpen(true)}>{t("Versions")}</Button>
+      <div className="set-card">
+        <div className="row2">
+          <div>
+            <h4>{t("Versions")}</h4>
+            <p>{t("View release notes and check for updates.")}</p>
           </div>
+          <Button onClick={() => versions.setOpen(true)}>{t("Versions")}</Button>
         </div>
-      ) : null}
+      </div>
       {dataDir ? (
         <div className="set-card">
           <div className="row2">
@@ -1976,14 +1973,9 @@ function AboutPanel() {
               <h4>{t("Your data folder")}</h4>
               <p>{t("Conversations and settings are stored on this machine at {dataDir}.", { dataDir })}</p>
             </div>
-            <Button
-              onClick={() => {
-                if (hasNativeBridge()) void revealPath(dataDir);
-                else void navigator.clipboard?.writeText(dataDir);
-              }}
-            >
-              <i className={`ph ${hasNativeBridge() ? "ph-folder-open" : "ph-copy"}`} />
-              {hasNativeBridge() ? t("Show in file manager") : t("Copy path")}
+            <Button onClick={() => void revealPath(dataDir)}>
+              <i className="ph ph-folder-open" />
+              {t("Show in file manager")}
             </Button>
           </div>
         </div>

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useShell } from "@/context/ShellContext";
 import { localizedContent, t } from "@/i18n";
-import { hasNativeBridge, openExternal, syncTitlebarTheme } from "@/lib/native";
+import { openExternal, syncTitlebarTheme } from "@/lib/native";
 import { releaseNotes } from "@/lib/versions";
 import { renderMarkdown } from "@/lib/markdown";
 import { Button } from "@/components/ui/Button";
@@ -65,7 +65,7 @@ export function VersionsDialog() {
       }} /> : <p>{t("Release notes are available on the release page.")}</p>}
     {versions.error ? <p>{t("Could not check for updates.")}</p> : versions.checked && !status?.newer ? <p>{t("No newer version.")}</p> : null}
     <footer>
-      {hasNativeBridge() ? <Button variant="secondary" disabled={versions.checking} onClick={() => void versions.check()}>{t("Check for updates")}</Button> : null}
+      <Button variant="secondary" disabled={versions.checking} onClick={() => void versions.check()}>{t("Check for updates")}</Button>
       {latest && status?.htmlUrl ? <Button variant="primary" onClick={() => void openExternal(status.htmlUrl!)}>{t("Open download page")}</Button> : null}
       <Button variant={latest && status?.htmlUrl ? "secondary" : "primary"} onClick={close}>{t("Close")}</Button>
     </footer>

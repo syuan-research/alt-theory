@@ -5,7 +5,7 @@ import { useContextMenu, type ContextMenuItem } from "@/components/shell/Context
 import { contentLink, resolveFileLink } from "@/lib/contentLinks";
 import type { FileRef } from "@/lib/fileContent";
 import { copyText } from "@/lib/clipboard";
-import { desktopFiles, hasNativeBridge, openExternal, openPath, revealPath } from "@/lib/native";
+import { desktopFiles, openExternal, openPath, revealPath } from "@/lib/native";
 import { t } from "@/i18n";
 
 export function useContentLinks(sessionId: string | null, base?: FileRef, baseFolderPath?: string | null, draftPrimaryDir?: string | null) {
@@ -92,7 +92,7 @@ export function useContentLinks(sessionId: string | null, base?: FileRef, baseFo
       ];
       if (link.kind === "file") {
         if (ref) items.push({ label: t("Show in file tree"), icon: "ph-tree-structure", onSelect: () => shell.revealWorkspacePath(link.address) });
-        if (hasNativeBridge()) items.push({ label: t("Show in file manager"), icon: "ph-folder-open", onSelect: () => void revealPath(link.address) });
+        items.push({ label: t("Show in file manager"), icon: "ph-folder-open", onSelect: () => void revealPath(link.address) });
       }
       menu.openAt(clientX, clientY, items, anchor);
     }).catch(report);

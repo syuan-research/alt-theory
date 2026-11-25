@@ -29,7 +29,6 @@ import { scrollAffectsAnchor, useContextMenu, type ContextMenuItem } from "@/com
 import { promoteToMainline as promoteToMainlineRequest, searchSessionContent } from "@/api/sessions";
 import { getWorkingFolders, saveWorkingFolders, type ProjectFolder } from "@/api/config";
 import {
-  hasNativeBridge,
   pickDirectory,
   revealPath,
 } from "@/lib/native";
@@ -1192,17 +1191,15 @@ function UserNav({ onImport }: { onImport: () => void }) {
                           <i className="ph ph-dots-three" />
                         </summary>
                         <div className="list-menu">
-                          {hasNativeBridge() ? (
-                            <button
-                              onClick={(event) => {
-                                closeMenu(event);
-                                void revealPath(group.dir);
-                              }}
-                            >
-                              <i className="ph ph-folder-open" />
-                              {t("Show in file manager")}
-                            </button>
-                          ) : null}
+                          <button
+                            onClick={(event) => {
+                              closeMenu(event);
+                              void revealPath(group.dir);
+                            }}
+                          >
+                            <i className="ph ph-folder-open" />
+                            {t("Show in file manager")}
+                          </button>
                           <button
                             onClick={(event) => {
                               closeMenu(event);
@@ -1411,7 +1408,7 @@ function SessionNode({
     { label: t("Export Markdown"), icon: "ph-download-simple", separator: true, onSelect: () => void exportMarkdown() },
     { label: t("Copy Session ID"), icon: "ph-identification-card", onSelect: () => void copyText(session.sessionId) },
     { label: t("Copy session folder path"), icon: "ph-copy", onSelect: copySessionFolder },
-    ...(hasNativeBridge() ? [{ label: t("Open session folder"), icon: "ph-folder-open", onSelect: openSessionFolder }] : []),
+    { label: t("Open session folder"), icon: "ph-folder-open", onSelect: openSessionFolder },
   ];
 
   return (
@@ -1582,12 +1579,10 @@ function SessionNode({
               <i className="ph ph-copy" />
               {t("Copy session folder path")}
             </button>
-            {hasNativeBridge() ? (
-              <button onClick={(event) => { closeMenu(event); openSessionFolder(); }}>
-                <i className="ph ph-folder-open" />
-                {t("Open session folder")}
-              </button>
-            ) : null}
+            <button onClick={(event) => { closeMenu(event); openSessionFolder(); }}>
+              <i className="ph ph-folder-open" />
+              {t("Open session folder")}
+            </button>
           </div>
         </details>
         ) : null}

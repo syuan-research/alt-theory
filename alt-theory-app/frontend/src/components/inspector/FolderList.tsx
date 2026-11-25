@@ -1,6 +1,6 @@
 import type { ReactNode, RefObject } from "react";
 import { t } from "@/i18n";
-import { hasNativeBridge, revealPath } from "@/lib/native";
+import { revealPath } from "@/lib/native";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 
 /**
@@ -144,7 +144,7 @@ export function FolderHead({
       ) : (
         <div className="group-label folder-head-title">{head}</div>
       )}
-      {showMeta && available && hasNativeBridge() ? (
+      {showMeta && available ? (
         <button
           type="button"
           className="folder-head-path"

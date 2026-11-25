@@ -14,7 +14,7 @@ import { FolderHead, ListTools } from "@/components/inspector/FolderList";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 import { copyText } from "@/lib/clipboard";
 import { fmtTime, relativeTimeLabel } from "@/lib/format";
-import { hasNativeBridge, openPath, revealPath } from "@/lib/native";
+import { openPath, revealPath } from "@/lib/native";
 import { useFindTarget } from "@/lib/find";
 import { fileQueryScore, parseFileQuery } from "../../../../shared/quick-find";
 
@@ -80,9 +80,7 @@ export function ConversationFilesPage() {
           },
         }]
       : []),
-    ...(hasNativeBridge()
-      ? [{ label: t("Show in file manager"), icon: "ph-folder-open", onSelect: () => void revealPath(fullPath(group, file)) }]
-      : []),
+    { label: t("Show in file manager"), icon: "ph-folder-open", onSelect: () => void revealPath(fullPath(group, file)) },
   ];
   const deleteGroup = (group: ConversationFilesGroup) => {
     app.requestConfirm({
