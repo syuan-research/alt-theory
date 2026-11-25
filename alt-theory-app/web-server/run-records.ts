@@ -14,6 +14,8 @@ export type RunStatus =
 export type InterruptionCause =
   /** The user pressed Stop. */
   | "user_abort"
+  /** The user selected another message or retried the current turn. */
+  | "user_continuation"
   /** The lead conversation called interrupt_agent on this child. */
   | "lead_abort"
   /** The app died mid-turn; reconciled on next open. */

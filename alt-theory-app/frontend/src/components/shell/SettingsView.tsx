@@ -49,6 +49,7 @@ import { PERMISSIONS, PERMISSION_LABEL, fullAccessConsequences } from "@/lib/per
 import { setApprovalReviewer, setShowAllApprovalModes, useApprovalReviewer } from "@/lib/approvalReviewer";
 import { ModelConfigPage } from "@/pages/ModelConfigPage";
 import { authConnectEntryStep } from "@/lib/authConnect";
+import { copyText } from "@/lib/clipboard";
 import { MenuSelect } from "@/components/ui/MenuSelect";
 import { Button } from "@/components/ui/Button";
 import {
@@ -784,6 +785,7 @@ export function AuthConnectCard({
     "Enabling models...": t(
       "Turning on the models included with your subscription…"
     ),
+    "Complete login in your browser, or paste the authorization code / redirect URL here:": t("Complete sign-in in your browser, or paste the authorization code or redirect URL below."),
   };
   const plainAuthText = (text: string) => PLAIN_AUTH_TEXT[text] ?? text;
   const [flow, setFlow] = useState<{
@@ -796,8 +798,12 @@ export function AuthConnectCard({
     { provider: ProviderAuthId; name: string; connected: boolean }[]
   >([]);
   const [input, setInput] = useState("");
-  const popup = useRef<Window | null>(null);
-  const openedUrl = useRef<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const authLinkEvent = [...(flow?.auth?.events ?? [])].reverse().find(
+    (event) => event.type === "auth_url" || event.type === "device_code"
+  );
+  const authUrl = authLinkEvent?.type === "auth_url" ? authLinkEvent.url
+    : authLinkEvent?.type === "device_code" ? authLinkEvent.verificationUri : null;
   const connected = useMemo(
     () =>
       new Set(
@@ -884,57 +890,24 @@ export function AuthConnectCard({
   }, [flow?.auth?.flowId, flow?.auth?.status, onChanged]);
 
   useEffect(() => {
-    const events = flow?.auth?.events ?? [];
-    const target = [...events]
-      .reverse()
-      .find(
-        (event) => event.type === "auth_url" || event.type === "device_code"
-      );
-    const url =
-      target?.type === "auth_url"
-        ? target.url
-        : target?.type === "device_code"
-          ? target.verificationUri
-          : null;
-    if (!url || openedUrl.current === url) return;
-    openedUrl.current = url;
-    if (popup.current && !popup.current.closed) {
-      popup.current.location.href = url;
-    } else {
-      window.open(url, "_blank", "noopener,noreferrer");
-    }
-  }, [flow?.auth?.events]);
+    if (!authUrl) return;
+    let stopped = false;
+    setLinkCopied(false);
+    void copyText(authUrl).then((copied) => { if (!stopped) setLinkCopied(copied); });
+    return () => { stopped = true; };
+  }, [authUrl]);
 
   const start = async () => {
     if (!flow) return;
     setInput("");
-    openedUrl.current = null;
-    // The popup slot is reserved up front so the later window.open for the
-    // provider URL is not blocker-killed. Its placeholder text is written
-    // after the flow starts, because what it must say depends on the flow's
-    // first step: a question answered in the app (GitHub Copilot's domain
-    // prompt) or the provider page itself.
-    popup.current = window.open("about:blank", "_blank");
-    setFlow({ ...flow, step: "waiting", error: undefined });
+    setLinkCopied(false);
+    setFlow({ ...flow, auth: undefined, step: "waiting", error: undefined });
     try {
       const auth = await startProviderAuth(flow.provider.id);
-      if (popup.current && !popup.current.closed) {
-        popup.current.document.write(
-          `<!doctype html><html><body style="font-family:system-ui;padding:40px;color:#777"><p>${
-            auth.prompt
-              ? t(
-                  "Return to the app and answer the question — this page will then open the provider sign-in."
-                )
-              : t("Preparing the secure sign-in flow…")
-          }</p></body></html>`
-        );
-        popup.current.document.close();
-      }
       setFlow((current) =>
         current ? { ...current, step: "waiting", auth } : current
       );
     } catch (error) {
-      popup.current?.close();
       setFlow((current) =>
         current
           ? {
@@ -962,7 +935,6 @@ export function AuthConnectCard({
     if (flow?.auth?.status === "running") {
       await cancelProviderAuth(flow.auth.flowId).catch(() => {});
     }
-    popup.current?.close();
     setFlow(null);
   };
 
@@ -1059,8 +1031,7 @@ export function AuthConnectCard({
                   className="add-btn"
                   onClick={start}
                 >
-                  <i className="ph ph-arrow-square-out" />
-                  {t("Open in browser")}
+                  {t("Start sign-in")}
                 </button>
                 {connected.has(flow.provider.id) ? (
                   <button className="link-btn" onClick={disconnect}>
@@ -1071,18 +1042,26 @@ export function AuthConnectCard({
             </>
           ) : flow.step === "waiting" ? (
             <>
-              <p className="auth-step">
-                {flow.auth?.prompt
-                  ? t("Answer the question here to continue:")
-                  : latestEvent?.type === "progress"
+              {!flow.auth?.prompt ? <p className="auth-step">
+                {latestEvent?.type === "progress"
                     ? plainAuthText(latestEvent.message)
                     : latestEvent?.type === "auth_url"
-                      ? latestEvent.instructions ||
+                      ? plainAuthText(latestEvent.instructions || "") ||
                         t("Finish signing in in your browser.")
                       : latestEvent?.type === "device_code"
                         ? t("Enter this code in the provider page:")
                         : t("Preparing the secure sign-in flow…")}
-              </p>
+              </p> : null}
+              {authUrl ? (
+                <div className="auth-link-actions">
+                  <p className="fine" role="status">{linkCopied ? t("Sign-in link copied. Paste it into your preferred browser.") : t("Copy the sign-in link to open it in your preferred browser.")}</p>
+                  <div className="auth-linkrow">
+                    <Button variant="secondary" onClick={() => void copyText(authUrl).then(setLinkCopied)}>{t("Copy sign-in link")}</Button>
+                    <Button variant="secondary" onClick={() => window.open(authUrl, "_blank", "noopener,noreferrer")}>{t("Open in browser")}</Button>
+                  </div>
+                  <input className="auth-url" readOnly value={authUrl} aria-label={t("Sign-in link")} onFocus={(event) => event.target.select()} />
+                </div>
+              ) : null}
               {deviceEvent?.type === "device_code" ? (
                 <div className="auth-linkrow">
                   <code>{deviceEvent.userCode}</code>
@@ -1099,6 +1078,7 @@ export function AuthConnectCard({
                   ))}
                 </div>
               ) : null}
+              {flow.auth?.prompt ? <p className="auth-step">{plainAuthText(flow.auth.prompt.message)}</p> : null}
               {flow.auth?.prompt?.type === "select" ? (
                 <div className="auth-linkrow">
                   {flow.auth.prompt.options?.map((option) => (
@@ -1112,7 +1092,7 @@ export function AuthConnectCard({
                   ))}
                 </div>
               ) : flow.auth?.prompt ? (
-                <div className="auth-linkrow">
+                <form className="auth-response" onSubmit={(event) => { event.preventDefault(); void respond(input); }}>
                   <input
                     value={input}
                     type={
@@ -1122,17 +1102,14 @@ export function AuthConnectCard({
                     aria-label={plainAuthText(flow.auth.prompt.message)}
                     onChange={(event) => setInput(event.target.value)}
                   />
-                  <button
-                    className="add-btn"
+                  <Button
+                    type="submit"
+                    variant="primary"
                     disabled={!input}
-                    onClick={() => void respond(input)}
                   >
                     {t("Continue")}
-                  </button>
-                </div>
-              ) : null}
-              {flow.auth?.prompt ? (
-                <p className="fine">{plainAuthText(flow.auth.prompt.message)}</p>
+                  </Button>
+                </form>
               ) : null}
               {flow.error ? <p className="fine">{flow.error}</p> : null}
             </>

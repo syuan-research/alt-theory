@@ -70,6 +70,7 @@ import {
   softDeleteSessionFamily,
   sweepExpiredDeletedSessions,
   readToolResultText,
+  readToolInputText,
   writeSessionTextFile,
 } from "./session-store.js";
 import { fileKind, listConversationFiles } from "./conversation-files.js";
@@ -1791,6 +1792,17 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     const text = readToolResultText(dataDir, sessionId, toolCallId, after);
     if (text === null) {
       res.status(404).json({ error: `No result for tool call ${toolCallId}` });
+      return;
+    }
+    res.json({ text });
+  });
+  app.get("/api/sessions/:sessionId/tool-input/:toolCallId", (req, res) => {
+    const { sessionId, toolCallId } = req.params;
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    const entryId = typeof req.query.entryId === "string" ? req.query.entryId : "";
+    const text = entryId ? readToolInputText(dataDir, sessionId, toolCallId, entryId) : null;
+    if (text === null) {
+      res.status(404).json({ error: `No input for tool call ${toolCallId}` });
       return;
     }
     res.json({ text });

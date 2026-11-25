@@ -93,6 +93,16 @@ export async function fetchToolResult(sessionId: string, toolCallId: string, ent
   return ((await res.json()) as { text: string }).text;
 }
 
+export async function fetchToolInput(sessionId: string, toolCallId: string, entryId: string, signal: AbortSignal): Promise<string> {
+  const query = new URLSearchParams({ entryId });
+  const res = await fetch(
+    `/api/sessions/${encodeURIComponent(sessionId)}/tool-input/${encodeURIComponent(toolCallId)}?${query}`,
+    { signal },
+  );
+  if (!res.ok) throw new Error(`Tool input failed (${res.status})`);
+  return ((await res.json()) as { text: string }).text;
+}
+
 export async function fetchSessionDetail(
   sessionId: string
 ): Promise<SessionDetailResponse> {

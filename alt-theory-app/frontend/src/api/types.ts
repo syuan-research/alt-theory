@@ -131,6 +131,7 @@ export type RuntimeMode = "alt-theory" | "native-pi";
 
 export type InterruptionCause =
   | "user_abort"
+  | "user_continuation"
   | "lead_abort"
   | "process_exit"
   | "unknown";
@@ -809,7 +810,7 @@ export type ServerMessage =
         };
       };
     }
-  | { type: "tool_started"; payload: { toolName: string; callId: string; path?: string | null; detail?: ToolDetail } }
+  | { type: "tool_started"; payload: { toolName: string; callId: string; preparing?: true; path?: string | null; detail?: ToolDetail } }
   | { type: "tool_updated"; payload: { callId: string; text?: string; progress?: number } }
   | { type: "tool_finished"; payload: { callId: string; success: boolean; output?: unknown; approval?: TranscriptMessage["approval"] } }
   /** The turn ended: the post-settle snapshot and the settled rows, applied together. */
@@ -862,7 +863,7 @@ export interface ActiveToolState {
   toolName: string;
   path?: string | null;
   detail?: ToolDetail | null;
-  status: "running" | "finished" | "failed" | "pending";
+  status: "preparing" | "running" | "finished" | "failed" | "pending";
   /** Last output line of a running command (Pi sends bash progress only). */
   progressText?: string;
   success?: boolean;

@@ -12,7 +12,7 @@ import { useShell } from "@/context/ShellContext";
 import { MarkdownBody } from "@/components/conversation/MarkdownBody";
 import { fileName, toolLabel, toolResultText } from "@/lib/tools";
 import { ApprovalMark } from "./ApprovalMark";
-import { fetchToolResult } from "@/api/sessions";
+import { fetchToolInput, fetchToolResult } from "@/api/sessions";
 import { cn } from "@/lib/cn";
 import { pickDirectory } from "@/lib/native";
 import { shouldToggleCollapseOnClick } from "@/lib/collapseAnywhere";
@@ -431,12 +431,15 @@ const TOOL_TONE: Record<ToolOutcome, "danger" | "ok" | "running" | "pending"> = 
 
 function ToolLine({ tool }: { tool: ActiveToolState }) {
   const { discovery } = useApp();
-  const outcome = toolOutcome({ running: tool.status === "running", success: tool.success });
+  const preparing = tool.status === "preparing";
+  const outcome = toolOutcome({ running: preparing || tool.status === "running", success: tool.success });
   return (
     <SysLine tool filePath={toolFilePath(tool.toolName, tool.path)} detail={outcome === "running" ? null : tool.detail} tone={TOOL_TONE[outcome]}>
       <i className={TOOL_ICON[outcome]} />
-      {toolLabel(tool.toolName, tool.path, tool.detail, outcome,
-        discovery?.skills.find((skill) => skill.name === tool.detail?.skillName)?.displayName)}
+      {preparing
+        ? tool.toolName === "write" ? t("Preparing to write…") : t("Preparing to edit…")
+        : toolLabel(tool.toolName, tool.path, tool.detail, outcome,
+          discovery?.skills.find((skill) => skill.name === tool.detail?.skillName)?.displayName)}
       {tool.progressText ? ` — ${tool.progressText}` : ""}
       <ApprovalMark approval={tool.approval} />
     </SysLine>
@@ -627,6 +630,7 @@ export function TranscriptEntry({
         filePath={toolFilePath(message.toolName, message.toolPath)}
         tone={TOOL_TONE[outcome]}
         detail={message.toolDetail}
+        input={message.toolInput ? { text: message.toolInput, toolCallId: message.toolCallId, entryId: message.entryId } : undefined}
         result={
           resultText
             ? { text: resultText, truncated: Boolean(message.truncated), toolCallId: message.toolCallId, entryId: message.entryId }
@@ -730,6 +734,8 @@ function UserBubble({
   }, [draft, editing]);
   if (!trimmed) return null;
   const canEdit = isLatest || Boolean(entryId);
+  const adjustLabel = t("Adjust prompt, model, or settings");
+  const branchNote = t("(branch from here)");
   return (
     <div className="msg user" data-row={rowId}>
       <div className="who" data-find-skip="">
@@ -761,9 +767,11 @@ function UserBubble({
           <button className="flat" onClick={() => (setDraft(trimmed), setEditing(false))}>
             {t("Cancel")}
           </button>
-          {(entryId || isLatest) && onPrepareCompare ? (
+          {canEdit && onPrepareCompare ? (
             <button
               className="flat"
+              data-tip={adjustLabel}
+              data-tip-note={branchNote}
               onClick={() => onPrepareCompare(draft, entryId) && setEditing(false)}
             >
               {t("Adjust model or role…")}
@@ -796,31 +804,23 @@ function UserBubble({
           </button>
         ) : null}
         {canEdit && onEdit ? (
-          <span className="edit-action-cluster">
-            <button
-              data-tip={
-                replacementEdit
-                  ? t("Edit and retry")
-                  : t("Edit and compare")
-              }
-              aria-label={replacementEdit ? t("Edit and retry") : t("Edit and compare")}
-              onClick={() => {
-                setEditing(true);
-              }}
-            >
-              <i className="ph ph-pencil-simple" aria-hidden="true" />
-            </button>
-            {(entryId || isLatest) && onPrepareCompare ? (
-              <button
-                className="edit-setup-action"
-                data-tip={t("Adjust model or role before comparing")}
-                aria-label={t("Adjust model or role before comparing")}
-                onClick={() => onPrepareCompare(trimmed, entryId)}
-              >
-                {t("Adjust model or role…")}
-              </button>
-            ) : null}
-          </span>
+          <button
+            data-tip={replacementEdit ? t("Edit and retry") : t("Edit and compare")}
+            aria-label={replacementEdit ? t("Edit and retry") : t("Edit and compare")}
+            onClick={() => setEditing(true)}
+          >
+            <i className="ph ph-pencil-simple" aria-hidden="true" />
+          </button>
+        ) : null}
+        {canEdit && onPrepareCompare ? (
+          <button
+            data-tip={adjustLabel}
+            data-tip-note={branchNote}
+            aria-label={`${adjustLabel} ${branchNote}`}
+            onClick={() => onPrepareCompare(editing ? draft : trimmed, entryId) && setEditing(false)}
+          >
+            <i className="ph ph-arrows-split" aria-hidden="true" />
+          </button>
         ) : null}
         {entryId && rowId ? <BookmarkAction row={rowId} /> : null}
       </div>
@@ -914,6 +914,7 @@ function SysLine({
   children,
   tone,
   detail,
+  input,
   result,
   tool = false,
   filePath,
@@ -922,6 +923,7 @@ function SysLine({
   tone?: "danger" | "ok" | "running" | "pending";
   /** When present the line becomes expandable — see ToolDetailBody. */
   detail?: ToolDetail | null;
+  input?: { text: string; toolCallId?: string; entryId?: string | null };
   /** The call's result (B3): shown under the detail once expanded. */
   result?: { text: string; truncated: boolean; toolCallId?: string; entryId?: string | null };
   /** Tool rows are searchable with Ctrl+F; system lines (warnings,
@@ -942,7 +944,8 @@ function SysLine({
     tone === "pending" && "sys-pending",
   );
   const shownDetail = detail && detail.kind !== "skill" ? detail : null;
-  if (!shownDetail && !result) {
+  const fallback = !shownDetail && !result ? input : undefined;
+  if (!shownDetail && !result && !fallback) {
     return <div {...fileActions} tabIndex={path ? 0 : undefined} className={className} data-find-skip={tool ? undefined : ""}>{children}{menu.element}</div>;
   }
   return (
@@ -952,12 +955,35 @@ function SysLine({
         summary={children}
         summaryProps={fileActions}
         findSkip={!tool}
-        whenOpen={result ? () => <ToolResultBody {...result} /> : undefined}
+        whenOpen={result
+          ? () => <ToolResultBody {...result} />
+          : fallback ? () => <ToolInputBody {...fallback} /> : undefined}
       >
         {shownDetail ? <ToolDetailBody detail={shownDetail} /> : null}
       </CollapseAnywhereDetails>
       {menu.element}
     </>
+  );
+}
+
+function ToolInputBody({ text, toolCallId, entryId }: { text: string; toolCallId?: string; entryId?: string | null }) {
+  const { sessionId } = useConversationContext();
+  const [full, setFull] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (!sessionId || !toolCallId || !entryId) return;
+    const controller = new AbortController();
+    void fetchToolInput(sessionId, toolCallId, entryId, controller.signal).then(
+      setFull,
+      () => { if (!controller.signal.aborted) setFailed(true); },
+    );
+    return () => controller.abort();
+  }, [sessionId, toolCallId, entryId]);
+  return (
+    <div className="tool-result">
+      {full === null ? <div>{failed ? t("Could not load the full input") : t("Input preview")}</div> : null}
+      <pre className="tool-detail cmd">{full ?? text}</pre>
+    </div>
   );
 }
 

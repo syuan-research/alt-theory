@@ -1627,6 +1627,23 @@ export function readToolResultText(
   return null;
 }
 
+/** Full input for a tool row that has no other details to show. */
+export function readToolInputText(
+  dataDir: string,
+  sessionId: string,
+  toolCallId: string,
+  entryId: string,
+): string | null {
+  const parts = readSessionParts(dataDir, sessionId);
+  if (!parts?.sessionFile || statSync(parts.sessionFile).size === 0) return null;
+  const entry = SessionManager.open(parts.sessionFile, parts.historyDir).getEntry(entryId);
+  if (entry?.type !== "message" || entry.message.role !== "assistant" || !Array.isArray(entry.message.content)) return null;
+  const call = entry.message.content.find((part) => part.type === "toolCall" && part.id === toolCallId);
+  return call?.type === "toolCall" && call.arguments !== undefined
+    ? JSON.stringify(call.arguments, null, 2)
+    : null;
+}
+
 function readPiInfo(
   sessionFile: string | null,
   historyDir: string,
@@ -2516,6 +2533,10 @@ function agentMailEventLabel(event: string): string {
       return t("failed");
     case "interrupted":
       return t("interrupted");
+    case "user-guidance":
+      return t("user guidance");
+    case "user-retry":
+      return t("user retry");
     case "input-requested":
       return t("needs input");
     case "undelivered":

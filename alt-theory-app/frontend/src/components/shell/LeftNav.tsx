@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { SessionSummary } from "@/api/types";
 import { useConversationContext } from "@/context/ConversationContext";
 import { useMainView } from "@/context/MainView";
@@ -363,6 +363,37 @@ function SettingsRail({ hidden, runningCount }: { hidden?: boolean; runningCount
   );
 }
 
+const CONVERSATION_PREVIEW_COUNT = 5;
+
+function familyPreview(
+  rootId: string,
+  childrenByParent: WorkspaceTree["childrenByParent"],
+  foldedFamilies: Set<string>,
+  activeId: string | null,
+) {
+  const parents = new Map<string, string>();
+  const collect = (id: string) => {
+    if (foldedFamilies.has(id)) return;
+    for (const child of childrenByParent.get(id) ?? []) {
+      parents.set(child.sessionId, id);
+      collect(child.sessionId);
+    }
+  };
+  collect(rootId);
+  if (parents.size <= CONVERSATION_PREVIEW_COUNT) return null;
+
+  // Reserve the active branch's path, then fill in the existing display order.
+  const ids = new Set<string>();
+  for (let id = activeId; id && parents.has(id); id = parents.get(id) ?? null) {
+    ids.add(id);
+  }
+  for (const id of parents.keys()) {
+    if (ids.size >= CONVERSATION_PREVIEW_COUNT) break;
+    ids.add(id);
+  }
+  return ids.size < parents.size ? { ids, count: parents.size } : null;
+}
+
 function projectPreviewCount(roots: SessionSummary[], childrenByParent: WorkspaceTree["childrenByParent"]): number {
   const rowCount = (root: SessionSummary): number =>
     1 + (childrenByParent.get(root.sessionId) ?? []).reduce((sum, child) => sum + rowCount(child), 0);
@@ -402,6 +433,8 @@ function SessionRootList({
   cap?: number;
   emptyLabel?: string;
 }) {
+  const { selectedCatalogSessionId } = useMainView();
+  const [expandedFamilies, setExpandedFamilies] = useState<Set<string>>(new Set());
   const previewCount = cap ?? projectPreviewCount(roots, tree.childrenByParent);
   const shown = expanded || visibleIds !== null ? roots : roots.slice(0, previewCount);
   return (
@@ -409,19 +442,43 @@ function SessionRootList({
       {roots.length === 0 ? (
         <div className="rp-empty ws-empty">{emptyLabel}</div>
       ) : null}
-      {shown.map((root) => (
-        <SessionNode
-          key={root.sessionId}
-          session={root}
-          childrenByParent={tree.childrenByParent}
-          indent={0}
-          onOpen={onOpen}
-          draggable={draggable}
-          foldedFamilies={foldedFamilies}
-          onToggleFamily={onToggleFamily}
-          visibleIds={folderHit ? null : visibleIds}
-        />
-      ))}
+      {shown.map((root) => {
+        const id = root.sessionId;
+        const preview = visibleIds === null
+          ? familyPreview(id, tree.childrenByParent, foldedFamilies, selectedCatalogSessionId)
+          : null;
+        const showAll = expandedFamilies.has(id);
+        return (
+          <Fragment key={id}>
+            <SessionNode
+              session={root}
+              childrenByParent={tree.childrenByParent}
+              indent={0}
+              onOpen={onOpen}
+              draggable={draggable}
+              foldedFamilies={foldedFamilies}
+              onToggleFamily={onToggleFamily}
+              visibleIds={folderHit ? null : visibleIds}
+              previewIds={showAll ? undefined : preview?.ids}
+            />
+            {preview ? (
+              <button
+                type="button"
+                className="group-more family-more"
+                aria-expanded={showAll}
+                onClick={() => setExpandedFamilies((current) => {
+                  const next = new Set(current);
+                  if (next.has(id)) next.delete(id);
+                  else next.add(id);
+                  return next;
+                })}
+              >
+                {showAll ? t("Show less") : t("Show all ({count})", { count: preview.count })}
+              </button>
+            ) : null}
+          </Fragment>
+        );
+      })}
       {visibleIds === null && roots.length > previewCount ? (
         <button className="group-more" onClick={onToggleExpanded}>
           {expanded ? t("Show less") : t("Show all ({count})", { count: roots.length })}
@@ -471,7 +528,6 @@ function UserNav({ onImport }: { onImport: () => void }) {
   useEffect(() => {
     if (!shell.searchOpen) setRailQuery("");
   }, [shell.searchOpen]);
-  const GROUP_CAP = 4;
 
   useEffect(() => {
     const query = railQuery.trim();
@@ -982,7 +1038,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     onToggleFamily={toggleFamily}
                     onOpen={openSession}
                     draggable
-                    cap={GROUP_CAP}
+                    cap={CONVERSATION_PREVIEW_COUNT}
                     emptyLabel={t("No standalone conversations")}
                   />
                   )}
@@ -1261,6 +1317,7 @@ function SessionNode({
   foldedFamilies,
   onToggleFamily,
   visibleIds = null,
+  previewIds,
 }: {
   session: SessionSummary;
   childrenByParent: Map<string, SessionSummary[]>;
@@ -1268,6 +1325,7 @@ function SessionNode({
   onOpen: (id: string) => void;
   /** Rail filter result; null shows everything. */
   visibleIds?: Set<string> | null;
+  previewIds?: Set<string>;
   draggable?: boolean;
   foldedFamilies: Set<string>;
   onToggleFamily: (id: string) => void;
@@ -1535,7 +1593,7 @@ function SessionNode({
         ) : null}
       </div>
       {menu.element}
-      {!folded && children.map((child) => (
+      {!folded && children.filter((child) => !previewIds || previewIds.has(child.sessionId)).map((child) => (
         <SessionNode
           key={child.sessionId}
           session={child}
@@ -1546,6 +1604,7 @@ function SessionNode({
           foldedFamilies={foldedFamilies}
           onToggleFamily={onToggleFamily}
           visibleIds={visibleIds}
+          previewIds={previewIds}
         />
       ))}
     </>

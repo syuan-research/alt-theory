@@ -430,7 +430,8 @@ are two separate derivations (`session-service.ts`):
   Pi path (`subagentsSpawnedOnPath` parses the spawn report). A branch
   therefore shares the subagents its source spawned before the fork point;
   the path survives compaction. Shared means one child, not a copy.
-- **Reporting** (`subagentReplyTarget`): outcomes and `message_parent` go
+- **Reporting** (`subagentReplyTarget`): outcomes, user guidance and retry
+  notices, and `message_parent` go
   to the last session that sent the child a task through `send_to_agent`
   (read from the child's own inbox; senders in Trash or purged, and the
   child's own subagents, are skipped), else to the spawner. A task from a
@@ -487,7 +488,7 @@ watches all eligible agents active at the time of the call. The first watched
 agent to finish or the timeout releases the wait with every watched status.
 These operations leave the target's runtime and mail allowance alone.
 
-What the lead is told is composed in one place, `describeChildOutcome()`
+Subagent run outcomes are composed by `describeChildOutcome()`
 (`web-server/child-outcome.ts`): the envelope's `event`, its `cause`, the body,
 and the status word that `check_agent`, `wait_for_agents`, and `list_agents`
 report. An interrupted envelope carries the run's `interruptionCause`; the
@@ -499,6 +500,12 @@ continuable. A child whose accepted run is reconciled as `process_exit` on
 reopen mails its lead once, at that reopen. Status lines derive from the same
 function, so an interrupted child reads "interrupted (…)", never idle
 (`child-outcome.test.ts`; `agent-team.test.ts` interrupt cases).
+
+When a user message reaches a subagent or a retry starts, the lead gets a
+notice to await the result. The notice describes the user's action without
+including their message. If the action replaces a running turn, that turn's
+`user_continuation` interruption stays in the run record. The replacement
+reports its own outcome to the same lead.
 
 ## Run records and active-turn projection
 
@@ -513,6 +520,7 @@ assistant entries on completion or failure
 The current terminal statuses are `completed`, `failed`, and `interrupted`.
 `interruptionCause` identifies an explicit Alt stop or typed abort:
 `user_abort` (the Stop button), `lead_abort` (a lead's `interrupt_agent`),
+`user_continuation` (interrupt-and-send or retry),
 `process_exit` (reconciled on reopen), or `unknown`; an error merely
 containing the word “interrupt” remains a failure. This distinction is
 exercised by `session-service.test.ts` (abort classification cases).

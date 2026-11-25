@@ -441,8 +441,10 @@ function onServer(state: ConversationState, message: ServerMessage): Conversatio
         ),
         settledRuns: state.settledRuns + 1,
       };
-      // The user's own Stop needs no words; anything else says what happened.
-      if (recovery?.interruptionCause === "user_abort") return withNotice(next, null);
+      // User-directed stops and replacements already have their own UI feedback.
+      if (recovery?.interruptionCause === "user_abort" || recovery?.interruptionCause === "user_continuation") {
+        return withNotice(next, null);
+      }
       return withNotice(
         next,
         { kind: "run-failed", failure: message.payload.failure, interrupted: recovery?.outcome === "interrupted" },
@@ -477,14 +479,14 @@ function onServer(state: ConversationState, message: ServerMessage): Conversatio
       return { ...state, turn: { ...state.turn, parts: appendText(state.turn.parts, "thinking", message.payload.text) } };
 
     case "tool_started": {
-      const { toolName, callId, path, detail } = message.payload;
-      const tool: ActiveToolState = { callId, toolName, path, detail, status: "running" };
+      const { toolName, callId, path, detail, preparing } = message.payload;
+      const tool: ActiveToolState = { callId, toolName, path, detail, status: preparing ? "preparing" : "running" };
       return {
         ...state,
         turn: {
           parts: upsertTool(state.turn.parts, tool),
-          tools: { ...state.turn.tools, [callId]: tool },
-          activity: { kind: "tool", tool },
+          tools: preparing ? state.turn.tools : { ...state.turn.tools, [callId]: tool },
+          activity: preparing ? state.turn.activity : { kind: "tool", tool },
         },
       };
     }
@@ -528,7 +530,9 @@ function onServer(state: ConversationState, message: ServerMessage): Conversatio
 
     case "run_phase": {
       const { phase, retry } = message.payload;
-      let parts = state.turn.parts;
+      let parts = phase === "retrying"
+        ? state.turn.parts.filter((part) => part.kind !== "tool" || part.tool.status !== "preparing")
+        : state.turn.parts;
       // Only the server knows whether the dropped attempt produced text (it
       // reads Pi's state before the retry drops the message); without that
       // fact the parts above are just as likely completed steps.

@@ -795,6 +795,7 @@
   .sys-line .link-btn:hover { opacity: 1; }
   .group-more { display: block; width: calc(100% - 16px); margin: var(--space-hair) var(--space-tight) var(--space-tight); padding: var(--space-hair) var(--space-tight); text-align: left; background: none; border: none; font: inherit; font-size: var(--fs-secondary); color: var(--text-3); cursor: pointer; border-radius: var(--r-sm); }
   .group-more:hover { background: var(--card-2); color: var(--ink); }
+  .group-more.family-more { padding-inline-start: 36px; }
   .sys-line.sys-ok { border-left-color: var(--color-success); }
   .sys-line.sys-running, .sys-line.sys-pending { border-left-color: var(--color-text-muted); }
 
@@ -1021,10 +1022,6 @@
   .msg-actions i { font-size: 0.9rem; }
   .msg-actions button:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
   .msg-actions button:disabled { opacity: 0.4; cursor: default; }
-  .edit-action-cluster { display: inline-flex; position: relative; }
-  .edit-setup-action { position: absolute; z-index: 4; top: calc(100% - 1px); right: 0; width: max-content; opacity: 0; visibility: hidden; background: var(--card) !important; border: 1px solid var(--hairline) !important; box-shadow: var(--shadow-popup); padding: var(--space-tight) var(--space-tight) !important; pointer-events: none; transition: opacity 100ms ease; color: var(--ink); }
-  .edit-action-cluster:hover .edit-setup-action,
-  .edit-action-cluster:focus-within .edit-setup-action { opacity: 1; visibility: visible; pointer-events: auto; }
   .inline-edit-textarea { width: 100%; resize: none; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; line-height: inherit; }
   .inline-edit-actions { margin: var(--space-tight) 0 0; padding: 0; display: flex; justify-content: flex-end; gap: var(--space-tight); width: auto; }
   .inline-edit-actions .send { width: auto; min-width: 42px; padding-inline: var(--space-control); }
@@ -1755,6 +1752,12 @@
   .auth-step { font-size: var(--fs-primary); color: var(--text-2); margin: var(--space-control) 0 var(--space-tight); }
   .auth-step.auth-done { color: var(--color-success); display: flex; align-items: center; gap: var(--space-tight); font-weight: 500; }
   .auth-linkrow { display: flex; align-items: center; gap: var(--space-tight); flex-wrap: wrap; }
+  .auth-link-actions { display: grid; gap: var(--space-tight); margin-bottom: var(--space-control); }
+  .auth-response { display: flex; align-items: stretch; gap: var(--space-tight); margin-top: var(--space-tight); }
+  .auth-flow .auth-response input, .auth-flow .auth-url { min-width: 0; width: 100%; border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: var(--space-tight) var(--space-control); font: inherit; font-size: var(--fs-primary); color: var(--ink); background: var(--card); }
+  .auth-flow .auth-response input { flex: 1; }
+  .auth-response .ui-btn { flex-shrink: 0; }
+  .auth-flow input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   .auth-linkrow code { font-family: var(--mono); font-size: var(--fs-secondary); color: var(--text-2); background: var(--card); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: var(--space-hair) var(--space-tight); }
   .auth-trail { display: flex; flex-direction: column; gap: var(--space-hair); margin: var(--space-tight) 0 0; }
   .auth-trail .fine { margin: 0; }
