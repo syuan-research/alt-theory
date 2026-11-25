@@ -262,7 +262,7 @@ export interface TranscriptMessage {
   toolType?: "call" | "result";
   toolCallId?: string;
   toolName?: string;
-  spawnedAgent?: { sessionId: string; label?: string };
+  subagentAction?: SubagentAction;
   toolPath?: string | null;
   toolDetail?: ToolDetail;
   /** The call's arguments as JSON, cut to 200 characters (history readers). */
@@ -306,6 +306,19 @@ export interface TurnRows {
 /** What the conversation list shows for a conversation (server: sessionActivity). */
 export type ListActivity = "idle" | "running" | "awaiting-approval" | "failed";
 
+export interface SubagentAction {
+  sessionId: string;
+  label?: string;
+  kind: "spawn" | "resume" | "message";
+  dispatchId?: string;
+}
+
+/** Only queued or in-progress dispatches appear in activity. */
+export interface ActiveSubagentDispatch {
+  id: string;
+  startedAt: number | null;
+}
+
 export interface SessionSummary {
   sessionId: string;
   alias?: string;
@@ -322,8 +335,6 @@ export interface SessionSummary {
   status: "available" | "incomplete" | "error";
   /** What the list shows; the client reads it from the pushed activity (WP-4). */
   runStatus?: ListActivity;
-  /** This window saw the current run start (local wall clock only). */
-  runObservedAt?: number;
   rolePresetSlug: string | null;
   kbDomain: string | null;
   provider: string | null;
@@ -559,6 +570,7 @@ export interface SessionTextFile {
 
 export interface SessionTextFileContent extends SessionTextFile {
   content: string;
+  editable?: boolean;
   /** Working root only: the folder this address resolved to at load time;
    *  saves carry it back so a repointed folder refuses instead of writing
    *  the draft into the new folder. */
@@ -610,6 +622,7 @@ export interface WorkingTreeEntry {
   size: number | null;
   updatedAt: string | null;
   previewable: boolean;
+  isSymbolicLink?: true;
 }
 
 export interface WorkingFoldersResponse {
@@ -815,7 +828,7 @@ export type ServerMessage =
     }
   | { type: "tool_started"; payload: { toolName: string; callId: string; preparing?: true; path?: string | null; detail?: ToolDetail } }
   | { type: "tool_updated"; payload: { callId: string; text?: string; progress?: number } }
-  | { type: "tool_finished"; payload: { callId: string; success: boolean; output?: unknown; approval?: TranscriptMessage["approval"]; spawnedAgent?: TranscriptMessage["spawnedAgent"] } }
+  | { type: "tool_finished"; payload: { callId: string; success: boolean; output?: unknown; approval?: TranscriptMessage["approval"]; subagentAction?: SubagentAction } }
   /** The turn ended: the post-settle snapshot and the settled rows, applied together. */
   | { type: "run_completed"; payload: { snapshot: SessionSnapshot } & TurnRows }
   /** The run ended failed or stopped; the snapshot (read after settle) carries its recovery. */
@@ -840,9 +853,9 @@ export type ServerMessage =
     }
   | { type: "approval_snapshot"; payload: ApprovalRequestPayload[] }
   /** Every conversation the list may show that is not idle, on (re)connect. */
-  | { type: "activity_snapshot"; payload: { activity: Record<string, ListActivity> } }
+  | { type: "activity_snapshot"; payload: { activity: Record<string, ListActivity>; subagentDispatches?: Record<string, ActiveSubagentDispatch> } }
   /** One conversation's list activity moved, or the list itself changed. */
-  | { type: "session_activity"; payload: { sessionId: string; status: ListActivity; listChanged?: true } }
+  | { type: "session_activity"; payload: { sessionId: string; status: ListActivity; listChanged?: true; subagentDispatch?: ActiveSubagentDispatch | null } }
   | { type: "approval_requested"; payload: ApprovalRequestPayload }
   | {
       type: "approval_resolved";
@@ -871,7 +884,7 @@ export interface ActiveToolState {
   progressText?: string;
   success?: boolean;
   approval?: TranscriptMessage["approval"];
-  spawnedAgent?: TranscriptMessage["spawnedAgent"];
+  subagentAction?: SubagentAction;
 }
 
 /** One chunk of the in-progress assistant turn, in arrival order. */

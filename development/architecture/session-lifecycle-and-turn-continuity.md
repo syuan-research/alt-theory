@@ -410,6 +410,14 @@ receives the envelope at its next step boundary; an idle open parent receives a
 normal notification turn; a closed parent receives the undelivered envelope on
 next open (`session-service.ts`, `deliverEnvelope` and `openSession`).
 
+The tool row for `spawn_agent`, or for `send_to_agent` when it starts work
+on an idle subagent, records the dispatch ID in the tool result. The service
+sends the active dispatch and its first accepted timestamp through the same
+activity stream as the conversation list, including its reconnect snapshot.
+A queued dispatch has no start time yet. Steering, interrupt-and-send, retry,
+and approval waits keep the timestamp. Completion, failure, or Stop removes
+the active dispatch. The tool result still identifies who was sent the work.
+
 One frame carries every text an agent or the system delivers into a
 conversation (`core/agent-mail-frame.ts`): the lead's task — the spawn task
 included, which is the child's first mail (2026-10-12) — reports, lifecycle

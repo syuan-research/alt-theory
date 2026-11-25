@@ -26,6 +26,7 @@ import {
   FileConflictError,
   MAX_TEXT_EDIT_BYTES,
   MAX_TEXT_VIEW_BYTES,
+  readTextPreview,
   readTextFlags,
   writeTextFilePreservingIdentity,
   type WriteTextFileOptions,
@@ -69,10 +70,6 @@ const MAX_FILE_BYTES: Record<string, number> = {
 };
 
 const CONVERTED_SUFFIX = "_converted_from_binary";
-const WORKING_TREE_SKIP_DIRS = new Set([
-  ".git", "node_modules", ".next", ".cache", ".venv", "__pycache__",
-]);
-
 export interface WorkspaceUsage {
   sessionBytes: number;
   sessionQuotaBytes: number;
@@ -124,6 +121,7 @@ export interface WorkingTreeEntry {
   size: number | null;
   updatedAt: string | null;
   previewable: boolean;
+  isSymbolicLink?: true;
 }
 
 export interface UploadWorkspaceFileResult {
@@ -308,97 +306,43 @@ export function listWorkspaceFiles(
 ): WorkspaceFilesResponse {
   const workspaceDir = workspaceRoot(dataDir, sessionId);
   const entries: WorkspaceFileEntry[] = [];
-  const uploadsDir = join(workspaceDir, "uploads");
-  const extractedDir = join(workspaceDir, "extracted");
-
-  if (existsSync(uploadsDir)) {
-    const visit = (dir: string, prefix: string) => {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        if (entry.name.startsWith(".")) continue;
-        const full = join(dir, entry.name);
-        const rel = `${prefix}/${entry.name}`.replace(/\\/g, "/");
-        if (entry.isDirectory()) {
-          visit(full, rel);
-          continue;
-        }
-        if (!entry.isFile()) continue;
-        if (rel.endsWith(".extract-error.json")) continue;
-        const ext = extname(entry.name).toLowerCase();
-        if (BINARY_EXTENSIONS.has(ext)) {
-          const convertedCandidates = [
-            `extracted/${convertedFileName(entry.name)}.md`,
-            `extracted/${convertedFileName(entry.name)}.txt`,
-            `extracted/${convertedFileName(entry.name)}.csv`,
-          ];
-          const convertedPath =
-            convertedCandidates.find((candidate) =>
-              existsSync(join(workspaceDir, candidate))
-            ) || null;
-          const extractError = convertedPath
-            ? null
-            : readExtractError(rel, workspaceDir);
-          entries.push(
-            fileEntry(workspaceDir, rel, "binary-original", {
-              stageable: false,
-              downloadable: false,
-              convertedPath,
-              extractStatus: convertedPath ? undefined : "failed",
-              extractError,
-            })
-          );
-          continue;
-        }
-        if (TEXT_NATIVE_EXTENSIONS.has(ext)) {
-          entries.push(fileEntry(workspaceDir, rel, "text"));
-        }
+  let sessionBytes = 0;
+  const visit = (dir: string, prefix: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        visit(full, rel);
+        continue;
       }
-    };
-    visit(uploadsDir, "uploads");
-  }
-
-  if (existsSync(extractedDir)) {
-    const visit = (dir: string, prefix: string) => {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        if (entry.name.startsWith(".")) continue;
-        const full = join(dir, entry.name);
-        const rel = `${prefix}/${entry.name}`.replace(/\\/g, "/");
-        if (entry.isDirectory()) {
-          visit(full, rel);
-          continue;
-        }
-        if (!entry.isFile() || !isConvertedPath(rel)) continue;
-        if (entries.some((item) => item.path === rel)) continue;
-        entries.push(fileEntry(workspaceDir, rel, "converted"));
+      if (!entry.isFile() && !(entry.isSymbolicLink() && statSync(full, { throwIfNoEntry: false })?.isFile())) continue;
+      const ext = extname(rel).toLowerCase();
+      let file: WorkspaceFileEntry;
+      if (rel.startsWith("uploads/") && BINARY_EXTENSIONS.has(ext)) {
+        const stem = convertedFileName(entry.name);
+        const convertedPath = [".md", ".txt", ".csv"].map((suffix) => `extracted/${stem}${suffix}`)
+          .find((candidate) => existsSync(join(workspaceDir, candidate))) ?? null;
+        file = fileEntry(workspaceDir, rel, "binary-original", {
+          stageable: false,
+          downloadable: false,
+          convertedPath,
+          extractStatus: convertedPath ? undefined : "failed",
+          extractError: convertedPath ? null : readExtractError(rel, workspaceDir),
+        });
+      } else if (rel.startsWith("extracted/") && isConvertedPath(rel)) {
+        file = fileEntry(workspaceDir, rel, "converted");
+      } else {
+        file = fileEntry(workspaceDir, rel, "text", {
+          stageable: TEXT_NATIVE_EXTENSIONS.has(ext) || isImagePath(rel),
+        });
       }
-    };
-    visit(extractedDir, "extracted");
-  }
-
-  if (existsSync(workspaceDir)) {
-    const visitAgentOutput = (dir: string, prefix: string) => {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        if (entry.name.startsWith(".")) continue;
-        const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
-        const relNorm = rel.replace(/\\/g, "/");
-        if (relNorm === "uploads" || relNorm === "extracted") continue;
-        const full = join(dir, entry.name);
-        if (entry.isDirectory()) {
-          visitAgentOutput(full, relNorm);
-          continue;
-        }
-        if (!entry.isFile()) continue;
-        if (relNorm.endsWith(".extract-error.json")) continue;
-        const ext = extname(entry.name).toLowerCase();
-        if (!TEXT_NATIVE_EXTENSIONS.has(ext) && !isImagePath(relNorm)) continue;
-        if (entries.some((item) => item.path === relNorm)) continue;
-        entries.push(fileEntry(workspaceDir, relNorm, "text"));
-      }
-    };
-    visitAgentOutput(workspaceDir, "");
-  }
+      entries.push(file);
+      if (entry.isFile()) sessionBytes += file.size;
+    }
+  };
+  if (existsSync(workspaceDir)) visit(workspaceDir, "");
 
   entries.sort((a, b) => a.path.localeCompare(b.path));
-  const sessionBytes = dirByteSize(workspaceDir);
   return {
     files: entries,
     workingFolders: describeWorkingFolders(dataDir, sessionId),
@@ -452,66 +396,54 @@ export function listWorkingFolderChildren(
   owner: WorkingFileOwner,
   folderId: string,
   requestedPath = "",
+  desktop = false,
 ): { folderId: string; path: string; entries: WorkingTreeEntry[] } {
   const folder = describeWorkingFolders(dataDir, owner).find(
     (item) => item.id === folderId,
   );
   if (!folder?.available) throw new Error("This folder is not available");
   const normalized = requestedPath.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
-  if (isAbsolute(normalized)) throw new Error("Invalid folder path");
-  if (
-    normalized
-      .split("/")
-      .filter(Boolean)
-      .some((part) => part.startsWith(".") || WORKING_TREE_SKIP_DIRS.has(part))
-  ) {
-    throw new Error("This folder is omitted from the tree");
-  }
   const target = resolve(folder.path, normalized);
+  const fromFolder = relative(folder.path, target);
+  if (fromFolder === ".." || fromFolder.startsWith("../") || fromFolder.startsWith("..\\") || isAbsolute(fromFolder)) {
+    throw new Error("File path must stay inside the selected folder");
+  }
   const stats = statSync(target, { throwIfNoEntry: false });
   if (!stats?.isDirectory()) throw new Error("Folder not found");
   // One verdict for the whole app: a symlinked directory inside the folder
   // (review card 4 case B) is outside, and credential paths are refused.
-  const check = verdict(target, "browse", {
-    readable: [workingFolderRoot(folder)],
-  });
-  if (check.outcome === "sensitive") {
-    throw new Error(
-      `Access to credential path denied: ${check.sensitiveRoot}`
-    );
-  }
-  if (check.outcome !== "inside") {
-    throw new Error("Folder path must stay inside the selected folder");
+  if (!desktop) {
+    const check = verdict(target, "browse", { readable: [workingFolderRoot(folder)] });
+    if (check.outcome === "sensitive") throw new Error(`Access to credential path denied: ${check.sensitiveRoot}`);
+    if (check.outcome !== "inside") throw new Error("File path must stay inside the selected folder");
   }
 
   const entries = readdirSync(target, { withFileTypes: true })
-    .filter(
-      (entry) =>
-        !entry.name.startsWith(".") &&
-        !WORKING_TREE_SKIP_DIRS.has(entry.name) &&
-        (entry.isDirectory() || entry.isFile()),
-    )
-    .map((entry): WorkingTreeEntry => {
+    .flatMap((entry): WorkingTreeEntry[] => {
       const path = (normalized ? `${normalized}/${entry.name}` : entry.name).replace(/\\/g, "/");
-      if (entry.isDirectory()) {
-        return {
+      const symbolic = entry.isSymbolicLink();
+      if (symbolic && !desktop) return [];
+      const entryStats = entry.isFile() || symbolic ? statSync(join(target, entry.name), { throwIfNoEntry: false }) : null;
+      if (entry.isDirectory() || entryStats?.isDirectory()) {
+        return [{
           folderId,
           path,
           isDirectory: true,
           size: null,
           updatedAt: null,
           previewable: false,
-        };
+          ...(symbolic ? { isSymbolicLink: true } : {}),
+        }];
       }
-      const entryStats = statSync(join(target, entry.name));
-      return {
+      if (!entryStats?.isFile()) return [];
+      return [{
         folderId,
         path,
         isDirectory: false,
         size: entryStats.size,
         updatedAt: entryStats.mtime.toISOString(),
         previewable: isImagePath(path) || isHtmlPath(path) || entryStats.size <= MAX_TEXT_VIEW_BYTES,
-      };
+      }];
     })
     .sort(
       (left, right) =>
@@ -536,7 +468,6 @@ export async function listSearchablePaths(root: string, signal?: AbortSignal): P
   const visit = async (absoluteDir: string, relativeDir: string): Promise<void> => {
     for (const entry of await readdir(absoluteDir, { withFileTypes: true })) {
       signal?.throwIfAborted();
-      if (entry.name.startsWith(".") || WORKING_TREE_SKIP_DIRS.has(entry.name)) continue;
       if (!entry.isDirectory() && !entry.isFile()) continue;
       const path = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
       const absolutePath = join(absoluteDir, entry.name);
@@ -683,9 +614,6 @@ export function resolveWorkingReadableFile(
 export function readWorkingFolderTextFile(dataDir: string, owner: WorkingFileOwner, requestedPath: string): { root: "working"; path: string; folderPath: string; size: number; updatedAt: string; content: string } {
   const { target, folder, stats } = resolveWorkingReadableFile(dataDir, owner, requestedPath);
   const folderId = folder.id;
-  if (stats.size > MAX_TEXT_VIEW_BYTES) throw new Error("File is too large to preview");
-  const buffer = readFileSync(target);
-  if (buffer.includes(0)) throw new Error("Binary files cannot be previewed");
   return {
     root: "working",
     path: `${folderId}/${relative(folder.path, target).replace(/\\/g, "/")}`,
@@ -695,7 +623,7 @@ export function readWorkingFolderTextFile(dataDir: string, owner: WorkingFileOwn
     folderPath: folder.path,
     size: stats.size,
     updatedAt: stats.mtime.toISOString(),
-    content: buffer.toString("utf-8"),
+    content: readTextPreview(target, stats),
   };
 }
 

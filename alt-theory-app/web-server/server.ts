@@ -13,7 +13,7 @@ import { randomUUID } from "crypto";
 import { copyFileSync, existsSync, mkdirSync, realpathSync, statSync } from "fs";
 import { createServer } from "http";
 import { homedir } from "os";
-import { basename, join, resolve } from "path";
+import { basename, isAbsolute, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import WebSocket, { WebSocketServer } from "ws";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
@@ -57,6 +57,7 @@ import {
   permanentlyDeleteSession,
   restoreDeletedSession,
   readSessionTextFile,
+  resolveSessionTextFile,
   healFamilyInvariants,
   readSessionAccessSummary,
   readSessionDetail,
@@ -83,7 +84,7 @@ import {
   uploadWorkspaceFile,
   writeWorkingFolderTextFile,
 } from "./workspace-files.js";
-import { FileConflictError, type WriteTextFileOptions } from "./text-file-policy.js";
+import { FileConflictError, readTextPreview, type WriteTextFileOptions } from "./text-file-policy.js";
 import {
   appendAbComparisonRecord,
   currentAbComparisonRecords,
@@ -178,6 +179,7 @@ import {
   recentWorkingFiles,
   searchWorkingFolder,
   readWorkingFolderTextFile,
+  resolveWorkingReadableFile,
 } from "./workspace-files.js";
 
 ensureLocalModeDefaults();
@@ -2667,6 +2669,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         activity: Object.fromEntries(
           [...sessionService.sessionActivity()].filter(([sessionId]) => canSeeInList(sessionId)),
         ),
+        subagentDispatches: Object.fromEntries(
+          [...sessionService.subagentDispatches()].filter(([sessionId]) => canSeeInList(sessionId)),
+        ),
       },
     });
 
@@ -3266,6 +3271,38 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     app,
     httpServer,
     wss,
+    // Called in-process by the desktop shell. The HTTP API uses session-scoped addresses.
+    desktopFiles: {
+      locate(paths: string[]) {
+        return paths.find((path) => isAbsolute(path) && Boolean(statSync(path, { throwIfNoEntry: false }))) ?? null;
+      },
+      read(path: string, edit?: { owner: WorkingFileOwner; root: string; path: string }) {
+        if (!isAbsolute(path)) throw new Error("Expected an absolute file path.");
+        const stats = statSync(path);
+        const content = readTextPreview(path, stats);
+        let editable = false;
+        let folderPath: string | null = null;
+        // Resolve the existing save address independently of the file read.
+        if (edit) {
+          try {
+            if (edit.root === "working") {
+              const { target, folder } = resolveWorkingReadableFile(dataDir, edit.owner, edit.path);
+              editable = samePath(path, target);
+              if (editable) folderPath = folder.path;
+            } else if (typeof edit.owner === "string") {
+              editable = samePath(path, resolveSessionTextFile(dataDir, edit.owner, edit.root, edit.path).path);
+            }
+          } catch {
+            // A missing or moved save address leaves the opened file viewable.
+          }
+        }
+        return { content, size: stats.size, updatedAt: stats.mtime.toISOString(), editable, folderPath };
+      },
+      artifactUrl: artifactPreview.desktopUrl,
+      directory(owner: WorkingFileOwner, folderId: string, path: string) {
+        return listWorkingFolderChildren(dataDir, owner, folderId, path, true);
+      },
+    },
     config: {
       dataDir,
       assetPaths,

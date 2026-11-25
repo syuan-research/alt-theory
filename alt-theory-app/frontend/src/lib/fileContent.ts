@@ -1,4 +1,6 @@
 import { getSessionFileContent, putSessionFileContent, type FileOwner } from "@/api/session-files";
+import { desktopFiles } from "@/lib/native";
+import { isImagePath } from "../../../shared/artifact-types";
 
 /** Mirrors web-server/text-file-policy.ts — the edit cap of the unified
  *  size scheme (5 MB view / 1 MiB edit, owner ruling 2026-09-15). */
@@ -51,24 +53,30 @@ export interface SaveFileOptions {
  */
 export function previewModes(path: string, options: { hasDiff?: boolean; hasFile?: boolean; editable?: boolean } = {}): PreviewMode[] {
   const modes: PreviewMode[] = [];
-  if ((options.hasFile ?? true) && isRenderable(path)) modes.push("rendered");
+  const image = isImagePath(path);
+  if ((options.hasFile ?? true) && (image || isRenderable(path))) modes.push("rendered");
   if (options.hasDiff) modes.push("diff");
-  if (options.hasFile ?? true) {
+  if ((options.hasFile ?? true) && !image) {
     modes.push("source");
     if (options.editable) modes.push("edit");
   }
   return modes;
 }
 
-export async function loadFileContent(owner: FileOwner, ref: FileRef): Promise<FileContent> {
-  const data = await getSessionFileContent(owner, ref.root, ref.path);
+export async function loadFileContent(owner: FileOwner | null, ref: FileRef | null, absolutePath?: string): Promise<FileContent> {
+  const local = desktopFiles();
+  const edit = owner !== null && ref ? { owner, ...ref } : undefined;
+  const data = local && absolutePath ? await local.read(absolutePath, edit)
+    : edit ? await getSessionFileContent(edit.owner, edit.root, edit.path) : null;
+  const path = ref?.path ?? absolutePath;
+  if (!data || !path) throw new Error("The current file is not available.");
   return {
-    content: data.content ?? "",
-    updatedAt: data.updatedAt ?? null,
-    renderable: isRenderable(ref.path),
-    editable: isEditable(ref) && (data.size ?? 0) <= MAX_TEXT_EDIT_BYTES,
-    size: data.size ?? null,
-    path: data.path ?? ref.path,
+    content: data.content,
+    updatedAt: data.updatedAt,
+    renderable: isRenderable(path),
+    editable: data.editable !== false && isEditable(ref) && data.size <= MAX_TEXT_EDIT_BYTES,
+    size: data.size,
+    path: "path" in data ? data.path : path,
     folderPath: data.folderPath ?? null,
   };
 }

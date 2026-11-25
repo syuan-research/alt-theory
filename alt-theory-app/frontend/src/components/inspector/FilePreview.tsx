@@ -1,5 +1,5 @@
 import { isImagePath, isHtmlPath } from "../../../../shared/artifact-types";
-import { ArtifactView } from "./ArtifactView";
+import { ArtifactView, PreviewOpenError } from "./ArtifactView";
 import { useShell } from "@/context/ShellContext";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { t } from "@/i18n";
@@ -11,6 +11,7 @@ import {
   saveFileContent,
   previewModes,
   isEditable,
+  MAX_TEXT_EDIT_BYTES,
   type FileContent,
   type FileRef,
   type PreviewMode,
@@ -26,6 +27,7 @@ import {
   setDraft as cacheDraft,
 } from "@/lib/fileDrafts";
 import { useApp } from "@/context/AppProvider";
+import { desktopFiles } from "@/lib/native";
 
 /** Typing pause before an edit saves itself (owner ruling 2026-09-28). */
 const AUTOSAVE_MS = 1000;
@@ -75,6 +77,7 @@ function TextFilePreview({
   draftPrimaryDir,
   path,
   fileRef,
+  absolutePath,
   diff,
   mode,
   onModeChange,
@@ -87,6 +90,7 @@ function TextFilePreview({
   path: string;
   /** Where the current file lives; null = no current file (outside every root). */
   fileRef: FileRef | null;
+  absolutePath?: string;
   diff?: string;
   mode: PreviewMode;
   onModeChange: (mode: PreviewMode) => void;
@@ -101,15 +105,17 @@ function TextFilePreview({
   const [conflict, setConflict] = useState(false);
 
   const owner = sessionId ?? (draftPrimaryDir !== undefined ? { primaryDir: draftPrimaryDir } : null);
+  const hasFile = Boolean(fileRef || (absolutePath && desktopFiles()));
   const key = owner !== null && fileRef
-    ? draftKey(sessionId ?? `draft:${draftPrimaryDir}`, fileRef.root, fileRef.path) : "";
+    ? draftKey(sessionId ?? `draft:${draftPrimaryDir}`, fileRef.root, fileRef.path) : absolutePath ?? "";
 
   const modes = previewModes(path, {
     hasDiff: Boolean(diff),
-    hasFile: fileRef !== null,
+    hasFile,
     editable: file?.editable ?? false,
   });
   const active: PreviewMode = modes.includes(mode) ? mode : (modes[0] ?? "source");
+  const media = isImagePath(path) || isHtmlPath(path);
 
   // Latest-value refs so stable callbacks (hotkey, timer) never go stale.
   const keyRef = useRef(key);
@@ -177,15 +183,17 @@ function TextFilePreview({
     setStatus({ text: "" });
     setConflict(false);
     setDraft(null);
-    if (owner === null || !fileRef || (active === "rendered" && isHtmlPath(path))) return;
+    if (!hasFile || (media && active === "rendered") || isImagePath(path)) return;
     const loadKey = key;
     let cancelled = false;
+    let editable = false;
     // Wait out a write from an earlier visit, so the load never reads the
     // disk from before our own save.
     afterWrites(loadKey)
-      .then(() => loadFileContent(owner, fileRef))
+      .then(() => loadFileContent(owner, fileRef, absolutePath))
       .then((loaded) => {
         if (cancelled) return;
+        editable = loaded.editable;
         // Text still parked here means its write failed: it comes back and
         // retries against the version it was written over (a changed file
         // then shows the conflict bar instead of being overwritten).
@@ -193,7 +201,7 @@ function TextFilePreview({
         if (parked === null || !bases.has(loadKey)) bases.set(loadKey, loaded);
         setFile(loaded);
         setDraft(parked);
-        if (parked !== null) void saveRef.current();
+        if (parked !== null && loaded.editable) void saveRef.current();
       })
       .catch((e) => !cancelled && setError(e instanceof Error ? e.message : t("The current file is not available.")));
     return () => {
@@ -201,9 +209,11 @@ function TextFilePreview({
       window.clearTimeout(timer.current);
       // Leaving the file (another file, conversation, closing the pane)
       // saves at once; a failure keeps the draft for the next visit.
-      if (getDraft(loadKey) !== null) persist(owner, fileRef, loadKey).catch(() => undefined);
+      if (editable && owner !== null && fileRef && getDraft(loadKey) !== null) {
+        persist(owner, fileRef, loadKey).catch(() => undefined);
+      }
     };
-  }, [key, isHtmlPath(path) && active === "rendered"]);
+  }, [key, absolutePath, media && active === "rendered"]);
 
   // Any conversation may rewrite the open file (they share project
   // folders): whenever one finishes a run, with no unsaved text here, show
@@ -216,12 +226,12 @@ function TextFilePreview({
   useEffect(() => {
     const finished = seenRunning.current.some((id) => !running.includes(id));
     seenRunning.current = running;
-    if (!finished || owner === null || !fileRef || /\.html?$/i.test(path) || getDraft(key) !== null) return;
+    if (!finished || !hasFile || media || getDraft(key) !== null) return;
     const loadKey = key;
     afterWrites(loadKey)
       .then(() => {
         const before = bases.get(loadKey);
-        return loadFileContent(owner, fileRef).then((loaded) => ({ loaded, before }));
+        return loadFileContent(owner, fileRef, absolutePath).then((loaded) => ({ loaded, before }));
       })
       .then(({ loaded, before }) => {
         if (keyRef.current !== loadKey || getDraft(loadKey) !== null) return;
@@ -241,7 +251,7 @@ function TextFilePreview({
     if (owner === null || !fileRef) return;
     const clearKey = key;
     clearDraft(clearKey);
-    loadFileContent(owner, fileRef)
+    loadFileContent(owner, fileRef, absolutePath)
       .then((loaded) => {
         // A late return must not clobber whatever file the pane shows now.
         if (keyRef.current !== clearKey) return;
@@ -311,13 +321,15 @@ function TextFilePreview({
 
   const body = () => {
     if (active === "diff") return <DiffLines diff={diff ?? ""} />;
-    if (!fileRef) return <div className="rp-empty">{t("The current file is not available.")}</div>;
-    if (active === "rendered" && isHtmlPath(path) && owner !== null) return <ArtifactView owner={owner} file={fileRef} controlsHost={controlsHost} />;
-    if (error) return <div className="rp-empty">{error}</div>;
+    if (!hasFile) return <div className="rp-empty">{t("The current file is not available.")}</div>;
+    if (active === "rendered" && media) return <ArtifactView owner={owner} file={fileRef} absolutePath={absolutePath} controlsHost={controlsHost} />;
+    if (error) return <PreviewOpenError error={error} absolutePath={absolutePath} />;
     if (!file) return <div className="rp-empty">{t("Loading…")}</div>;
     if (active === "rendered") {
       return (
-        <MarkdownBody text={file.content} sessionId={sessionId} baseFile={fileRef ?? undefined} baseFolderPath={file.folderPath} draftPrimaryDir={draftPrimaryDir} />
+        <MarkdownBody text={file.content} sessionId={sessionId} baseFile={absolutePath ? undefined : fileRef ?? undefined}
+          baseFolderPath={absolutePath ? absolutePath.replace(/\\/g, "/").replace(/\/[^/]*$/, "") || "/" : file.folderPath}
+          draftPrimaryDir={draftPrimaryDir} />
       );
     }
     return <pre>{file.content}</pre>;
@@ -325,8 +337,7 @@ function TextFilePreview({
 
   // Ctrl+F searches what is shown as text; rendered HTML (a sandboxed
   // iframe) is not searchable, so the bar closes there.
-  const searchable =
-    active === "diff" || (file !== null && !(active === "rendered" && /\.html?$/i.test(path)));
+  const searchable = active === "diff" || (file !== null && !(active === "rendered" && media));
   // The mirror's relayout makes typing noticeably slower from about this size.
   const slowMirror = editText !== null && editText.length > 200_000;
   useFindTarget(
@@ -366,7 +377,7 @@ function TextFilePreview({
     else textarea.scrollTop = scrollSeen.current.card;
   }, [active, mirrored]);
 
-  const tooLargeToEdit = file !== null && fileRef !== null && isEditable(fileRef) && !file.editable;
+  const tooLargeToEdit = file?.size != null && fileRef !== null && isEditable(fileRef) && file.size > MAX_TEXT_EDIT_BYTES;
 
   const actionsBar = () => {
     if (active !== "edit" || !file) return null;
@@ -446,9 +457,5 @@ function DiffLines({ diff }: { diff: string }) {
 export function FilePreview(props: Parameters<typeof TextFilePreview>[0]) {
   const shell = useShell();
   const revision = shell.target?.revision ?? 0;
-  const owner = props.sessionId ?? (props.draftPrimaryDir !== undefined ? { primaryDir: props.draftPrimaryDir } : null);
-  if (isImagePath(props.path) && props.fileRef && owner !== null) {
-    return <div className="preview"><div className="change-preview-body expanded"><ArtifactView key={revision} owner={owner} file={props.fileRef} /></div>{props.footer}</div>;
-  }
   return <TextFilePreview key={revision} {...props} />;
 }

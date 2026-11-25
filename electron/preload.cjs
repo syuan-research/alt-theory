@@ -16,6 +16,12 @@ contextBridge.exposeInMainWorld("altElectron", {
   pickFiles: () => ipcRenderer.invoke("alt:pickFiles"),
   revealPath: (target) => ipcRenderer.invoke("alt:revealPath", target),
   openPath: (target) => ipcRenderer.invoke("alt:openPath", target),
+  desktopFiles: {
+    locate: (paths) => ipcRenderer.invoke("alt:desktopFiles:locate", paths),
+    read: (path, edit) => ipcRenderer.invoke("alt:desktopFiles:read", path, edit),
+    artifactUrl: (path, source) => ipcRenderer.invoke("alt:desktopFiles:artifactUrl", path, source),
+    directory: (owner, folderId, path) => ipcRenderer.invoke("alt:desktopFiles:directory", owner, folderId, path),
+  },
   /** Absolute path for a File from a desktop drag-drop (not available in plain browsers). */
   getPathForFile: (file) => {
     try {

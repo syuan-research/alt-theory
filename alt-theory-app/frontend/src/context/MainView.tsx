@@ -73,6 +73,10 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
     onMessage: (message) => onMessageRef.current(message),
   });
   const sessionId = conv.sessionId;
+  const { resetSubagentDispatches } = app;
+  useEffect(() => {
+    if (!conv.wsConnected) resetSubagentDispatches();
+  }, [conv.wsConnected, resetSubagentDispatches]);
 
   // The list highlight follows what the user opened or created, nothing
   // else: a fresh app shows none (owner 2026-09-24); an open in flight shows

@@ -20,8 +20,9 @@ export type ViewTarget = (
   | { kind: "conversation"; sessionId: string }
   /** A file of a conversation: its managed workspace, or a working folder
    *  (`path` = "<folderId>/<path in folder>"). */
-  | { kind: "file"; sessionId: string; root: "workspace" | "working"; path: string }
-  | { kind: "file"; sessionId: null; draftPrimaryDir: string | null; root: "working"; path: string }
+  | { kind: "file"; sessionId: string; root: "workspace" | "working"; path: string; absolutePath?: string }
+  | { kind: "file"; sessionId: null; draftPrimaryDir: string | null; root: "working"; path: string; absolutePath?: string }
+  | { kind: "file"; sessionId: string | null; draftPrimaryDir?: string | null; root: "local"; path: string }
   /** A file a conversation changed; `title` is its display path. */
   | { kind: "change"; sessionId: string; path: string; title: string }
   /** A record of a conversation (researcher Records rail). */

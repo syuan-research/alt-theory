@@ -9,6 +9,7 @@
  */
 
 export type {
+  ActiveSubagentDispatch,
   ClientMessage,
   ServerMessage,
   SessionSnapshot,

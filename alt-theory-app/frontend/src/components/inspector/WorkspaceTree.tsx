@@ -18,7 +18,7 @@ import { t } from "@/i18n";
 import { useConversationContext } from "@/context/ConversationContext";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
-import { hasNativeBridge, openPath } from "@/lib/native";
+import { hasNativeBridge } from "@/lib/native";
 import { NEW_DRAFT, stageInDraft, unstageInDraft, useDraft } from "@/lib/draft";
 import { WORKSPACE_PATH_MIME } from "@/lib/workspace";
 import { FilePreview } from "@/components/inspector/FilePreview";
@@ -174,25 +174,19 @@ export function WorkspaceTree() {
   const openFile = (entry: ManagedTreeEntry) => {
     if ("isDirectory" in entry && entry.isDirectory) return;
     if (!sessionId || !("kind" in entry)) return;
-    if (entry.kind === "binary-original") {
-      void openPath(`${managedFolderPath}/${entry.path}`).catch(error => window.alert(String(error)));
-      return;
-    }
     setPreviewView("rendered");
-    shell.openTarget({ kind: "file", sessionId, root: "workspace", path: entry.path });
+    const absolutePath = managedFolderPath ? `${managedFolderPath}/${entry.path}` : undefined;
+    shell.openTarget({ kind: "file", sessionId, root: "workspace", path: entry.path, absolutePath });
   };
 
   const openWorkingFile = (entry: WorkingTreeEntry) => {
-    if (!entry.previewable) {
-      const folder = workingFolders.find(item => item.id === entry.folderId);
-      if (folder) void openPath(`${folder.path}/${entry.path}`).catch(error => window.alert(String(error)));
-      return;
-    }
     setPreviewView("rendered");
     const path = `${entry.folderId}/${entry.path}`;
+    const folder = workingFolders.find(item => item.id === entry.folderId);
+    const absolutePath = folder ? `${folder.path}/${entry.path}` : undefined;
     shell.openTarget(sessionId
-      ? { kind: "file", sessionId, root: "working", path }
-      : { kind: "file", sessionId: null, draftPrimaryDir: primaryDir, root: "working", path });
+      ? { kind: "file", sessionId, root: "working", path, absolutePath }
+      : { kind: "file", sessionId: null, draftPrimaryDir: primaryDir, root: "working", path, absolutePath });
   };
 
 
@@ -204,13 +198,18 @@ export function WorkspaceTree() {
         sessionId={fileTarget.sessionId}
         draftPrimaryDir={fileTarget.sessionId === null ? fileTarget.draftPrimaryDir : undefined}
         path={fileTarget.path}
-        fileRef={{ root: fileTarget.root, path: fileTarget.path }}
+        fileRef={fileTarget.root === "local" ? null : { root: fileTarget.root, path: fileTarget.path }}
+        absolutePath={fileTarget.root === "local" ? fileTarget.path : fileTarget.absolutePath}
         mode={previewView}
         onModeChange={setPreviewView}
         onSaved={(saved) => {
           // A conflict copy saved to a sibling: follow it there.
           if (saved.path === fileTarget.path) return;
-          shell.openTarget({ ...fileTarget, path: saved.path });
+          if (fileTarget.root !== "local") {
+            const name = saved.path.split("/").at(-1) ?? saved.path;
+            const absolutePath = fileTarget.absolutePath?.replace(/[^\\/]+$/, () => name);
+            shell.openTarget({ ...fileTarget, path: saved.path, absolutePath });
+          }
         }}
         footer={
           fileTarget.root === "workspace" ? (
@@ -462,6 +461,7 @@ function WorkingTree({
   );
   const [resolvedExpandSignal, setResolvedExpandSignal] = useState(0);
   const [searchResult, setSearchResult] = useState<{ query: string; entries: WorkingTreeEntry[]; truncated: boolean } | null>(null);
+  const [browseError, setBrowseError] = useState<string | null>(null);
   const searchToken = useRef<string | null>(null);
   const childrenRef = useRef(childrenByPath);
   const loadingPaths = useRef(new Set<string>());
@@ -474,6 +474,7 @@ function WorkingTree({
     if (!force && existing) return existing;
     if (loadingPaths.current.has(path)) return existing ?? [];
     loadingPaths.current.add(path);
+    setBrowseError(null);
     try {
       const response = await listWorkingDirectory(owner, folderId, path);
       setChildrenByPath((current) => {
@@ -498,6 +499,9 @@ function WorkingTree({
         return next;
       });
       return response.entries;
+    } catch (error) {
+      setBrowseError(error instanceof Error ? error.message : String(error));
+      return existing ?? [];
     } finally {
       loadingPaths.current.delete(path);
     }
@@ -569,7 +573,7 @@ function WorkingTree({
       const children = await loadDirectory(path);
       for (const child of children) {
         if (cancelled) return;
-        if (child.isDirectory) await loadAll(child.path);
+        if (child.isDirectory && !child.isSymbolicLink) await loadAll(child.path);
       }
     };
     void loadAll("").then(() => {
@@ -589,11 +593,12 @@ function WorkingTree({
   if (searching && activeResult === null) {
     return <div className="wb-note">{t("Searching files…")}</div>;
   }
-  if (entries.length === 0) return searching
+  if (entries.length === 0 && !browseError) return searching
     ? <div className="wb-note">{t("No matching files.")}</div>
     : null;
   return (
     <div className="working-tree">
+      {browseError && !searching && <div className="wb-note">{browseError}</div>}
       <FileTree
         entries={entries}
         onOpenFile={onOpenFile}

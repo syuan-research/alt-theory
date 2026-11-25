@@ -34,6 +34,9 @@ test("a report's sibling scripts, data and binary images share its directory URL
     writeFileSync(join(report, "data/results.json"), '{"value":43}');
     assert.deepEqual(await (await fetch(new URL("data/results.json", url))).json(), { value: 43 });
     await assert.rejects(preview.url(dirs.sessionId, "workspace", "../records/anything"), /inside/);
+    const local = await preview.desktopUrl(join(report, "index.html"));
+    assert.match(await (await fetch(local)).text(), /app.js/);
+    assert.deepEqual(await (await fetch(new URL("data/results.json", local))).json(), { value: 43 });
   } finally {
     preview.close();
     rmSync(dataDir, { recursive: true, force: true });

@@ -1,3 +1,7 @@
+import type { WorkingDirectoryResponse } from "@/api/types";
+import type { FileOwner } from "@/api/session-files";
+import type { FileRef } from "@/lib/fileContent";
+
 // Native bridge exposed by the Electron preload (window.altElectron). In a
 // plain browser (dev) it's absent, so each call falls back to a path
 // prompt — the existing behavior — and reveal is simply unavailable.
@@ -19,6 +23,14 @@ interface AltElectron {
   pickFiles(): Promise<string[]>;
   revealPath(target: string): Promise<void>;
   openPath?(target: string): Promise<void>;
+  desktopFiles?: {
+    locate(paths: string[]): Promise<string | null>;
+    read(path: string, edit?: FileRef & { owner: FileOwner }): Promise<{
+      content: string; size: number; updatedAt: string; editable: boolean; folderPath: string | null;
+    }>;
+    artifactUrl(path: string, source?: FileRef & { owner: FileOwner }): Promise<string>;
+    directory(owner: FileOwner, folderId: string, path: string): Promise<WorkingDirectoryResponse>;
+  };
   /** Electron only — real absolute path for a dropped File. */
   getPathForFile?(file: File): string;
   getUpdateStatus?(): Promise<AppUpdateStatus>;
@@ -32,7 +44,11 @@ interface AltElectron {
 }
 
 function bridge(): AltElectron | null {
-  return (window as unknown as { altElectron?: AltElectron }).altElectron ?? null;
+  return typeof window === "undefined" ? null : (window as unknown as { altElectron?: AltElectron }).altElectron ?? null;
+}
+
+export function desktopFiles() {
+  return bridge()?.desktopFiles;
 }
 
 /** True when running inside the Electron bundle (native dialogs available). */

@@ -1,4 +1,5 @@
 import { ApiError, fetchJson, readErrorMessage } from "./http";
+import { desktopFiles } from "@/lib/native";
 import type {
   DeleteWorkspaceFileResult,
   SessionChanges,
@@ -139,6 +140,8 @@ export async function listWorkingDirectory(
   folderId: string,
   path: string,
 ): Promise<WorkingDirectoryResponse> {
+  const local = desktopFiles();
+  if (local) return local.directory(owner, folderId, path);
   const qs = new URLSearchParams({ root: "working", folderId, path });
   return fetchJson<WorkingDirectoryResponse>(readFilesUrl(owner, qs));
 }

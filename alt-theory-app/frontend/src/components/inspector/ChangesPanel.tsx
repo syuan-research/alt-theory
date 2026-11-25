@@ -56,7 +56,7 @@ export function ChangesPanel() {
   const [closed, setClosed] = usePaneMemory<string[]>(`${sessionId}:changes:closed`, []);
   const [mode, setMode] = usePaneMemory<PreviewMode>(
     `${sessionId}:changes:${changeTarget ? targetKey(changeTarget) : ""}:mode`,
-    "rendered",
+    "diff",
   );
   const [groups, setGroups] = usePaneMemory<ChangeGroup[] | null>(`${sessionId}:changes:groups`, null);
   const [error, setError] = usePaneMemory<string | null>(`${sessionId}:changes:error`, null);
@@ -124,6 +124,7 @@ export function ChangesPanel() {
       <FilePreview
         sessionId={selected.contentRef?.sessionId ?? sessionId}
         path={selected.displayPath}
+        absolutePath={selected.resolvedPath}
         fileRef={selected.contentRef ?? null}
         diff={selected.diff}
         mode={mode}

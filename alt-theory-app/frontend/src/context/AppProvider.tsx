@@ -15,6 +15,7 @@ import { fetchAppInfo, getWorkingFolders } from "@/api/config";
 import { fetchSessionList } from "@/api/sessions";
 import type {
   DiscoveryLists,
+  ActiveSubagentDispatch,
   SessionSummary,
   TranscriptView,
   ViewMode,
@@ -82,6 +83,8 @@ export interface AppContextValue {
    * for a conversation the list lacks, re-reads the list.
    */
   applyActivity: (message: ActivityMessage) => ActivityChange[];
+  subagentDispatches: Record<string, ActiveSubagentDispatch>;
+  resetSubagentDispatches: () => void;
   sessionDisplayNames: Record<string, { alias: string; snippet: string }>;
   setSessionDisplayName: (sessionId: string, alias: string) => void;
   sessionsLoading: boolean;
@@ -255,7 +258,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // (re)connect and every change after it; nothing polls.
   const [activity, setActivity] = useState<ActivityMap>(null);
   const activityRef = useRef(activity);
-  const runStarts = useRef(new Map<string, number>());
+  const [subagentDispatches, setSubagentDispatches] = useState<Record<string, ActiveSubagentDispatch>>({});
+  const resetSubagentDispatches = useCallback(() => setSubagentDispatches({}), []);
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
   const refreshTimer = useRef<number | null>(null);
@@ -269,11 +273,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const applyActivity = useCallback(
     (message: ActivityMessage): ActivityChange[] => {
       const { next, changes } = stepActivity(activityRef.current, message);
-      if (message.type === "activity_snapshot") runStarts.current.clear();
-      else for (const { sessionId, before, now } of changes) {
-        if (now === "idle" || now === "failed") runStarts.current.delete(sessionId);
-        else if (now === "running" && (before === "idle" || before === "failed")) {
-          runStarts.current.set(sessionId, Date.now());
+      if (message.type === "activity_snapshot") {
+        setSubagentDispatches(message.payload.subagentDispatches ?? {});
+      } else {
+        const { sessionId, subagentDispatch } = message.payload;
+        if (subagentDispatch !== undefined) {
+          setSubagentDispatches((current) => {
+            const next = { ...current };
+            if (subagentDispatch) next[sessionId] = subagentDispatch;
+            else delete next[sessionId];
+            return next;
+          });
         }
       }
       activityRef.current = next;
@@ -296,7 +306,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ? sessions.map((row) => ({
           ...row,
           runStatus: activity[row.sessionId] ?? "idle",
-          runObservedAt: runStarts.current.get(row.sessionId),
         }))
         : sessions,
     [activity, sessions],
@@ -497,6 +506,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       refreshLocalConfig,
       sessions: listed,
       applyActivity,
+      subagentDispatches,
+      resetSubagentDispatches,
       sessionDisplayNames,
       setSessionDisplayName,
       sessionsLoading,
@@ -531,6 +542,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       refreshLocalConfig,
       listed,
       applyActivity,
+      subagentDispatches,
+      resetSubagentDispatches,
       sessionDisplayNames,
       setSessionDisplayName,
       sessionsLoading,

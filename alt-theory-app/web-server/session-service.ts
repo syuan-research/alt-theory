@@ -134,6 +134,7 @@ import type {
   TranscriptMessage,
   TranscriptWindow,
   TurnRows,
+  ActiveSubagentDispatch,
 } from "./websocket-protocol.js";
 import {
   pageBefore,
@@ -159,8 +160,9 @@ import { describeChildOutcome, type ChildOutcome } from "./child-outcome.js";
 import {
   clampSubagentMode,
   spawnedSessionId,
-  spawnedAgentFromResult,
-  type SpawnResultDetails,
+  subagentActionFromResult,
+  type AgentMessageResult,
+  type SubagentResultDetails,
   inheritsSmartApproval,
   createAgentTeamTools,
   LEAD_DELEGATION_PROMPT_SECTION,
@@ -300,6 +302,7 @@ export interface ActivityEvent {
   sessionId: string;
   status: ListActivity;
   listChanged?: true;
+  subagentDispatch?: ActiveSubagentDispatch | null;
 }
 
 /** Events that can move a conversation's list activity. */
@@ -349,7 +352,7 @@ export type SessionServiceEvent =
       };
     }
   | { type: "tool_updated"; payload: { callId: string; text?: string } }
-  | { type: "tool_finished"; payload: { callId: string; success: boolean; approval?: TranscriptMessage["approval"]; spawnedAgent?: TranscriptMessage["spawnedAgent"] } }
+  | { type: "tool_finished"; payload: { callId: string; success: boolean; approval?: TranscriptMessage["approval"]; subagentAction?: TranscriptMessage["subagentAction"] } }
   | {
       type: "run_completed";
       payload: { snapshot: SessionSnapshot } & TurnRows;
@@ -563,6 +566,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
     Set<(event: SessionServiceEvent) => void>
   >();
   private readonly activityListeners = new Set<(event: ActivityEvent) => void>();
+  private readonly activeSubagentDispatches = new Map<string, ActiveSubagentDispatch>();
   /** The non-idle activity last told to the lists, per conversation. */
   private readonly lastActivity = new Map<string, Exclude<ListActivity, "idle">>();
   private readonly approvalListeners = new Set<
@@ -1712,10 +1716,22 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
   /** Run the latest user message again from its start, without a visible child. */
   async retryLatestFromStart(sessionId: string): Promise<RunHandle> {
     const previous = this.requireSession(sessionId);
-    if (!previous.runState.isIdle()) {
-      await this.abort(sessionId, "retry_latest", "user_continuation");
-      await previous.runSettlement;
+    const dispatch = this.activeSubagentDispatches.get(sessionId);
+    try {
+      if (!previous.runState.isIdle()) {
+        await this.abort(sessionId, "retry_latest", "user_continuation");
+        await previous.runSettlement;
+      }
+      return this.retryLatestUserMessage(sessionId);
+    } catch (error) {
+      if (dispatch?.startedAt != null && this.sessions.get(sessionId)?.runState.isIdle()) {
+        this.clearSubagentDispatch(sessionId, dispatch.id);
+      }
+      throw error;
     }
+  }
+
+  private retryLatestUserMessage(sessionId: string): RunHandle {
     const managed = this.requireSession(sessionId);
     const entryId = this.latestUserEntryId(sessionId);
     if (!entryId) throw new Error("No latest user turn is available to retry");
@@ -2445,6 +2461,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
       attachments?: string[];
       /** Subagent runs started by the agent team: mail the outcome to the lead. */
       notifyParent?: boolean;
+      dispatchId?: string;
       userSubagentAction?: "user-guidance" | "user-retry";
     } = {},
   ): RunHandle {
@@ -2483,6 +2500,13 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
       completedAt: null,
     });
 
+    const dispatch = this.activeSubagentDispatches.get(sessionId);
+    const dispatchId = options.dispatchId ??
+      (options.userSubagentAction && dispatch?.startedAt != null ? dispatch.id : undefined);
+    if (dispatch && options.dispatchId === dispatch.id) {
+      this.activeSubagentDispatches.set(sessionId, { id: dispatch.id, startedAt: Date.parse(acceptedAt) });
+      this.noteActivity(managed, true);
+    }
     this.emitRunPhase(managed, "connecting");
 
     const notifyParent = managed.subagentParentId && (options.notifyParent || options.userSubagentAction);
@@ -2617,6 +2641,9 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
       // finishRun, and the old instance's model runtime would die mid-call.
       outcome = "completed";
     })().finally(async () => {
+      if (dispatchId && managed.pendingInterruptionCause !== "user_continuation") {
+        this.clearSubagentDispatch(sessionId, dispatchId);
+      }
       await this.finishRun(managed, outcome, userEntryId);
       if (outcome !== "completed") return;
       const live = this.sessions.get(managed.manifest.sessionId);
@@ -2765,6 +2792,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
     interruptionCause: InterruptionCause = "unknown",
   ): Promise<void> {
     const managed = this.requireSession(sessionId);
+    const dispatch = this.activeSubagentDispatches.get(sessionId);
     managed.pendingInterruptionCause = interruptionCause;
     managed.runState.stopping();
     // Unsent queued messages go back to the editor whole: the text and the
@@ -2792,6 +2820,9 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
     managed.session.abortCompaction();
     await managed.session.abort();
     await this.settle(managed);
+    if (dispatch?.startedAt != null && interruptionCause !== "user_continuation") {
+      this.clearSubagentDispatch(sessionId, dispatch.id);
+    }
     appendSessionEvent(managed.manifest.recordsDir, {
       sessionId: managed.manifest.sessionId,
       type: "run_aborted",
@@ -2830,6 +2861,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
         attachments: managed.queuedAttachments.get(entry) ?? [],
       })),
     ];
+    const dispatchId = this.activeSubagentDispatches.get(sessionId)?.id;
     managed.retractingQueue = true;
     try {
       // One clear of Pi's queue; the mirror catches up with the re-queues.
@@ -2850,6 +2882,9 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
       // message's start failed, hand everything back to the editor the
       // way plain Stop would, then report the failure.
       const live = this.requireSession(sessionId);
+      if (dispatchId && live.runState.isIdle()) {
+        this.clearSubagentDispatch(sessionId, dispatchId);
+      }
       live.pendingInterruptSendText = null;
       const restoredAttachments = [
         ...selectedAttachments,
@@ -2985,8 +3020,13 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
     return activity;
   }
 
+  subagentDispatches(): ReadonlyMap<string, ActiveSubagentDispatch> {
+    return this.activeSubagentDispatches;
+  }
+
   private activityOf(managed: ManagedSession): ListActivity {
-    const running = !managed.runState.isIdle();
+    const running = !managed.runState.isIdle() ||
+      this.activeSubagentDispatches.get(managed.manifest.sessionId)?.startedAt != null;
     if (running && managed.approvalBridge.listPending().length > 0) return "awaiting-approval";
     if (running) return "running";
     return this.latestRecoveryState(managed)?.outcome === "failed" ? "failed" : "idle";
@@ -3011,18 +3051,21 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
     // What the lists are told is the baseline the next change compares with.
     if (status === "idle") this.lastActivity.delete(sessionId);
     else this.lastActivity.set(sessionId, status);
-    const event: ActivityEvent = { sessionId, status, listChanged: true };
+    const dispatch = this.activeSubagentDispatches.get(sessionId);
+    const event: ActivityEvent = { sessionId, status, listChanged: true, ...(dispatch && { subagentDispatch: dispatch }) };
     for (const listener of this.activityListeners) listener(event);
   }
 
   /** Tell the lists when a conversation's activity moved; silent otherwise. */
-  private noteActivity(managed: ManagedSession): void {
+  private noteActivity(managed: ManagedSession, dispatchChanged = false): void {
     const sessionId = managed.manifest.sessionId;
     const status = this.activityOf(managed);
-    if ((this.lastActivity.get(sessionId) ?? "idle") === status) return;
+    if (!dispatchChanged && (this.lastActivity.get(sessionId) ?? "idle") === status) return;
     if (status === "idle") this.lastActivity.delete(sessionId);
     else this.lastActivity.set(sessionId, status);
-    for (const listener of this.activityListeners) listener({ sessionId, status });
+    const event: ActivityEvent = { sessionId, status };
+    if (dispatchChanged) event.subagentDispatch = this.activeSubagentDispatches.get(sessionId) ?? null;
+    for (const listener of this.activityListeners) listener(event);
   }
 
   getManifest(sessionId: string): AssemblyManifest {
@@ -3784,7 +3827,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
   async spawnSubagent(
     parentSessionId: string,
     options: SpawnSubagentOptions,
-  ): Promise<{ report: string; sessionId: string }> {
+  ): Promise<{ report: string; sessionId: string; dispatchId: string }> {
     const parent = this.requireSession(parentSessionId);
     const header = readV4SessionHeader(parent.manifest.recordsDir);
     const mode = clampSubagentMode(parent.getAltMode(), options.permission);
@@ -3922,7 +3965,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
     });
     const report = [
       `Spawned subagent "${label}" (session ${child.sessionId}, ${agentType}, ${mode === "read-only" ? "read-only" : "ask"} permission, ${modelOverride ? `model ${modelOverride.provider}/${modelOverride.modelId}${modelOverride.thinkingLevel ? `:${modelOverride.thinkingLevel}` : ""}` : "no model selected"}).`,
-      started === "queued"
+      started.status === "queued"
         ? `It is queued behind ${SUBAGENT_CONCURRENCY} running subagents and starts automatically.`
         : "It is working in the background.",
       "Its completion will arrive in this conversation automatically; keep working meanwhile.",
@@ -3930,7 +3973,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
     ]
       .filter(Boolean)
       .join(" ");
-    return { report, sessionId: child.sessionId };
+    return { report, sessionId: child.sessionId, dispatchId: started.id };
   }
 
   /**
@@ -3946,7 +3989,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
     message: string,
     signal?: AbortSignal,
     toolCallId = "",
-  ): Promise<string> {
+  ): Promise<AgentMessageResult> {
     const needle = agent.trim();
     const children = this.subagentChildren(fromId);
     // A Session ID wins over a name, so a subagent named like another
@@ -3993,9 +4036,9 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
       body: message,
       ...(peer ? { peer: true } : {}),
     });
-    return idle
+    return { report: idle
       ? `Delivered to ${label}; it is acting on your message now.`
-      : `Delivered to ${label}; it sees your message at its next step.`;
+      : `Delivered to ${label}; it sees your message at its next step.` };
   }
 
   private peerContactGrants(from: ManagedSession, targetId: string, theirs: string[]) {
@@ -4129,12 +4172,13 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
     parentSessionId: string,
     childId: string,
     message: string,
-  ): Promise<string> {
+  ): Promise<AgentMessageResult> {
     if (!this.sessions.get(childId)) {
       const parent = this.requireSession(parentSessionId);
       await this.openSession(childId, parent.selectors);
     }
     const child = this.requireSession(childId);
+    const details = { sessionId: childId, label: this.sessionAlias(childId) ?? undefined };
     const envelope: AgentMailEnvelope = {
       at: new Date().toISOString(),
       from: parentSessionId,
@@ -4154,18 +4198,20 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
     );
     if (!child.runState.isIdle()) {
       await child.session.steer(fragment);
-      return "Delivered: the subagent sees your message at its next step.";
+      return { report: "Delivered: the subagent sees your message at its next step.", details };
     }
     // A message to an idle subagent always acts (owner 2026-08-07: the old
     // opt-in start_turn left messages lying unread — removed).
-    if (!this.queuedSubagentIds.has(childId)) {
-      const queued = this.startSubagentRun(childId, fragment, true);
-      return queued === "queued"
-        ? "The subagent is queued; it acts on your message when a slot frees up."
-        : "The subagent is acting on your message now.";
+    if (!this.queuedSubagentIds.has(childId) && !this.activeSubagentDispatches.has(childId)) {
+      const started = this.startSubagentRun(childId, fragment, true);
+      return {
+        report: started.status === "queued"
+          ? "The subagent is queued; it acts on your message when a slot frees up."
+          : "The subagent is acting on your message now.",
+        details: { ...details, dispatchId: started.id },
+      };
     }
-    // A queued subagent already has a pending run; starting another would
-    // double-queue it, so the message joins its context instead.
+    // The message joins the pending dispatch, including during a user retry.
     await child.session.sendCustomMessage(
       {
         customType: "agent-team",
@@ -4175,7 +4221,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
       },
       { triggerTurn: false },
     );
-    return "Queued: the subagent sees your message with its next turn.";
+    return { report: "Queued: the subagent sees your message with its next turn.", details };
   }
 
   /**
@@ -4348,6 +4394,8 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
         (entry) => entry.childId === childId,
       );
       if (queued >= 0) this.subagentQueue.splice(queued, 1);
+      const dispatch = this.activeSubagentDispatches.get(childId);
+      if (dispatch) this.clearSubagentDispatch(childId, dispatch.id);
       return "Removed from the queue before it started. Use send_to_agent to give it a task later.";
     }
     const child = this.sessions.get(childId);
@@ -4462,7 +4510,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
     for (const entry of managed.session.sessionManager.getBranch()) {
       const message = (
         entry as {
-          message?: { role?: string; toolName?: string; content?: unknown; details?: Partial<SpawnResultDetails> };
+          message?: { role?: string; toolName?: string; content?: unknown; details?: Partial<SubagentResultDetails> };
         }
       ).message;
       if (message?.role !== "toolResult" || message.toolName !== "spawn_agent") continue;
@@ -4533,15 +4581,19 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
     childId: string,
     prompt: string,
     notifyParent: boolean,
-  ): "started" | "queued" {
+  ): { id: string; status: "started" | "queued" } {
+    const dispatchId = randomUUID();
+    this.activeSubagentDispatches.set(childId, { id: dispatchId, startedAt: null });
     const start = () => {
       this.queuedSubagentIds.delete(childId);
       let handle: RunHandle;
       try {
         handle = this.runPromptWithLineage(this.requireSession(childId), prompt, {
           notifyParent,
+          dispatchId,
         });
       } catch (error) {
+        this.clearSubagentDispatch(childId, dispatchId);
         const child = this.sessions.get(childId);
         if (notifyParent && child) {
           const outcome = describeChildOutcome(
@@ -4565,10 +4617,18 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
     if (this.runningSubagentRuns >= SUBAGENT_CONCURRENCY) {
       this.queuedSubagentIds.add(childId);
       this.subagentQueue.push({ childId, start });
-      return "queued";
+      this.noteActivity(this.requireSession(childId), true);
+      return { id: dispatchId, status: "queued" };
     }
     start();
-    return "started";
+    return { id: dispatchId, status: "started" };
+  }
+
+  private clearSubagentDispatch(sessionId: string, dispatchId: string): void {
+    if (this.activeSubagentDispatches.get(sessionId)?.id !== dispatchId) return;
+    this.activeSubagentDispatches.delete(sessionId);
+    const managed = this.sessions.get(sessionId);
+    if (managed) this.noteActivity(managed, true);
   }
 
   private drainSubagentQueue(): void {
@@ -5480,13 +5540,13 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
       case "tool_execution_end": {
         managed.counters.toolCallCount++;
         const text = contentToText(event.result.content);
-        const spawnedAgent = event.toolName === "spawn_agent" && !event.isError
-          ? spawnedAgentFromResult(event.result.details, text) : undefined;
+        const subagentAction = !event.isError
+          ? subagentActionFromResult(event.toolName, event.result.details, text) : undefined;
         this.emit(managed, {
           type: "tool_finished",
           payload: { callId: event.toolCallId, success: !event.isError,
             approval: approvalFromResult(event.result.details, event.isError, text),
-            ...(spawnedAgent ? { spawnedAgent } : {}),
+            ...(subagentAction ? { subagentAction } : {}),
           },
         });
         if (!managed.runState.isIdle()) {

@@ -441,23 +441,30 @@ function RunElapsed({ since }: { since: number }) {
   return <>{Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}</>;
 }
 
-function SpawnedAgentLabel({ agent }: { agent: NonNullable<TranscriptMessage["spawnedAgent"]> }) {
+function SubagentActionLabel({ agent }: { agent: NonNullable<TranscriptMessage["subagentAction"]> }) {
   const app = useApp();
+  const { sessionReady } = useConversationContext();
   const child = app.sessions.find((session) => session.sessionId === agent.sessionId);
   const alias = app.sessionDisplayNames[agent.sessionId]?.alias || child?.alias || agent.label;
   const marker = child && relatedDisplayMarker(child, app.sessions);
-  const name = marker && alias && !alias.startsWith(`${marker} · `) ? `${marker} · ${alias}` : alias || marker;
-  const status = child?.runStatus;
-  const since = child?.runObservedAt;
+  const name = (marker && alias && !alias.startsWith(`${marker} · `) ? `${marker} · ${alias}` : alias || marker)
+    || agent.sessionId;
+  const active = app.subagentDispatches[agent.sessionId];
+  const dispatch = sessionReady && active?.id === agent.dispatchId ? active : undefined;
+  const since = dispatch?.startedAt;
   return (
     <>
-      <i className={TOOL_ICON[status === "running" ? "running" : "finished"]} />
-      {name ? t("Created {name}", { name }) : t("Created a subagent")}
-      {status === "running" ? (
-        <>{" · "}{t("Running")}{since !== undefined ? <>{" "}<RunElapsed since={since} /></> : null}</>
-      ) : status === "awaiting-approval" ? (
-        <>{" · "}{t("Waiting for your approval…")}</>
-      ) : status === "failed" ? <>{" · "}{t("Failed")}</> : null}
+      <i className={TOOL_ICON[dispatch ? "running" : "finished"]} />
+      {agent.kind === "spawn" ? t("Created {name}", { name })
+        : agent.kind === "resume" ? t("Resumed {name}", { name })
+        : t("Sent a message to {name}", { name })}
+      {dispatch && (
+        <>
+          {" · "}{since == null ? t("Queued")
+            : child?.runStatus === "awaiting-approval" ? t("Waiting for your approval…") : t("Running")}
+          {since != null && <>{" "}<RunElapsed since={since} /></>}
+        </>
+      )}
     </>
   );
 }
@@ -468,7 +475,7 @@ function ToolLine({ tool }: { tool: ActiveToolState }) {
   const outcome = toolOutcome({ running: preparing || tool.status === "running", success: tool.success });
   return (
     <SysLine tool filePath={toolFilePath(tool.toolName, tool.path)} detail={outcome === "running" ? null : tool.detail} tone={TOOL_TONE[outcome]}>
-      {tool.spawnedAgent ? <SpawnedAgentLabel agent={tool.spawnedAgent} /> : (
+      {tool.subagentAction ? <SubagentActionLabel agent={tool.subagentAction} /> : (
         <>
           <i className={TOOL_ICON[outcome]} />
           {preparing
@@ -674,7 +681,7 @@ export function TranscriptEntry({
             : undefined
         }
       >
-        {message.spawnedAgent ? <SpawnedAgentLabel agent={message.spawnedAgent} /> : (
+        {message.subagentAction ? <SubagentActionLabel agent={message.subagentAction} /> : (
           <>
             <i className={TOOL_ICON[outcome]} />
             {toolLabel(

@@ -110,7 +110,7 @@ the persisted folder identity. The per-call wiring is in
 
 ## One path verdict, guard-rail posture
 
-All path containment is stated once in `core/path-verdict.ts`
+Agent and session-scoped path checks use `core/path-verdict.ts`
 (`verdict(path, intent: read | write | browse, roots)`), which returns
 `inside(root)` (naming the root and its reason), `outside`, or `sensitive`:
 
@@ -246,7 +246,15 @@ content route. The Changes cache includes these folder addresses, so configurati
 changes do not leave old readable/editable references cached. Directory labels
 distinguish managed conversation folders and globals from outside-project paths.
 
-All three text roots share one size policy: preview reads stop at 5 MB
+In Electron, an explicit file open from the conversation, Files, or Changes
+reads the selected absolute path through the shell's native bridge. The OS
+determines whether it can be read. The bridge runs in the main app frame,
+outside the browser's session-file API. A scoped file reference can still be
+used to save the opened file when it resolves to the same path. The file tree
+has no extension or directory-name filter for ordinary browsing. Attachment
+and conversion metadata still describe the files they apply to.
+
+The readers share one size policy: inline text previews stop at 5 MB
 (5 × 1024² bytes) and editing stops at 1 MiB. The Changes projection separately
 truncates generated diffs at 160 lines. These are product-selected limits rather
 than measured performance thresholds.
@@ -255,8 +263,10 @@ Images and executable HTML use a separate resource path. The preview-URL route
 checks session access, then the backend's `artifact-preview.ts` lazily starts a
 loopback, file-only HTTP origin in the same process. Its directory-shaped URLs
 preserve relative image/script/style paths and `fetch` of JSON or CSV. It reuses
-`resolveSessionReadableFile` / `resolveWorkingReadableFile`; text readers apply
-their own extension and size rules afterward. Resource responses use their normal
+`resolveSessionReadableFile` / `resolveWorkingReadableFile` for scoped URLs.
+The desktop bridge can also create a URL for a selected image or HTML file
+outside those roots. For that HTML URL, relative resources resolve within
+its containing directory. Resource responses use their normal
 MIME types and `no-store`, and the listener closes with the application server.
 It exposes no application API or write bridge.
 

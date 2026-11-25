@@ -299,17 +299,17 @@ surfaces remain designation-gated and absent for everyone else.
     is the default for non-technical users, with source available on demand.
     One renderer serves Files, Changes and Records
     (`components/inspector/FilePreview.tsx`): the control follows the file
-    type (`lib/fileContent.ts` `previewModes`) — changed `.md` / `.html`
-    opens in Rendered, followed by Diff, Source, and Edit when available.
-    HTML renders in a sandboxed iframe; other files show Diff and/or Source.
-    Edit is available for text files at or below the edit-size cap in records,
-    managed workspace, or local working folders. A user's working-folder edit
-    is independent of the agent's Edit grant. Content loads by reference
-    through the content route; the changes route no longer inlines file text.
+    type (`lib/fileContent.ts` `previewModes`). Changes starts in Diff when
+    available. Files and conversation links start in Rendered or Source.
+    HTML renders in a sandboxed iframe. A file may also have an Edit mode
+    through its scoped save address. Desktop viewing uses the chosen path
+    directly, including files outside project folders.
   - Markdown links resolve against their owning conversation and, in an open
-    file, that file's directory. Files available to the existing reader open
-    through the same file/record targets; other files use the default system
-    app. HTTP/HTTPS loopback links open a `page` target on the Files rail with
+    file, that file's directory. A desktop conversation link without a base
+    tries the project folder, then the conversation workspace. In the desktop
+    app, a supported file opens in the shared file preview. If a file cannot
+    be previewed, the preview offers a system open action. The file tree lists
+    files independently of their preview format. HTTP/HTTPS loopback links open a `page` target on the Files rail with
     an interactive iframe and a default-app action; Back restores what it
     replaced. Other web links open externally. Link selections copy their
     destinations as Markdown in plain text and keep HTML links in rich text.

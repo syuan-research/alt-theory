@@ -5,7 +5,7 @@ import { useContextMenu, type ContextMenuItem } from "@/components/shell/Context
 import { contentLink, resolveFileLink } from "@/lib/contentLinks";
 import type { FileRef } from "@/lib/fileContent";
 import { copyText } from "@/lib/clipboard";
-import { hasNativeBridge, openExternal, openPath, revealPath } from "@/lib/native";
+import { desktopFiles, hasNativeBridge, openExternal, openPath, revealPath } from "@/lib/native";
 import { t } from "@/i18n";
 
 export function useContentLinks(sessionId: string | null, base?: FileRef, baseFolderPath?: string | null, draftPrimaryDir?: string | null) {
@@ -16,12 +16,24 @@ export function useContentLinks(sessionId: string | null, base?: FileRef, baseFo
   const resolve = async (href: string) => {
     const link = contentLink(href);
     if (!link || link.kind !== "file") return { link, ref: null };
-    const response = owner !== null ? await listWorkingFolders(owner) : null;
+    const local = desktopFiles();
+    const response = owner !== null ? await listWorkingFolders(owner).catch((error) => {
+      if (!local) throw error;
+      return null;
+    }) : null;
     const folders = [...(response?.folders ?? [])];
     if (response?.workspacePath && !folders.some((folder) => folder.managed)) {
       folders.push({ id: "managed", path: response.workspacePath, role: "secondary", managed: true, available: true });
     }
-    const file = resolveFileLink(link.address, folders, base, baseFolderPath);
+    let file = resolveFileLink(link.address, folders, base, baseFolderPath);
+    const workspacePath = folders.find((folder) => folder.managed)?.path;
+    if (local && workspacePath && !base && !baseFolderPath && !/^(?:[a-z]:[\\/]|\/)/i.test(link.address)) {
+      const fallback = resolveFileLink(link.address, folders, undefined, workspacePath);
+      if (fallback.address !== file.address) {
+        const found = await local.locate([file.address, fallback.address]);
+        if (found === fallback.address) file = fallback;
+      }
+    }
     return { link: { ...link, address: file.address }, ref: file.ref };
   };
   const open = async (href: string, externally = false, image = false) => {
@@ -31,6 +43,16 @@ export function useContentLinks(sessionId: string | null, base?: FileRef, baseFo
       shell.openTarget({ kind: "page", sessionId, url: link.address, image: true }); return;
     }
     if (link.kind === "file") {
+      if (!externally && desktopFiles() && /^(?:[a-z]:[\\/]|\/)/i.test(link.address)) {
+        if (sessionId && ref && ref.root !== "records") {
+          shell.openTarget({ kind: "file", sessionId, root: ref.root, path: ref.path, absolutePath: link.address });
+        } else if (ref?.root === "working" && draftPrimaryDir !== undefined) {
+          shell.openTarget({ kind: "file", sessionId: null, draftPrimaryDir, root: "working", path: ref.path, absolutePath: link.address });
+        } else {
+          shell.openTarget({ kind: "file", sessionId, draftPrimaryDir, root: "local", path: link.address });
+        }
+        return;
+      }
       if (!externally && owner !== null && ref) {
         try {
           const media = isImagePath(ref.path) || isHtmlPath(ref.path);

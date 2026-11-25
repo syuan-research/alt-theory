@@ -35,6 +35,7 @@ import {
   conflictCopyPath,
   MAX_TEXT_EDIT_BYTES,
   MAX_TEXT_VIEW_BYTES,
+  readTextPreview,
   readTextFlags,
   writeTextFilePreservingIdentity,
   type WriteTextFileOptions,
@@ -48,7 +49,7 @@ import {
 } from "./tool-detail.js";
 import type { SessionMetrics, TranscriptMessage } from "./websocket-protocol.js";
 import { isListMember } from "../frontend/src/lib/listMember.js";
-import { spawnedAgentFromResult } from "./agent-team.js";
+import { subagentActionFromResult } from "./agent-team.js";
 import { parseAgentMailFrame } from "../core/agent-mail-frame.js";
 import { t } from "./i18n.js";
 import {
@@ -171,6 +172,7 @@ export interface SessionTextFile {
 
 export interface SessionTextFileContent extends SessionTextFile {
   content: string;
+  editable?: boolean;
 }
 
 interface ReadState {
@@ -1060,20 +1062,15 @@ export function readSessionTextFile(
   rootName: string,
   requestedPath: string
 ): SessionTextFileContent {
-  const target = resolveSessionTextFile(dataDir, sessionId, rootName, requestedPath);
+  const target = resolveSessionReadableFile(dataDir, sessionId, rootName, requestedPath);
   const stats = statSync(target.path);
-  if (!stats.isFile()) {
-    throw new Error("Requested path is not a file");
-  }
-  if (stats.size > MAX_TEXT_VIEW_BYTES) {
-    throw new Error(`File is too large to read: ${target.relativePath}`);
-  }
   return {
     root: target.root,
     path: target.relativePath,
     size: stats.size,
     updatedAt: stats.mtime.toISOString(),
-    content: readFileSync(target.path, "utf-8"),
+    content: readTextPreview(target.path, stats),
+    editable: isAllowedTextFile(target.relativePath),
   };
 }
 
@@ -1327,7 +1324,7 @@ export function resolveSessionReadableFile(
   return { root, path: target, relativePath };
 }
 
-function resolveSessionTextFile(dataDir: string, sessionId: string, rootName: string, requestedPath: string) {
+export function resolveSessionTextFile(dataDir: string, sessionId: string, rootName: string, requestedPath: string) {
   const target = resolveSessionReadableFile(dataDir, sessionId, rootName, requestedPath);
   if (!isAllowedTextFile(target.relativePath)) {
     throw new Error(
@@ -2378,8 +2375,8 @@ export function buildTranscriptFromEntries(
       // Smart approval's verdict rides on the result's details; a denial
       // blocks the call, and Pi's blocked result is only the reason text.
       const approval = approvalFromResult(value.message.details, !success, full);
-      const spawnedAgent = toolName === "spawn_agent" && success
-        ? spawnedAgentFromResult(value.message.details, full) : undefined;
+      const subagentAction = success
+        ? subagentActionFromResult(toolName, value.message.details, full) : undefined;
       if (callIndex >= 0) {
         transcript[callIndex] = {
           ...transcript[callIndex],
@@ -2387,7 +2384,7 @@ export function buildTranscriptFromEntries(
           success,
           ...(truncated ? { truncated } : {}),
           ...(approval ? { approval } : {}),
-          ...(spawnedAgent ? { spawnedAgent } : {}),
+          ...(subagentAction ? { subagentAction } : {}),
         };
         return;
       }
@@ -2400,7 +2397,7 @@ export function buildTranscriptFromEntries(
         success,
         truncated,
         ...(approval ? { approval } : {}),
-        ...(spawnedAgent ? { spawnedAgent } : {}),
+        ...(subagentAction ? { subagentAction } : {}),
         timestamp,
       });
     }

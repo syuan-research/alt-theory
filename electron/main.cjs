@@ -244,6 +244,18 @@ ipcMain.handle("alt:openPath", async (_event, target) => {
   if (error) throw new Error(error);
 });
 
+for (const method of ["locate", "read", "artifactUrl", "directory"]) {
+  ipcMain.handle(`alt:desktopFiles:${method}`, (event, ...args) => {
+    const frame = event.senderFrame;
+    const contents = mainWindow?.webContents;
+    if (!backendInstance || event.sender !== contents || frame !== contents.mainFrame ||
+        !frame.url.startsWith(`http://127.0.0.1:${activePort}/`)) {
+      throw new Error("Local files are available only in the desktop workspace.");
+    }
+    return backendInstance.desktopFiles[method](...args);
+  });
+}
+
 // The OS overlay-button band must match the page behind it. Surface-specific
 // colors keep full-window viewers and modal backdrops from leaving a stale
 // panel-colored strip in the corner.

@@ -11,6 +11,14 @@ import { basename, dirname, extname, join } from "node:path";
 export const MAX_TEXT_VIEW_BYTES = 5 * 1024 * 1024;
 export const MAX_TEXT_EDIT_BYTES = 1 * 1024 * 1024;
 
+export function readTextPreview(path: string, stats = statSync(path)) {
+  if (!stats.isFile()) throw new Error("The current path is not a file.");
+  if (stats.size > MAX_TEXT_VIEW_BYTES) throw new Error("File is too large to preview");
+  const bytes = readFileSync(path);
+  if (bytes.includes(0)) throw new Error("Binary files cannot be previewed");
+  return bytes.toString("utf-8");
+}
+
 export interface WriteTextFileOptions {
   /** The `updatedAt` the editor loaded with; a mismatching on-disk mtime
    *  refuses the save (409) so the user can discard / copy / overwrite. */

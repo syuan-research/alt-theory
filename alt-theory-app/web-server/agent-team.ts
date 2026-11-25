@@ -15,6 +15,7 @@
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { AltMode } from "../core/alt-theory-core.js";
+import type { SubagentAction } from "../frontend/src/api/types.js";
 
 // ---------------------------------------------------------------------------
 // Bridge — implemented by SessionService
@@ -36,14 +37,14 @@ export interface AgentTeamBridge {
   spawnSubagent(
     parentSessionId: string,
     options: SpawnSubagentOptions,
-  ): Promise<{ report: string; sessionId: string }>;
+  ): Promise<{ report: string; sessionId: string; dispatchId: string }>;
   sendToAgent(
     fromSessionId: string,
     agent: string,
     message: string,
     signal?: AbortSignal,
     toolCallId?: string,
-  ): Promise<string>;
+  ): Promise<AgentMessageResult>;
   checkAgent(
     parentSessionId: string,
     agent: string,
@@ -110,11 +111,19 @@ function spawnReport(report: string): RegExpMatchArray | null {
   return report.match(/^Spawned subagent "(.*)" \(session ([^,]+),/s);
 }
 
-export function spawnedAgentFromResult(details: unknown, report: string) {
-  const parsed = spawnReport(report);
-  const recordedId = (details as Partial<SpawnResultDetails> | null)?.sessionId;
-  const sessionId = typeof recordedId === "string" && recordedId ? recordedId : parsed?.[2];
-  return sessionId ? { sessionId, label: parsed?.[1] } : undefined;
+export function subagentActionFromResult(tool: string, details: unknown, report: string): SubagentAction | undefined {
+  if (tool !== "spawn_agent" && tool !== "send_to_agent") return;
+  const record = details as Partial<SubagentResultDetails> | null;
+  const parsed = tool === "spawn_agent" ? spawnReport(report) : null;
+  const sessionId = typeof record?.sessionId === "string" ? record.sessionId : parsed?.[2];
+  if (!sessionId) return;
+  const dispatchId = typeof record?.dispatchId === "string" ? record.dispatchId : undefined;
+  return {
+    sessionId,
+    label: typeof record?.label === "string" ? record.label : parsed?.[1],
+    kind: tool === "spawn_agent" ? "spawn" : dispatchId ? "resume" : "message",
+    dispatchId,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -142,8 +151,15 @@ export const SUBAGENT_PROMPT_SECTION = [
 // ---------------------------------------------------------------------------
 
 /** What spawn_agent records about the child it created. */
-export interface SpawnResultDetails {
+export interface SubagentResultDetails {
   sessionId: string;
+  label?: string;
+  dispatchId?: string;
+}
+
+export interface AgentMessageResult {
+  report: string;
+  details?: SubagentResultDetails;
 }
 
 const text = (value: string) => ({
@@ -211,7 +227,7 @@ export function createAgentTeamTools(
       return text(bridge.listModels(sessionId, query));
     },
   };
-  const spawnAgent: ToolDefinition<typeof parameters, SpawnResultDetails> = {
+  const spawnAgent: ToolDefinition<typeof parameters, SubagentResultDetails> = {
     name: "spawn_agent",
     label: "Spawn subagent",
     description:
@@ -228,7 +244,7 @@ export function createAgentTeamTools(
       });
       // The child's id rides on the result's details (never shown to the
       // model): a branch finds the subagents on its path by it.
-      return { ...text(spawned.report), details: { sessionId: spawned.sessionId } };
+      return { ...text(spawned.report), details: { sessionId: spawned.sessionId, dispatchId: spawned.dispatchId } };
     },
   };
 
@@ -239,7 +255,7 @@ export function createAgentTeamTools(
     }),
     message: Type.String({ description: "The message for that agent" }),
   });
-  const sendToAgent: ToolDefinition<typeof sendSchema, undefined> = {
+  const sendToAgent: ToolDefinition<typeof sendSchema, SubagentResultDetails | undefined> = {
     name: "send_to_agent",
     label: "Message subagent",
     description:
@@ -249,9 +265,8 @@ export function createAgentTeamTools(
     // message of an allowance.
     executionMode: "sequential",
     async execute(id, params, signal) {
-      return text(
-        await bridge.sendToAgent(sessionId, params.agent, params.message, signal, id),
-      );
+      const result = await bridge.sendToAgent(sessionId, params.agent, params.message, signal, id);
+      return { ...text(result.report), details: result.details };
     },
   };
 

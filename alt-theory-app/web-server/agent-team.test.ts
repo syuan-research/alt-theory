@@ -450,7 +450,7 @@ test("subagent completion mails the lead and wakes it with a recorded notificati
 
     (
       service as unknown as {
-        startSubagentRun(id: string, prompt: string, notify: boolean): string;
+        startSubagentRun(id: string, prompt: string, notify: boolean): { id: string; status: string };
       }
     ).startSubagentRun(child.sessionId, "do the task", true);
 
@@ -567,7 +567,7 @@ test("sendToAgent makes an idle subagent act immediately (owner 2026-08-07: no u
       child.sessionId,
       "please also cover chapter 2",
     );
-    assert.match(reply, /acting on your message now/);
+    assert.match(reply.report, /acting on your message now/);
     await waitFor(() => prompts.length === 2);
     assert.match(prompts[1], /chapter 2/);
   } finally {
@@ -698,13 +698,13 @@ test("a queued subagent is not double-queued by send_to_agent and can be removed
     subagents.push(child.sessionId);
     const queuedPrompts = stubEchoPrompt(managedOf(service, child.sessionId), "late");
     const svc = service as unknown as {
-      startSubagentRun(id: string, prompt: string, notify: boolean): string;
+      startSubagentRun(id: string, prompt: string, notify: boolean): { id: string; status: string };
       subagentQueue: unknown[];
       queuedSubagentIds: Set<string>;
       runningSubagentRuns: number;
     };
     svc.runningSubagentRuns = 10;
-    assert.equal(svc.startSubagentRun(child.sessionId, "the task", false), "queued");
+    assert.equal(svc.startSubagentRun(child.sessionId, "the task", false).status, "queued");
 
     // send_to_agent on a queued subagent must not queue a second run; the
     // message joins its context instead.
@@ -713,7 +713,8 @@ test("a queued subagent is not double-queued by send_to_agent and can be removed
       child.sessionId,
       "extra context",
     );
-    assert.match(reply, /next turn/);
+    assert.match(reply.report, /next turn/);
+    assert.equal(reply.details?.dispatchId, undefined, "a second message shares the queued dispatch");
     assert.equal(svc.subagentQueue.length, 1);
 
     // interrupt_agent on a queued subagent removes it before it starts.
@@ -1047,7 +1048,7 @@ test("explicit interrupt sends exactly one interrupted outcome and the child sta
 
     (
       service as unknown as {
-        startSubagentRun(id: string, prompt: string, notify: boolean): string;
+        startSubagentRun(id: string, prompt: string, notify: boolean): { id: string; status: string };
       }
     ).startSubagentRun(child.sessionId, "the bounded task", true);
     await waitFor(() => !childManaged.runState.isIdle());
@@ -1122,9 +1123,18 @@ for (const action of ["user-guidance", "user-retry"] as const) {
           finishOriginal = resolve;
         });
       childManaged.session.abort = async () => { finishOriginal?.(); };
-      await service.sendToAgent(parent.sessionId, child.sessionId, "original task");
+      const original = await service.sendToAgent(parent.sessionId, child.sessionId, "original task");
       await waitFor(() => Boolean(finishOriginal));
+      const dispatch = service.subagentDispatches().get(child.sessionId);
+      assert.ok(dispatch?.startedAt);
+      assert.equal(dispatch.id, original.details?.dispatchId);
       stubEchoPrompt(childManaged, "replacement result");
+      const echo = childManaged.session.prompt;
+      const dispatchDuringReplacement: unknown[] = [];
+      childManaged.session.prompt = async (text: string) => {
+        dispatchDuringReplacement.push(service.subagentDispatches().get(child.sessionId));
+        await echo(text);
+      };
 
       if (action === "user-guidance") {
         await service.queuePrompt(child.sessionId, "user correction", undefined, "steer");
@@ -1140,6 +1150,11 @@ for (const action of ["user-guidance", "user-retry"] as const) {
       assert.match(notices()[0].body, /Normally no action is needed from you\. Await its subsequent result\./);
       assert.doesNotMatch(notices()[0].body, /interrupt|user correction/i);
       assert.equal(notices()[1].body, "replacement result");
+      assert.deepEqual(dispatchDuringReplacement, [dispatch]);
+      await waitFor(() => !service.subagentDispatches().has(child.sessionId));
+      const resumed = await service.sendToAgent(parent.sessionId, child.sessionId, "a new task");
+      assert.ok(resumed.details?.dispatchId);
+      assert.notEqual(resumed.details.dispatchId, dispatch.id);
     } finally {
       await service.disposeAll();
     }
@@ -1174,7 +1189,7 @@ test("a user stop tells the lead the user stopped the child, and the status line
     };
     (
       service as unknown as {
-        startSubagentRun(id: string, prompt: string, notify: boolean): string;
+        startSubagentRun(id: string, prompt: string, notify: boolean): { id: string; status: string };
       }
     ).startSubagentRun(child.sessionId, "the bounded task", true);
     await waitFor(() => !childManaged.runState.isIdle());
@@ -1260,7 +1275,8 @@ async function sendAnswering(
   const bridge = approvalsOf(service, from).approvalBridge;
   let asked: string[] | null = null;
   // A refusal is the tool's error: its text is the reply the agent reads.
-  const sending = service.sendToAgent(from, to, body).catch((error: Error) => error.message);
+  const sending = service.sendToAgent(from, to, body)
+    .then((result) => result.report, (error: Error) => error.message);
   const answering = (async () => {
     for (let i = 0; i < 80 && asked === null; i++) {
       const pending = bridge.listPending()[0];
@@ -1428,11 +1444,11 @@ test("smart approval's reviewer answers a message to another conversation: an al
       return verdict;
     };
     const approver = (managedOf(service, a) as unknown as { approver: { takeRecord(id: string): { outcome: string } | undefined } }).approver;
-    assert.match(await service.sendToAgent(a, b, "charts?", undefined, "call-1"), /Delivered/);
+    assert.match((await service.sendToAgent(a, b, "charts?", undefined, "call-1")).report, /Delivered/);
     await idle();
     assert.equal(approver.takeRecord("call-1")?.outcome, "allow", "the row shows the verdict");
     assert.ok(approvalsOf(service, a).getGrants().some((key) => key.startsWith(`mail:${b}@`)));
-    assert.match(await service.sendToAgent(a, b, "and the table?"), /Delivered/);
+    assert.match((await service.sendToAgent(a, b, "and the table?")).report, /Delivered/);
     assert.equal(reviewed, 1, "within the allowance the reviewer is not asked again");
     await idle();
 
@@ -1597,12 +1613,12 @@ test("peer mail is framed as another conversation's and cannot close its frame",
 
 test("spawn_agent records the child's id in details, and a branch finds it there whatever the report says", async () => {
   const spawnTool = createAgentTeamTools(
-    { spawnSubagent: async () => ({ report: "Spawned", sessionId: "child-1" }) } as never,
+    { spawnSubagent: async () => ({ report: "Spawned", sessionId: "child-1", dispatchId: "dispatch-1" }) } as never,
     "s1",
     "lead",
   ).find((tool) => tool.name === "spawn_agent")!;
   const result = await spawnTool.execute("call", { message: "go" } as never, undefined as never, undefined as never, undefined as never);
-  assert.deepEqual(result.details, { sessionId: "child-1" });
+  assert.deepEqual(result.details, { sessionId: "child-1", dispatchId: "dispatch-1" });
 
   const fixture = setupFixture();
   const service = createTestService(fixture);

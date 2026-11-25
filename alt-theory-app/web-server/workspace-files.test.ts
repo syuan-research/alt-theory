@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { createSessionDirs } from "../core/data-dir.js";
+import { readSessionTextFile } from "./session-store.js";
 import {
   deleteWorkspaceFile,
   getSessionWorkspaceUsage,
@@ -76,7 +77,7 @@ test("deleteWorkspaceFile removes upload and reports deleted paths", async () =>
   assert.equal(getSessionWorkspaceUsage(dataDir, sessionId), 0);
 });
 
-test("listWorkspaceFiles includes agent-authored text files outside uploads/", async () => {
+test("the session workspace lists files and reads text without an extension whitelist", () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-workspace-agent-"));
   const dataDir = join(root, "data");
   const { sessionId } = createSessionDirs(dataDir);
@@ -84,10 +85,13 @@ test("listWorkspaceFiles includes agent-authored text files outside uploads/", a
   writeFileSync(join(workspace, "poem.md"), "# Poem\n", "utf-8");
   mkdirSync(join(workspace, "notes"), { recursive: true });
   writeFileSync(join(workspace, "notes", "idea.txt"), "idea", "utf-8");
+  mkdirSync(join(workspace, ".drafts"), { recursive: true });
+  writeFileSync(join(workspace, ".drafts", "analyze.py"), "print('notes')\n");
 
   const listed = listWorkspaceFiles(dataDir, sessionId);
   const paths = listed.files.map((entry) => entry.path).sort();
-  assert.deepEqual(paths, ["notes/idea.txt", "poem.md"]);
+  assert.deepEqual(paths, [".drafts/analyze.py", "notes/idea.txt", "poem.md"]);
+  assert.equal(readSessionTextFile(dataDir, sessionId, "workspace", ".drafts/analyze.py").content, "print('notes')\n");
   assert.equal(listed.files.find((entry) => entry.path === "poem.md")?.kind, "text");
   assert.equal(
     listed.files.find((entry) => entry.path === "poem.md")?.stageable,
@@ -170,7 +174,7 @@ test("working-folder browsing follows the persisted external workspace", async (
     sessionId,
     "primary",
   ).entries;
-  assert.deepEqual(rootEntries.map((entry) => entry.path), ["flat", "notes"]);
+  assert.deepEqual(rootEntries.map((entry) => entry.path), ["flat", "node_modules", "notes"]);
   assert.equal(rootEntries[0]?.isDirectory, true);
   assert.equal(
     listWorkingFolderChildren(dataDir, sessionId, "primary", "flat").entries
@@ -185,15 +189,9 @@ test("working-folder browsing follows the persisted external workspace", async (
   ).entries;
   assert.deepEqual(noteEntries.map((entry) => entry.path), ["notes/idea.md"]);
   assert.equal(noteEntries[0]?.isDirectory, false);
-  assert.throws(
-    () =>
-      listWorkingFolderChildren(
-        dataDir,
-        sessionId,
-        "primary",
-        "node_modules",
-      ),
-    /omitted/,
+  assert.deepEqual(
+    listWorkingFolderChildren(dataDir, sessionId, "primary", "node_modules").entries.map((entry) => entry.path),
+    ["node_modules/ignored"],
   );
   const file = readWorkingFolderTextFile(
     dataDir,
@@ -206,7 +204,11 @@ test("working-folder browsing follows the persisted external workspace", async (
   assert.deepEqual(recent.entries[0]?.path, "notes/idea.md");
   assert.equal(recent.entries.length, 3);
   assert.equal(recent.truncated, true);
-  assert.ok(recent.entries.every((entry) => !entry.isDirectory && !entry.path.startsWith("node_modules")));
+  assert.ok(recent.entries.every((entry) => !entry.isDirectory));
+  assert.deepEqual(
+    (await searchWorkingFolder(dataDir, sessionId, "primary", "node_modules/ignored/x.js")).entries.map((entry) => entry.path),
+    ["node_modules/ignored/x.js"],
+  );
   const search = await searchWorkingFolder(dataDir, sessionId, "primary", "IDEA");
   assert.deepEqual(search.entries.map((entry) => entry.path), ["notes/idea.md"]);
   assert.equal(search.truncated, false);
@@ -228,10 +230,6 @@ test("working-folder browsing follows the persisted external workspace", async (
   assert.equal(
     (await searchWorkingFolder(dataDir, sessionId, "primary", ".txt", 1)).truncated,
     true,
-  );
-  assert.deepEqual(
-    (await searchWorkingFolder(dataDir, sessionId, "primary", "x.js")).entries,
-    [],
   );
 
   // One search token reuses its folder walk; a new token walks again.
