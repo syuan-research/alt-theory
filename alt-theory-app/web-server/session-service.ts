@@ -159,6 +159,7 @@ import { describeChildOutcome, type ChildOutcome } from "./child-outcome.js";
 import {
   clampSubagentMode,
   spawnedSessionId,
+  spawnedAgentFromResult,
   type SpawnResultDetails,
   inheritsSmartApproval,
   createAgentTeamTools,
@@ -348,7 +349,7 @@ export type SessionServiceEvent =
       };
     }
   | { type: "tool_updated"; payload: { callId: string; text?: string } }
-  | { type: "tool_finished"; payload: { callId: string; success: boolean; approval?: TranscriptMessage["approval"] } }
+  | { type: "tool_finished"; payload: { callId: string; success: boolean; approval?: TranscriptMessage["approval"]; spawnedAgent?: TranscriptMessage["spawnedAgent"] } }
   | {
       type: "run_completed";
       payload: { snapshot: SessionSnapshot } & TurnRows;
@@ -5476,17 +5477,23 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
           },
         });
         break;
-      case "tool_execution_end":
+      case "tool_execution_end": {
         managed.counters.toolCallCount++;
+        const text = contentToText(event.result.content);
+        const spawnedAgent = event.toolName === "spawn_agent" && !event.isError
+          ? spawnedAgentFromResult(event.result.details, text) : undefined;
         this.emit(managed, {
           type: "tool_finished",
           payload: { callId: event.toolCallId, success: !event.isError,
-            approval: approvalFromResult(event.result.details, event.isError, contentToText(event.result.content)) },
+            approval: approvalFromResult(event.result.details, event.isError, text),
+            ...(spawnedAgent ? { spawnedAgent } : {}),
+          },
         });
         if (!managed.runState.isIdle()) {
           this.emitRunPhase(managed, "processing");
         }
         break;
+      }
       case "auto_retry_start":
         // Pi is waiting out a transient provider error before resuming the
         // turn from the last completed step. Completed tool calls stay in

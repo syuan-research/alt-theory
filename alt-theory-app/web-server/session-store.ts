@@ -48,6 +48,7 @@ import {
 } from "./tool-detail.js";
 import type { SessionMetrics, TranscriptMessage } from "./websocket-protocol.js";
 import { isListMember } from "../frontend/src/lib/listMember.js";
+import { spawnedAgentFromResult } from "./agent-team.js";
 import { parseAgentMailFrame } from "../core/agent-mail-frame.js";
 import { t } from "./i18n.js";
 import {
@@ -2377,6 +2378,8 @@ export function buildTranscriptFromEntries(
       // Smart approval's verdict rides on the result's details; a denial
       // blocks the call, and Pi's blocked result is only the reason text.
       const approval = approvalFromResult(value.message.details, !success, full);
+      const spawnedAgent = toolName === "spawn_agent" && success
+        ? spawnedAgentFromResult(value.message.details, full) : undefined;
       if (callIndex >= 0) {
         transcript[callIndex] = {
           ...transcript[callIndex],
@@ -2384,6 +2387,7 @@ export function buildTranscriptFromEntries(
           success,
           ...(truncated ? { truncated } : {}),
           ...(approval ? { approval } : {}),
+          ...(spawnedAgent ? { spawnedAgent } : {}),
         };
         return;
       }
@@ -2396,6 +2400,7 @@ export function buildTranscriptFromEntries(
         success,
         truncated,
         ...(approval ? { approval } : {}),
+        ...(spawnedAgent ? { spawnedAgent } : {}),
         timestamp,
       });
     }

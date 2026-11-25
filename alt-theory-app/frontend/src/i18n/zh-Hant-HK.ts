@@ -12,6 +12,7 @@ const catalog: Record<string, string> = {
   "Input preview": "輸入參數預覽",
   "Preparing to write…": "正在準備寫入…",
   "Preparing to edit…": "正在準備編輯…",
+  "Created {name}": "已建立 {name}",
   "Could not load the full input": "無法載入完整輸入參數",
   "Sign-in link": "登入連結",
   "Open bookmark note": "開啟收藏備註",

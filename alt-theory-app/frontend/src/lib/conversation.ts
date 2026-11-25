@@ -515,6 +515,7 @@ function onServer(state: ConversationState, message: ServerMessage): Conversatio
             status: message.payload.success ? "finished" : "failed",
             success: message.payload.success,
             approval: message.payload.approval,
+            spawnedAgent: message.payload.spawnedAgent,
             progressText: undefined,
           })
         : state.turn.parts;

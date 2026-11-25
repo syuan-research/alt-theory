@@ -103,7 +103,18 @@ export function inheritsSmartApproval(
  * Pinned against a real report in agent-team.test.ts.
  */
 export function spawnedSessionId(report: string): string | null {
-  return report.match(/^Spawned subagent ".*" \(session ([^,]+),/s)?.[1] ?? null;
+  return spawnReport(report)?.[2] ?? null;
+}
+
+function spawnReport(report: string): RegExpMatchArray | null {
+  return report.match(/^Spawned subagent "(.*)" \(session ([^,]+),/s);
+}
+
+export function spawnedAgentFromResult(details: unknown, report: string) {
+  const parsed = spawnReport(report);
+  const recordedId = (details as Partial<SpawnResultDetails> | null)?.sessionId;
+  const sessionId = typeof recordedId === "string" && recordedId ? recordedId : parsed?.[2];
+  return sessionId ? { sessionId, label: parsed?.[1] } : undefined;
 }
 
 // ---------------------------------------------------------------------------

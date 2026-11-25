@@ -3,6 +3,7 @@ import type {
   ActiveToolState,
   StreamPart,
   ToolDetail,
+  TranscriptMessage,
 } from "@/api/types";
 import { useApp } from "@/context/AppProvider";
 import { useConversationContext, useTurnParts } from "@/context/ConversationContext";
@@ -18,6 +19,7 @@ import { pickDirectory } from "@/lib/native";
 import { shouldToggleCollapseOnClick } from "@/lib/collapseAnywhere";
 import { replyStopLine, retryDroppedLine } from "@/lib/replyStop";
 import { toolOutcome, type ToolOutcome } from "@/lib/toolOutcome";
+import { relatedDisplayMarker } from "@/lib/sessionList";
 import { t } from "@/i18n";
 import { autosizeTextarea } from "@/lib/autosizeTextarea";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
@@ -429,17 +431,52 @@ const TOOL_TONE: Record<ToolOutcome, "danger" | "ok" | "running" | "pending"> = 
   pending: "pending",
 };
 
+function RunElapsed({ since }: { since: number }) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const seconds = Math.max(0, Math.floor((now - since) / 1000));
+  return <>{Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}</>;
+}
+
+function SpawnedAgentLabel({ agent }: { agent: NonNullable<TranscriptMessage["spawnedAgent"]> }) {
+  const app = useApp();
+  const child = app.sessions.find((session) => session.sessionId === agent.sessionId);
+  const alias = app.sessionDisplayNames[agent.sessionId]?.alias || child?.alias || agent.label;
+  const marker = child && relatedDisplayMarker(child, app.sessions);
+  const name = marker && alias && !alias.startsWith(`${marker} · `) ? `${marker} · ${alias}` : alias || marker;
+  const status = child?.runStatus;
+  const since = child?.runObservedAt;
+  return (
+    <>
+      <i className={TOOL_ICON[status === "running" ? "running" : "finished"]} />
+      {name ? t("Created {name}", { name }) : t("Created a subagent")}
+      {status === "running" ? (
+        <>{" · "}{t("Running")}{since !== undefined ? <>{" "}<RunElapsed since={since} /></> : null}</>
+      ) : status === "awaiting-approval" ? (
+        <>{" · "}{t("Waiting for your approval…")}</>
+      ) : status === "failed" ? <>{" · "}{t("Failed")}</> : null}
+    </>
+  );
+}
+
 function ToolLine({ tool }: { tool: ActiveToolState }) {
   const { discovery } = useApp();
   const preparing = tool.status === "preparing";
   const outcome = toolOutcome({ running: preparing || tool.status === "running", success: tool.success });
   return (
     <SysLine tool filePath={toolFilePath(tool.toolName, tool.path)} detail={outcome === "running" ? null : tool.detail} tone={TOOL_TONE[outcome]}>
-      <i className={TOOL_ICON[outcome]} />
-      {preparing
-        ? tool.toolName === "write" ? t("Preparing to write…") : t("Preparing to edit…")
-        : toolLabel(tool.toolName, tool.path, tool.detail, outcome,
-          discovery?.skills.find((skill) => skill.name === tool.detail?.skillName)?.displayName)}
+      {tool.spawnedAgent ? <SpawnedAgentLabel agent={tool.spawnedAgent} /> : (
+        <>
+          <i className={TOOL_ICON[outcome]} />
+          {preparing
+            ? tool.toolName === "write" ? t("Preparing to write…") : t("Preparing to edit…")
+            : toolLabel(tool.toolName, tool.path, tool.detail, outcome,
+              discovery?.skills.find((skill) => skill.name === tool.detail?.skillName)?.displayName)}
+        </>
+      )}
       {tool.progressText ? ` — ${tool.progressText}` : ""}
       <ApprovalMark approval={tool.approval} />
     </SysLine>
@@ -637,13 +674,17 @@ export function TranscriptEntry({
             : undefined
         }
       >
-        <i className={TOOL_ICON[outcome]} />
-        {toolLabel(
-          message.toolName || message.text || "tool",
-          message.toolPath,
-          message.toolDetail,
-          outcome,
-          discovery?.skills.find((skill) => skill.name === message.toolDetail?.skillName)?.displayName,
+        {message.spawnedAgent ? <SpawnedAgentLabel agent={message.spawnedAgent} /> : (
+          <>
+            <i className={TOOL_ICON[outcome]} />
+            {toolLabel(
+              message.toolName || message.text || "tool",
+              message.toolPath,
+              message.toolDetail,
+              outcome,
+              discovery?.skills.find((skill) => skill.name === message.toolDetail?.skillName)?.displayName,
+            )}
+          </>
         )}
         <ApprovalMark approval={approval} />
       </SysLine>
