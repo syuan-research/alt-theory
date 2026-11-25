@@ -19,13 +19,10 @@ import { useConversationContext } from "@/context/ConversationContext";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { hasNativeBridge } from "@/lib/native";
-import { NEW_DRAFT, stageInDraft, unstageInDraft, useDraft } from "@/lib/draft";
 import { WORKSPACE_PATH_MIME } from "@/lib/workspace";
-import { FilePreview } from "@/components/inspector/FilePreview";
 import { FolderHead, ListTools, MenuButton } from "@/components/inspector/FolderList";
 import { fmtTime } from "@/lib/format";
 import { buildFileTreeModel, getFileTreeNode, withFolderEntries, type FileTreeNode } from "@/lib/fileTree";
-import type { PreviewMode } from "@/lib/fileContent";
 import { usePaneMemory } from "@/lib/paneMemory";
 import { useFindTarget } from "@/lib/find";
 import { copyText } from "@/lib/clipboard";
@@ -65,14 +62,8 @@ export function WorkspaceTree() {
   const workspacePath = working?.scope === folderScope ? working.workspacePath ?? "" : "";
   const entries = !sessionId ? [] : attachments?.sessionId === sessionId ? attachments.entries : null;
   // View state that outlives the pane (the tree unmounts on every collapse
-  // or rail switch): the open file is the view's file target — drawn against
-  // the conversation it belongs to, even after the center moved on; the view
-  // mode and filter live in pane memory.
-  const fileTarget = shell.target?.kind === "file" ? shell.target : null;
-  const owner = fileTarget ? fileTarget.sessionId : sessionId;
-  const previewKey = fileTarget?.sessionId === null ? `draft:${fileTarget.draftPrimaryDir}` : owner ?? scopeKey;
-  const ownerAttachments = useDraft(owner ?? NEW_DRAFT).draft.attachments;
-  const [previewView, setPreviewView] = usePaneMemory<PreviewMode>(`${previewKey}:files:mode`, "rendered");
+  // or rail switch) lives in pane memory. A file opened here becomes an open
+  // file (OpenFilesPanel), so the tree is never replaced by a preview.
   const [query, setQuery] = usePaneMemory(`${scopeKey}:files:query`, "");
   // Name = the folder trees; recent = each folder's files flat, newest first.
   const [order, setOrder] = usePaneMemory<"name" | "recent">(`${scopeKey}:files:order`, "name");
@@ -174,13 +165,11 @@ export function WorkspaceTree() {
   const openFile = (entry: ManagedTreeEntry) => {
     if ("isDirectory" in entry && entry.isDirectory) return;
     if (!sessionId || !("kind" in entry)) return;
-    setPreviewView("rendered");
     const absolutePath = managedFolderPath ? `${managedFolderPath}/${entry.path}` : undefined;
     shell.openTarget({ kind: "file", sessionId, root: "workspace", path: entry.path, absolutePath });
   };
 
   const openWorkingFile = (entry: WorkingTreeEntry) => {
-    setPreviewView("rendered");
     const path = `${entry.folderId}/${entry.path}`;
     const folder = workingFolders.find(item => item.id === entry.folderId);
     const absolutePath = folder ? `${folder.path}/${entry.path}` : undefined;
@@ -188,46 +177,6 @@ export function WorkspaceTree() {
       ? { kind: "file", sessionId, root: "working", path, absolutePath }
       : { kind: "file", sessionId: null, draftPrimaryDir: primaryDir, root: "working", path, absolutePath });
   };
-
-
-  if (fileTarget) {
-    // Attaching goes to the message of the conversation the file belongs to.
-    const staged = ownerAttachments.includes(fileTarget.path);
-    return (
-      <FilePreview
-        sessionId={fileTarget.sessionId}
-        draftPrimaryDir={fileTarget.sessionId === null ? fileTarget.draftPrimaryDir : undefined}
-        path={fileTarget.path}
-        fileRef={fileTarget.root === "local" ? null : { root: fileTarget.root, path: fileTarget.path }}
-        absolutePath={fileTarget.root === "local" ? fileTarget.path : fileTarget.absolutePath}
-        mode={previewView}
-        onModeChange={setPreviewView}
-        onSaved={(saved) => {
-          // A conflict copy saved to a sibling: follow it there.
-          if (saved.path === fileTarget.path) return;
-          if (fileTarget.root !== "local") {
-            const name = saved.path.split("/").at(-1) ?? saved.path;
-            const absolutePath = fileTarget.absolutePath?.replace(/[^\\/]+$/, () => name);
-            shell.openTarget({ ...fileTarget, path: saved.path, absolutePath });
-          }
-        }}
-        footer={
-          fileTarget.root === "workspace" ? (
-            <button
-              className="wb-apply"
-              onClick={() =>
-                staged
-                  ? unstageInDraft(fileTarget.sessionId, [fileTarget.path])
-                  : stageInDraft(fileTarget.sessionId, [fileTarget.path])
-              }
-            >
-              {staged ? t("Remove from message") : t("Attach to message")}
-            </button>
-          ) : null
-        }
-      />
-    );
-  }
 
   return (
     <div onKeyDown={(event) => {

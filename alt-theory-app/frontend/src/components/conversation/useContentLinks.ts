@@ -58,14 +58,16 @@ export function useContentLinks(sessionId: string | null, base?: FileRef, baseFo
           const media = isImagePath(ref.path) || isHtmlPath(ref.path);
           const file = media ? { content: "" } : await getSessionFileContent(owner, ref.root, ref.path);
           if (!file.content.includes("\0")) {
+            // The address is absolute whenever the file is in a folder: it is what makes the
+            // file one open file with the one Files and Changes open.
             if (sessionId) {
               shell.openTarget(ref.root === "records"
                 ? { kind: "record", sessionId, root: "records", path: ref.path }
-                : { kind: "file", sessionId, root: ref.root, path: ref.path });
+                : { kind: "file", sessionId, root: ref.root, path: ref.path, absolutePath: link.address });
               return;
             }
             if (ref.root === "working" && draftPrimaryDir !== undefined) {
-              shell.openTarget({ kind: "file", sessionId: null, draftPrimaryDir, root: "working", path: ref.path });
+              shell.openTarget({ kind: "file", sessionId: null, draftPrimaryDir, root: "working", path: ref.path, absolutePath: link.address });
               return;
             }
           }

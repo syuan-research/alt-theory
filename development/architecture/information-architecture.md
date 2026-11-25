@@ -258,8 +258,8 @@ surfaces remain designation-gated and absent for everyone else.
 - **Right rail**
   - Holds files/changes and one selected related conversation (Branch, BTW,
     or subagent). What it shows beyond a rail's list is a typed
-    target (`lib/viewTarget.ts`): a conversation, a file (managed workspace or
-    working folder), a changed file, or a record. Every target names the
+    target (`lib/viewTarget.ts`): a conversation, a local page, or a record;
+    a file is an open file (next bullet). Every target names the
     conversation it belongs to and is drawn against it: switching the center
     conversation leaves an open target as it was, scroll position included —
     an open file is still that conversation's file, and attaching it adds it to
@@ -268,6 +268,21 @@ surfaces remain designation-gated and absent for everyone else.
     show the center conversation. The rail is one global view for now (Owner
     2026-09-24); the target type does not name it, so a tab or a split could
     show the same targets.
+  - Open files (Owner 2026-11-25): a file opened from Changes, from Files or
+    from a link in a conversation becomes an open file instead of replacing
+    the entry's list, which keeps its position, filter and expansion. Open
+    files are collected on the Open files rail entry, below Files, with their
+    count on the rail and in the header: one chip per file at the top of the
+    viewing area (`components/inspector/OpenFilesPanel.tsx`) and the file on
+    show below it. A file is one open file whichever entry it came from (the
+    same absolute path), and its last entry decides what it shows: the change
+    for Changes, the file otherwise. Back returns to the entry the file on
+    show came from. A file that is not on show stays mounted, so its scroll,
+    zoom and open editor are as they were when it comes back. The file chips
+    and the Related chips are one strip (`components/shell/TabStrip.tsx`,
+    `.child-switch`): no scrollbar and one height; it scrolls by wheel,
+    trackpad and the arrow keys, with a partly visible chip at an edge.
+    Deleting a conversation drops its open files too.
   - Branches (purpose `fork`), BTW and subagents open in this rail at the
     pane's current width.
   - Navigation has one owner, `ShellContext`, which changes one state only
@@ -297,7 +312,7 @@ surfaces remain designation-gated and absent for everyone else.
     branches must not open a second center-column “compare pane.”
   - File preview occupies the rail as a real reading surface; rendered Markdown
     is the default for non-technical users, with source available on demand.
-    One renderer serves Files, Changes and Records
+    One renderer serves the open files and Records
     (`components/inspector/FilePreview.tsx`): the control follows the file
     type (`lib/fileContent.ts` `previewModes`). Changes starts in Diff when
     available. Files and conversation links start in Rendered or Source.

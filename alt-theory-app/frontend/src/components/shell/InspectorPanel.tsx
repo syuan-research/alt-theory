@@ -27,8 +27,10 @@ import { ProvenancePanel } from "@/components/inspector/ProvenancePanel";
 import { WorkspaceTree } from "@/components/inspector/WorkspaceTree";
 import { ChangesPanel } from "@/components/inspector/ChangesPanel";
 import { LocalPage } from "@/components/inspector/LocalPage";
+import { OpenFilesPanel } from "@/components/inspector/OpenFilesPanel";
 import { MenuButton } from "@/components/inspector/FolderList";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
+import { TabStrip } from "@/components/shell/TabStrip";
 import { fetchSessionDetail, promoteToMainline } from "@/api/sessions";
 import { copyText } from "@/lib/clipboard";
 import { hasNativeBridge, revealPath } from "@/lib/native";
@@ -42,11 +44,12 @@ const RAIL_META: Record<RailKey, { title: string; icon: string; adv?: boolean }>
   chats: { title: t("Related conversations"), icon: "ph-chats" },
   changes: { title: t("Changes"), icon: "ph-pencil-simple-line" },
   workspace: { title: t("Files"), icon: "ph-folder" },
+  open: { title: t("Open files"), icon: "ph-files" },
   records: { title: t("Records"), icon: "ph-scroll", adv: true },
   provenance: { title: t("Provenance"), icon: "ph-tree-structure", adv: true },
 };
 
-const PRIMARY: RailKey[] = ["chats", "changes", "workspace"];
+const PRIMARY: RailKey[] = ["chats", "changes", "workspace", "open"];
 const ADVANCED: RailKey[] = ["records", "provenance"];
 
 export function InspectorPanel() {
@@ -65,7 +68,10 @@ export function InspectorPanel() {
   }).length;
   const relatedRunning = related.visible.some((row) => conversationState(row.runStatus) === "running");
 
-  const title = (shell.target && targetTitle(shell.target)) ?? (active ? RAIL_META[active].title : "");
+  // The open files name the view; their count sits beside the name.
+  const title = active === "open"
+    ? RAIL_META.open.title
+    : (shell.target && targetTitle(shell.target)) ?? (active ? RAIL_META[active].title : "");
 
   // Scroll memory per (conversation, rail, sub): saved on scroll, restored
   // when that view mounts again. Content (file text, lists) arrives after
@@ -76,19 +82,25 @@ export function InspectorPanel() {
   // updates the saved value, so a restore during active reading is a no-op.
   const bodyRef = useRef<HTMLDivElement>(null);
   // An open target keeps its own scroll whatever the center shows; a list's
-  // scroll is the center conversation's.
-  const scrollKey = shell.target
-    ? `${active}:${targetKey(shell.target)}:scroll`
-    : `${conv.sessionId}:${active}::scroll`;
+  // scroll is the center conversation's, and so is the scroll of a file that
+  // is not on show (it stays mounted).
+  const scrollKey = active === "open"
+    ? `open:${shell.activeFile}:scroll`
+    : shell.target
+      ? `${active}:${targetKey(shell.target)}:scroll`
+      : `${conv.sessionId}:${active}::scroll`;
   useLayoutEffect(() => {
     const el = bodyRef.current;
     const saved = paneMemory.get<number>(scrollKey) ?? 0;
     if (!el) return;
     // Since every preview mode scrolls inside its card (2026-09-28), the
     // element that actually scrolls is the solo preview's card when one is
-    // open, the pane itself for lists. One key serves both.
+    // open, of the open file on show, the pane itself for lists. One key
+    // serves all.
     const scroller = () =>
-      el.querySelector<HTMLElement>(":scope > .preview > .change-preview-body") ?? el;
+      el.querySelector<HTMLElement>(
+        ":scope > .preview > .change-preview-body, :scope > .open-files > .open-file-reader:not([hidden]) > .preview > .change-preview-body",
+      ) ?? el;
     scroller().scrollTop = saved;
     if (!saved) return;
     let resize: ResizeObserver | null = null;
@@ -132,7 +144,7 @@ export function InspectorPanel() {
     <aside className={`right${open ? " open" : ""}`}>
       <div className="rpanel">
         {active ? (
-          <div className={`head${shell.target ? " sub" : ""}`}>
+          <div className={`head${shell.target || active === "open" ? " sub" : ""}`}>
             {/* Collapse sits on the inner edge: on a narrow window the outer
                 edge is the first thing to go off-screen. */}
             <button
@@ -146,6 +158,7 @@ export function InspectorPanel() {
               <i className="ph ph-arrow-left" />
             </button>
             <span>{title}</span>
+            {active === "open" ? <span className="rp-count">{shell.openedFiles.length}</span> : null}
             <button
               className="rp-full"
               onClick={() => shell.layout.setRightFull(!shell.layout.geometry.rightFull)}
@@ -156,7 +169,7 @@ export function InspectorPanel() {
           </div>
         ) : null}
         <div
-          className="body"
+          className={`body${active === "open" ? " with-tabs" : ""}`}
           ref={bodyRef}
           onScrollCapture={(event) => {
             // Memory follows whichever element actually scrolls: the pane
@@ -173,6 +186,7 @@ export function InspectorPanel() {
           {active === "chats" ? <RelatedConversations list={related} /> : null}
           {active === "changes" ? <ChangesPanel /> : null}
           {active === "workspace" ? shell.target?.kind === "page" ? <LocalPage /> : <WorkspaceTree /> : null}
+          {active === "open" ? <OpenFilesPanel /> : null}
           {active === "records" ? (
             <RecordsPanel
               sessionId={conv.sessionId}
@@ -209,6 +223,7 @@ export function InspectorPanel() {
           >
             <i className={`ph ${RAIL_META[key].icon}${key === "chats" && relatedRunning ? " activity-shimmer" : ""}`} />
             {key === "chats" && attentionCount > 0 ? <span className="attention-count">{attentionCount}</span> : null}
+            {key === "open" && shell.openedFiles.length > 0 ? <span className="attention-count">{shell.openedFiles.length}</span> : null}
           </button>
         ))}
         {advanced
@@ -398,36 +413,14 @@ function RelatedConversations({ list }: { list: ReturnType<typeof useRelatedList
     menu.openAt(rect.left + 18, rect.bottom, sessionMenuItems(child), event.currentTarget);
   };
 
-  // Wheel → horizontal: trackpads/mice emit vertical delta; without this the
-  // strip only moves via the scrollbar thumb.
-  const switchRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = switchRef.current;
-    if (!el) return;
-    const onWheel = (event: WheelEvent) => {
-      if (el.scrollWidth <= el.clientWidth + 1) return;
-      const dominantY = Math.abs(event.deltaY) >= Math.abs(event.deltaX);
-      if (!dominantY && event.deltaX === 0) return;
-      const dx = dominantY ? event.deltaY : event.deltaX;
-      if (dx === 0) return;
-      const next = el.scrollLeft + dx;
-      const max = el.scrollWidth - el.clientWidth;
-      if (next <= 0 && el.scrollLeft <= 0) return;
-      if (next >= max && el.scrollLeft >= max) return;
-      event.preventDefault();
-      el.scrollLeft = Math.max(0, Math.min(max, next));
-    };
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, [visible.length, activeChildId]);
-
   const switcher =
     visible.length > 0 || activeChildId ? (
       <div className="child-switch-row">
-      <div className="child-switch" ref={switchRef}>
+      <TabStrip className="child-switch" activeKey={activeChildId}>
         {visible.map((row) => (
           <button
             key={row.session.sessionId}
+            data-tab-key={row.session.sessionId}
             className={row.session.sessionId === activeChildId ? "on" : ""}
             data-tip={row.kind ? `${t({ subagent: "Subagent", fork: "Branch", side: "BTW", advisor: "Advisor" }[row.kind])} · ${titleOf(row.session)}` : titleOf(row.session)}
             onContextMenu={(event) => menu.open(event, sessionMenuItems(row.session))}
@@ -444,7 +437,7 @@ function RelatedConversations({ list }: { list: ReturnType<typeof useRelatedList
             <ConversationState state={conversationState(row.runStatus, main.sessionAlerts[row.session.sessionId])} />
           </button>
         ))}
-      </div>
+      </TabStrip>
       {activeChildId ? <button type="button" className="flat" aria-label={t("Sort and filter")}
         data-tip={t("Sort and filter")} aria-expanded={controlsOpen}
         onClick={() => setControlsOpen((open) => !open)}>

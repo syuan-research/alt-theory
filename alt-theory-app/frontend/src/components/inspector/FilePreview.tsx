@@ -281,16 +281,11 @@ function TextFilePreview({
   }, []);
   useHotkey("save", active === "edit" ? hotkeySave : null);
 
+  // The raw text of a file is one view, with one name for every file
+  // (owner 2026-11-25; it used to be called File for files without a
+  // rendered form).
   const label = (m: PreviewMode) =>
-    m === "diff"
-      ? t("Diff")
-      : m === "rendered"
-        ? t("Rendered")
-        : m === "edit"
-          ? t("Edit")
-          : file?.renderable || /\.(md|html?)$/i.test(path)
-            ? t("Source")
-            : t("File");
+    m === "diff" ? t("Diff") : m === "rendered" ? t("Rendered") : m === "edit" ? t("Edit") : t("Source");
 
   // Once opened, the editor stays mounted (hidden) while another mode shows,
   // so its undo history lasts until the file closes, as the user was told.
@@ -407,14 +402,14 @@ function TextFilePreview({
 
   return (
     <div className="preview">
+      {/* One button per view, also when there is only one: the row keeps its
+          height and its look for every file (owner 2026-11-25). */}
       <div className="change-preview-toolbar">
-        {modes.length > 1
-          ? modes.map((m) => (
-              <button key={m} className={`flat${active === m ? " on" : ""}`} onClick={() => onModeChange(m)}>
-                {label(m)}
-              </button>
-            ))
-          : <span>{label(active)}</span>}
+        {modes.map((m) => (
+          <button key={m} type="button" className={`flat${active === m ? " on" : ""}`} onClick={() => onModeChange(m)}>
+            {label(m)}
+          </button>
+        ))}
         {tooLargeToEdit ? (
           <span className="change-preview-time">{t("Files over 1 MiB are view-only.")}</span>
         ) : file?.updatedAt ? (
@@ -422,7 +417,7 @@ function TextFilePreview({
             {t("Updated {time}", { time: new Date(file.updatedAt).toLocaleTimeString() })}
           </span>
         ) : null}
-        {active === "rendered" && isHtmlPath(path) ? <div className="web-page-controls-host" ref={setControlsHost} /> : null}
+        {active === "rendered" && media ? <div className="web-page-controls-host" ref={setControlsHost} /> : null}
       </div>
       <div
         className="change-preview-body expanded"
@@ -454,8 +449,11 @@ function DiffLines({ diff }: { diff: string }) {
   );
 }
 
-export function FilePreview(props: Parameters<typeof TextFilePreview>[0]) {
+export function FilePreview(props: Parameters<typeof TextFilePreview>[0] & {
+  /** Bumped by the caller to reload an image or page; a record preview takes it from the view's target. */
+  revision?: number;
+}) {
   const shell = useShell();
-  const revision = shell.target?.revision ?? 0;
+  const revision = props.revision ?? shell.target?.revision ?? 0;
   return <TextFilePreview key={revision} {...props} />;
 }

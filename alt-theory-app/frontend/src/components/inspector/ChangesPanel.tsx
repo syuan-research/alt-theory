@@ -5,7 +5,6 @@ import { t } from "@/i18n";
 import { useConversationContext } from "@/context/ConversationContext";
 import { useShell } from "@/context/ShellContext";
 import { useApp } from "@/context/AppProvider";
-import { FilePreview } from "@/components/inspector/FilePreview";
 import { FolderHead, ListTools, MenuButton } from "@/components/inspector/FolderList";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 import { fileMenuItems } from "@/lib/fileMenu";
@@ -14,9 +13,7 @@ import { familyMembersOf, sessionTitle } from "@/lib/sessionList";
 import { agentMatches, changeAuthors, changeSections, passesAgentFilter, type AgentFilter, type ChangeSort } from "@/lib/changeList";
 import { CHANGES_KEPT_MAX } from "@/lib/limits";
 import { paneMemory, usePaneMemory } from "@/lib/paneMemory";
-import { targetKey } from "@/lib/viewTarget";
 import { useFindTarget } from "@/lib/find";
-import type { PreviewMode } from "@/lib/fileContent";
 import { fileQueryScore, parseFileQuery } from "../../../../shared/quick-find";
 
 /**
@@ -24,8 +21,8 @@ import { fileQueryScore, parseFileQuery } from "../../../../shared/quick-find";
  * groups the way prototype D does — each project folder is one group,
  * everything outside groups by containing folder under the depth cap — with
  * the newest change first in each group; time, agent and name orders and an
- * agent filter sit above (issue 2026-10-12). A new file opens in Rendered
- * when available; the viewer control follows the file type.
+ * agent filter sit above (issue 2026-10-12). A change opened here becomes an
+ * open file that shows the change first (owner 2026-11-25).
  */
 /** Conversations holding loaded diffs, oldest first: a remount shows its
  *  last list at once (the fetch refreshes it), and diffs can be large. */
@@ -48,16 +45,11 @@ export function ChangesPanel() {
   const shell = useShell();
   const menu = useContextMenu();
 
-  // While a change is open the panel is its conversation's (the center may
-  // have moved on); otherwise the center conversation's list.
-  const changeTarget = shell.target?.kind === "change" ? shell.target : null;
-  const sessionId = changeTarget?.sessionId ?? conv.sessionId;
+  // The list is the center conversation's; a change opened here becomes an
+  // open file (OpenFilesPanel) that belongs to its own conversation.
+  const sessionId = conv.sessionId;
   const runCount = conv.runSettledCount;
   const [closed, setClosed] = usePaneMemory<string[]>(`${sessionId}:changes:closed`, []);
-  const [mode, setMode] = usePaneMemory<PreviewMode>(
-    `${sessionId}:changes:${changeTarget ? targetKey(changeTarget) : ""}:mode`,
-    "diff",
-  );
   const [groups, setGroups] = usePaneMemory<ChangeGroup[] | null>(`${sessionId}:changes:groups`, null);
   const [error, setError] = usePaneMemory<string | null>(`${sessionId}:changes:error`, null);
   // The same always-visible filter as Files (owner 2026-09-24: lists of
@@ -109,29 +101,6 @@ export function ChangesPanel() {
       cancelled = true;
     };
   }, [sessionId, runCount, familyActivity, poll]);
-
-  // The open file is the view's change target — set here, by the turn-end
-  // card in the conversation, or restored by the shell after a collapse —
-  // so the drill-in survives a remount.
-  const selected = changeTarget
-    ? (groups
-        ?.flatMap((group) => group.files)
-        .find((file) => file.resolvedPath === changeTarget.path || file.path === changeTarget.path) ?? null)
-    : null;
-
-  if (selected) {
-    return (
-      <FilePreview
-        sessionId={selected.contentRef?.sessionId ?? sessionId}
-        path={selected.displayPath}
-        absolutePath={selected.resolvedPath}
-        fileRef={selected.contentRef ?? null}
-        diff={selected.diff}
-        mode={mode}
-        onModeChange={setMode}
-      />
-    );
-  }
 
   if (error) return <div className="rp-empty">{error}</div>;
   if (!groups) return <div className="rp-empty">{t("Loading…")}</div>;

@@ -45,7 +45,10 @@ export function ArtifactView({ owner, file, absolutePath, controlsHost }: {
   }, [typeof owner === "string" ? owner : owner?.primaryDir, typeof owner, file?.root, file?.path, absolutePath]);
   if (error) return <PreviewOpenError error={error} absolutePath={absolutePath} />;
   if (!url) return <div className="rp-empty">{t("Loading…")}</div>;
+  const onError = () => setError(t("The current file is not available."));
+  // An image gets the same reading controls as a page: zoom and the expanded
+  // view (owner 2026-11-25).
   return isImagePath(path)
-    ? <img className="artifact-image" src={url} alt={path} onError={() => setError(t("The current file is not available."))} />
+    ? <WebPageView image={url} title={path} controlsHost={controlsHost} onError={onError} />
     : <WebPageView url={url} title={path} controlsHost={controlsHost} />;
 }

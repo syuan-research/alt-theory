@@ -11,10 +11,11 @@ import {
 import { syncTitlebarTheme } from "@/lib/native";
 import { useVersions } from "@/lib/versions";
 import { paneMemory } from "@/lib/paneMemory";
-import { INITIAL_PANE, navigate, type RailKey, type ViewTarget } from "@/lib/viewTarget";
+import { INITIAL_PANE, navigate, type OpenFile, type RailKey, type ViewTarget } from "@/lib/viewTarget";
 import { usePaneLayout } from "@/lib/usePaneLayout";
+import type { PreviewMode } from "@/lib/fileContent";
 
-export type { RailKey, ViewTarget };
+export type { OpenFile, RailKey, ViewTarget };
 
 /** Full-screen surface. `app` is the 3-pane shell; the others take over. */
 export type Surface = "app" | "settings" | "review" | "files";
@@ -50,10 +51,17 @@ export interface ShellContextValue {
   closeRight: () => void;
   /** What the open rail shows beyond its list; drawn against its own conversation. */
   target: ViewTarget | null;
-  /** Open a target on its rail; the pane keeps its width. */
+  /** Open a target on its rail; the pane keeps its width. A file or a change
+   *  becomes an open file. */
   openTarget: (target: ViewTarget) => void;
   /** Back: to where the user came from, else to the rail's list. */
   closeTarget: () => void;
+  /** The open files (owner 2026-11-25), oldest first, and the key of the one on show. */
+  openedFiles: OpenFile[];
+  activeFile: string | null;
+  closeFile: (key: string) => void;
+  activateFile: (key: string) => void;
+  setFileView: (key: string, view: PreviewMode) => void;
   /** The side conversation shown, if the view shows one. */
   openConversationId: string | null;
   /** Conversations that are gone (deleted): none of their targets stays or returns. */
@@ -187,6 +195,9 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const clearWorkspaceRevealPath = useCallback(() => setWorkspaceRevealPath(null), []);
 
   const openTarget = useCallback((target: ViewTarget) => dispatchPane({ type: "open", target }), []);
+  const closeFile = useCallback((key: string) => dispatchPane({ type: "closeFile", key }), []);
+  const activateFile = useCallback((key: string) => dispatchPane({ type: "activateFile", key }), []);
+  const setFileView = useCallback((key: string, view: PreviewMode) => dispatchPane({ type: "fileView", key, view }), []);
   const openConversationId = pane.target?.kind === "conversation" ? pane.target.sessionId : null;
 
   const openCompare = useCallback(() => setCompareOpen(true), []);
@@ -223,6 +234,11 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       target: pane.target,
       openTarget,
       closeTarget,
+      openedFiles: pane.openFiles,
+      activeFile: pane.activeFile,
+      closeFile,
+      activateFile,
+      setFileView,
       openConversationId,
       forgetConversations,
       reopenRight,
@@ -263,6 +279,9 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       closeRight,
       openTarget,
       closeTarget,
+      closeFile,
+      activateFile,
+      setFileView,
       openConversationId,
       forgetConversations,
       reopenRight,

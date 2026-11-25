@@ -85,6 +85,14 @@
   --space-page: 40px;
 }
 
+/* One height for a small icon control. The reader's reading controls have it,
+   and so has the reader's view row for every file: a row that never changes
+   height keeps the card's top edge still when the open file changes (owner
+   2026-11-25). */
+:root {
+  --control-h: 26px;
+}
+
 /* Text selection, and the reader-mark colors (owner 2026-10-13: yellow,
    green, orange, blue; light stays low-saturation, dark goes one step
    stronger so the marks still read on the dark canvas). The selection
@@ -157,6 +165,13 @@
 *::before,
 *::after {
   scrollbar-width: thin;
+}
+/* The chip strips (TabStrip: Related, open files) show no scrollbar. They
+   scroll by wheel, trackpad and the arrow keys, and a scrollbar that comes
+   and goes would change the strip's height (owner 2026-11-25). Unlayered
+   like the rule above, which it overrides. */
+.child-switch {
+  scrollbar-width: none;
 }
 
 @layer base {
@@ -1269,6 +1284,7 @@
   .rpanel .head .back { border: none; background: transparent; cursor: pointer; color: var(--text-2); padding: var(--space-hair); display: none; }
   .rpanel .head.sub .back { display: inline-flex; }
   .rpanel .head > span { overflow: hidden; text-overflow: ellipsis; }
+  .rpanel .head > .rp-count { flex: 0 0 auto; color: var(--text-3); font-weight: 400; }
   /* Panel body: only the list scrolls; child conversation owns its own msgs. */
   .rpanel .body {
     flex: 1;
@@ -1416,7 +1432,9 @@
   .tree-caret { font-size: 0.65rem; transition: transform 0.12s; }
   .tree-caret.closed { transform: rotate(-90deg); }
   .tree-caret-placeholder { display: inline-block; flex: 0 0 0.65rem; width: 0.65rem; }
-  .change-preview-toolbar { display: flex; align-items: center; gap: var(--space-tight); margin-bottom: var(--space-tight); color: var(--text-3); font-size: var(--fs-secondary); }
+  /* min-height: the row is as tall for a file without the reading controls as
+     for one with them, so the card below never moves (owner 2026-11-25). */
+  .change-preview-toolbar { display: flex; align-items: center; gap: var(--space-tight); min-height: var(--control-h); margin-bottom: var(--space-tight); color: var(--text-3); font-size: var(--fs-secondary); }
   .change-preview-toolbar .flat.on { background: var(--selected); color: var(--ink); }
   .change-preview-time { margin-left: auto; }
   .change-preview-body { max-height: 15rem; overflow: hidden; padding: var(--space-control) var(--space-control); }
@@ -1458,20 +1476,28 @@
   /* Chromium reveals the caret before the mirror grows a line. */
   .change-preview-body:has(> .file-edit-wrap.mirrored) { scroll-padding-block: 1.5rem; }
   /* Records: the card is not a scroller, so a mirrored editor gets its own. */
-  .preview:not(.rpanel .body > .preview) > .change-preview-body:has(> .file-edit-wrap.mirrored) { max-height: 24rem; overflow: auto; }
+  .preview:not(:is(.rpanel .body, .rpanel .body .open-file-reader:not([hidden])) > .preview) > .change-preview-body:has(> .file-edit-wrap.mirrored) { max-height: 24rem; overflow: auto; }
   .file-edit-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-tight); margin: var(--space-tight) 0; }
   /* Every preview mode scrolls inside the white card (owner 2026-09-28): the
      card is one fixed viewport filling the pane, so switching edit / source /
      rendered / diff never moves the scrollbar. Scoped to a preview that is
      the pane body's direct child (Changes, Files); Records nests the preview
      under its list, where a full-height card would push the save row below
-     the fold. */
-  .rpanel .body > .preview { display: flex; flex-direction: column; height: 100%; }
-  .rpanel .body > .preview .change-preview-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
-  .rpanel .body > .preview .file-edit { flex: 1; min-height: 0; resize: none; }
-  .rpanel .body > .preview .file-edit-wrap { flex: 1; min-height: 0; }
-  .rpanel .body > .preview .file-edit-wrap.mirrored { flex: 1 0 auto; }
-  .rpanel .body > .preview .file-html { flex: 1; min-height: 0; }
+     the fold. The open file on show holds its preview the same way. */
+  :is(.rpanel .body, .rpanel .body .open-file-reader:not([hidden])) > .preview { display: flex; flex-direction: column; height: 100%; }
+  :is(.rpanel .body, .rpanel .body .open-file-reader:not([hidden])) > .preview .change-preview-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+  :is(.rpanel .body, .rpanel .body .open-file-reader:not([hidden])) > .preview .file-edit { flex: 1; min-height: 0; resize: none; }
+  :is(.rpanel .body, .rpanel .body .open-file-reader:not([hidden])) > .preview .file-edit-wrap { flex: 1; min-height: 0; }
+  :is(.rpanel .body, .rpanel .body .open-file-reader:not([hidden])) > .preview .file-edit-wrap.mirrored { flex: 1 0 auto; }
+  :is(.rpanel .body, .rpanel .body .open-file-reader:not([hidden])) > .preview .file-html { flex: 1; min-height: 0; }
+  /* Open files (owner 2026-11-25): the pane body holds the tabs row and the
+     reader of the file on show; the other open files stay mounted, hidden. */
+  .rpanel .body.with-tabs { display: flex; flex-direction: column; overflow: hidden; }
+  .open-files { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
+  .open-files > .open-file-tabs { flex: 0 0 auto; width: 100%; }
+  .open-file-reader { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+  .open-file-reader[hidden] { display: none; }
+  .open-files > .rp-empty { flex: 1; }
   .file-edit-actions .grow { flex: 1; min-width: 0; }
   .file-edit-actions .conflict-note { font-size: var(--fs-secondary); color: var(--text-2); }
   .file-edit-actions .conflict-note.danger { color: var(--danger); }
@@ -1497,6 +1523,7 @@
     max-width: 100%;
     overflow-x: auto;
     overflow-y: hidden;
+    /* No scrollbar: see the rule beside the app-wide scrollbar style. */
     padding: 0 var(--space-hair) var(--space-tight);
     -webkit-overflow-scrolling: touch;
   }
@@ -1518,6 +1545,22 @@
   .child-switch button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .child-switch button:hover { background: var(--hover); }
   .child-switch button.on { background: var(--ink); color: var(--on-ink); }
+  /* Open files: one chip per open file — the Related chip above, with room
+     for a file name. When the tabs don't fit, the chip on show keeps its
+     width and the others give way to their floor (that chip's own width plus
+     the close), then the strip scrolls. The stem of a name ellipsizes; its
+     extension never does. Close lies over the chip's right end, on the chip's
+     own surface. */
+  .open-file-tab { position: relative; display: inline-flex; flex: 0 1 auto; min-width: calc(110px + 16px); max-width: 100%; }
+  .open-file-tab.on { flex-shrink: 0; }
+  .open-file-tab > [role="tab"] { flex: 0 1 auto; min-width: 0; max-width: 15rem; padding-right: calc(var(--space-tight) + 16px); }
+  .open-file-tab .file-name { display: flex; flex: 0 1 auto; min-width: 0; }
+  .open-file-tab .file-stem { flex: 0 1 auto; min-width: 0; }
+  .open-file-tab .file-ext { flex: 0 0 auto; }
+  .open-file-tab .tab-close { position: absolute; top: 0; right: 0; bottom: 0; width: calc(var(--space-tight) + 16px); justify-content: center; padding: 0; border-radius: 0 var(--r-sm) var(--r-sm) 0; background: transparent; color: var(--text-3); }
+  .open-file-tab .tab-close:hover { background: var(--hover); color: var(--ink); }
+  .open-file-tab.on .tab-close { color: var(--on-ink); }
+  .open-file-tab.on .tab-close:hover { background: color-mix(in srgb, var(--on-ink) 18%, transparent); }
 
   .child-conv { height: 100%; min-height: 0; display: flex; flex-direction: column; background: var(--canvas); }
   .related-open { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
@@ -1916,10 +1959,13 @@
 .web-page-view { display: flex; flex-direction: column; flex: 1; min-height: 0; height: 100%; }
 .web-page-toolbar { display: flex; align-items: center; gap: var(--space-tight); flex-shrink: 0; min-height: 32px; padding-bottom: var(--space-tight); }
 .web-page-controls { margin-left: auto; display: flex; align-items: center; gap: 2px; }
-.web-page-controls .flat { min-width: 26px; min-height: 26px; justify-content: center; }
+.web-page-controls .flat { min-width: var(--control-h); min-height: var(--control-h); justify-content: center; }
 .web-page-percent { font-variant-numeric: tabular-nums; }
 .web-page-viewport { flex: 1; min-height: 0; overflow: hidden; background: var(--canvas); }
 .web-page-viewport iframe { display: block; border: 0; max-width: none; transform-origin: top left; background: var(--canvas); }
+/* An image zooms by scaling: past 100% the viewport scrolls to the rest of it. */
+.web-page-viewport-image { overflow: auto; }
+.web-page-image { transform-origin: top left; }
 .preview .change-preview-body:has(> .web-page-view) { display: flex; flex: 1; min-height: 0; }
 .web-page-expanded { position: fixed; inset: 48px 12px 12px; z-index: 250; height: auto; padding: var(--space-control); background: var(--panel); border-radius: var(--r-md); box-shadow: 0 0 0 16px var(--panel); }
 

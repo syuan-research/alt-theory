@@ -2,9 +2,13 @@ import { createPortal } from "react-dom";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { t } from "@/i18n";
 
-/** One live frame: reading adjustments never reload a form or its scroll state. */
-export function WebPageView({ url, title, actions, onError, controlsHost }: {
-  url: string; title: string; actions?: ReactNode; onError?: () => void; controlsHost?: HTMLElement | null;
+/** One live frame, or one image: reading adjustments never reload a form or its scroll state. */
+export function WebPageView({ url, image, title, actions, onError, controlsHost }: {
+  /** The page in the frame; absent for an image. */
+  url?: string;
+  /** The image shown in the viewport instead of a frame, with the same controls. */
+  image?: string;
+  title: string; actions?: ReactNode; onError?: () => void; controlsHost?: HTMLElement | null;
 }) {
   const [zoom, setZoom] = useState(100);
   const [open, setOpen] = useState(false);
@@ -41,9 +45,11 @@ export function WebPageView({ url, title, actions, onError, controlsHost }: {
       {actions}
       {controlsHost && !expanded ? createPortal(readingControls, controlsHost) : readingControls}
     </div>
-    <div className="web-page-viewport">
-      <iframe src={url} title={title} style={{ width: (10000 / zoom) + "%", height: (10000 / zoom) + "%", transform: "scale(" + zoom / 100 + ")" }}
-        sandbox="allow-scripts allow-forms allow-same-origin allow-downloads allow-popups" onError={onError} />
+    <div className={"web-page-viewport" + (image ? " web-page-viewport-image" : "")}>
+      {image
+        ? <img className="artifact-image web-page-image" src={image} alt={title} style={{ transform: "scale(" + zoom / 100 + ")" }} onError={onError} />
+        : <iframe src={url} title={title} style={{ width: (10000 / zoom) + "%", height: (10000 / zoom) + "%", transform: "scale(" + zoom / 100 + ")" }}
+          sandbox="allow-scripts allow-forms allow-same-origin allow-downloads allow-popups" onError={onError} />}
     </div>
   </div>;
 }
