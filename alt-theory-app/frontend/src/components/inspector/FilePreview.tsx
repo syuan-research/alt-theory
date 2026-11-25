@@ -128,6 +128,19 @@ function TextFilePreview({
   const editOpened = useRef(false);
 
   const bodyRef = useRef<HTMLDivElement>(null);
+  const footRef = useRef<HTMLDivElement>(null);
+  // The content ends above the save row and the footer that sit over the
+  // card's lower part, so nothing hides under them.
+  useLayoutEffect(() => {
+    const foot = footRef.current;
+    const card = bodyRef.current;
+    if (!foot || !card) return;
+    const fit = () => card.style.setProperty("--card-foot", `${foot.offsetHeight}px`);
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(foot);
+    return () => observer.disconnect();
+  }, []);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mirrorRef = useRef<HTMLDivElement>(null);
   const scrollSeen = useRef({ textarea: 0, card: 0 });
@@ -429,8 +442,12 @@ function TextFilePreview({
         {active === "edit" && showEditor ? null : body()}
         {showEditor ? editor() : null}
       </div>
-      {actionsBar()}
-      {footer}
+      {/* The save row and the footer sit inside the card, over its lower part,
+          so the card keeps its box when they come or go (owner 2026-11-25). */}
+      <div className="preview-foot" ref={footRef}>
+        {actionsBar()}
+        {footer}
+      </div>
     </div>
   );
 }

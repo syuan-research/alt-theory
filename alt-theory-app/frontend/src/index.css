@@ -1498,6 +1498,16 @@
   .open-file-reader { display: flex; flex-direction: column; flex: 1; min-height: 0; }
   .open-file-reader[hidden] { display: none; }
   .open-files > .rp-empty { flex: 1; }
+  /* The save row and the footer sit inside the card in the pane's previews
+     (owner 2026-11-25): the card keeps its box when they come or go, so
+     switching between open files never moves its edges. They lie over the
+     card's lower part and the content ends above them (--card-foot is the
+     foot's height). */
+  :is(.rpanel .body, .rpanel .body .open-file-reader:not([hidden])) > .preview { position: relative; }
+  :is(.rpanel .body, .rpanel .body .open-file-reader:not([hidden])) > .preview .preview-foot { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; gap: var(--space-tight); padding: var(--space-tight); pointer-events: none; }
+  :is(.rpanel .body, .rpanel .body .open-file-reader:not([hidden])) > .preview .preview-foot:empty { display: none; }
+  :is(.rpanel .body, .rpanel .body .open-file-reader:not([hidden])) > .preview .preview-foot > * { margin: 0; pointer-events: auto; }
+  :is(.rpanel .body, .rpanel .body .open-file-reader:not([hidden])) > .preview .change-preview-body { padding-bottom: calc(var(--space-tight) + var(--card-foot, 0px)); }
   .file-edit-actions .grow { flex: 1; min-width: 0; }
   .file-edit-actions .conflict-note { font-size: var(--fs-secondary); color: var(--text-2); }
   .file-edit-actions .conflict-note.danger { color: var(--danger); }
