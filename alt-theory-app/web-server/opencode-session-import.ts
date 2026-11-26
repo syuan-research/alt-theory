@@ -6,6 +6,11 @@ import { DatabaseSync } from "node:sqlite";
 import { CURRENT_SESSION_VERSION, parseSessionEntries } from "@earendil-works/pi-coding-agent";
 
 import { ImportRefusalError, emptyUsage } from "./session-import-shared.js";
+import {
+  discoverOpenCodeV2Sessions,
+  preflightOpenCodeV2Session,
+  selectOpenCodeV2Session,
+} from "./opencode-v2-session-import.js";
 
 type Row = Record<string, unknown>;
 type StoredRow = Row & { id: string; data: Record<string, any> };
@@ -54,9 +59,15 @@ export function discoverOpenCodeSessions(
   const db = new DatabaseSync(path, { readOnly: true });
   try {
     const sessionColumns = tableColumns(db, "session");
+    const hasV2 = tableColumns(db, "session_v2").size > 0;
+    const v2 = hasV2 ? discoverOpenCodeV2Sessions(db, path, sessionColumns.size > 0) : [];
+    if (!sessionColumns.size && hasV2) return v2;
     const filters = [
       sessionColumns.has("parent_id") ? "s.parent_id IS NULL" : "",
       sessionColumns.has("time_archived") ? "s.time_archived IS NULL" : "",
+      hasV2 ? `NOT EXISTS (
+        SELECT 1 FROM session_v2 v WHERE v.id = s.id AND v.time_updated > s.time_updated
+      )` : "",
     ].filter(Boolean);
     const rows = db.prepare(`
       SELECT
@@ -90,7 +101,7 @@ export function discoverOpenCodeSessions(
       ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""}
       ORDER BY s.time_updated DESC, s.id DESC
     `).all() as Row[];
-    return rows.map((row) => ({
+    const legacy = rows.map((row) => ({
       sourceId: `opencode:${String(row.id)}`,
       sourceSessionId: String(row.id),
       sourceStore: path,
@@ -102,6 +113,11 @@ export function discoverOpenCodeSessions(
       messageCount: Number(row.message_count),
       preview: String(row.preview ?? "").slice(0, 960),
     }));
+    return hasV2
+      ? [...legacy, ...v2].sort((a, b) =>
+        b.updatedAt.localeCompare(a.updatedAt) || b.sourceSessionId.localeCompare(a.sourceSessionId)
+      )
+      : legacy;
   } finally {
     db.close();
   }
@@ -117,6 +133,13 @@ export function preflightOpenCodeSession(args: {
   }
   const db = new DatabaseSync(path, { readOnly: true });
   try {
+    if (tableColumns(db, "session_v2").size > 0) {
+      const v2 = selectOpenCodeV2Session(db, args.sourceSessionId, tableColumns(db, "session").size > 0);
+      if (v2) return preflightOpenCodeV2Session(db, v2);
+      if (!tableColumns(db, "session").size) {
+        throw new OpenCodeImportRefusalError("session", 1, "selected session no longer exists");
+      }
+    }
     const session = db.prepare("SELECT * FROM session WHERE id = ?").get(
       args.sourceSessionId
     ) as Row | undefined;

@@ -29,9 +29,10 @@ preflight(), register()}`) and one adapter table keyed by harness. Shared
 discovery dispatch, repeat classification, managed registration,
 provenance, aliases, workspace validation, and atomic cleanup live there;
 each harness row carries its own discovery, preflight, and registration
-mapping. Each external harness has one parser/projector module:
+mapping. The external harness readers are:
 
 - `opencode-session-import.ts`
+- `opencode-v2-session-import.ts` (V2 reader behind the OpenCode adapter)
 - `codex-session-import.ts`
 - `grok-session-import.ts`
 - `claude-code-session-import.ts`
@@ -160,7 +161,15 @@ Implemented mappings include text, collapsible reasoning, distinct historical
 system snapshots, assistant errors, paired tools, images, tool-result image
 attachments, and plaintext compaction. Text/directory file parts already
 represented by source-visible text remain raw; other non-replayable files use
-labelled placeholders. Unknown parts or tool states refuse.
+labelled placeholders. Unknown V1 parts or tool states refuse.
+
+V2 reads `session_v2`, ordered `session_message` rows, and attached
+`session_part` rows. A migrated V2 row at the same revision as its V1
+counterpart uses the existing V1 projection. A newer or V2-only row uses the
+V2 reader. Both use the same session ID for repeat detection. V2 maps text,
+reasoning, tool pairs, embedded and SQLite-backed images, plaintext compaction,
+and historical skill or shell context. Other message types remain in raw
+source records.
 
 ### Codex
 
@@ -237,6 +246,7 @@ already read for discovery (Codex has a 512 KiB head limit). Only turns a
 person typed count: Claude Code tool-result rows and Codex's injected
 `<environment_context>` / instruction messages are skipped. OpenCode takes the
 first six user/assistant text parts in its list query, excluding assistant
-compaction summaries and synthetic attachment text; Pi takes the first 960
+compaction summaries and synthetic attachment text. OpenCode V2 uses opening
+user text. Pi takes the first 960
 characters of Pi's flattened user/assistant text. Selected preflight still
 reads and checks the complete source.

@@ -1,10 +1,30 @@
-/**
- * Helpers shared by the four coding-harness importers (Codex, Claude Code,
- * OpenCode, Grok). A parsing bug here is usually a bug in all four, which is
- * why they share one copy.
- */
+import { randomUUID } from "node:crypto";
+import { CURRENT_SESSION_VERSION } from "@earendil-works/pi-coding-agent";
 
 type Row = Record<string, any>;
+
+export function importSessionEntries(cwd: string, createdAt: number) {
+  const entries: Row[] = [{
+    type: "session",
+    version: CURRENT_SESSION_VERSION,
+    id: randomUUID(),
+    cwd,
+    timestamp: new Date(createdAt).toISOString(),
+  }];
+  let parentId = entries[0]!.id;
+  return {
+    append(entry: Row, timestamp: number): string {
+      const id = randomUUID();
+      if (entry.type === "compaction") entry = { ...entry, firstKeptEntryId: entry.firstKeptEntryId ?? id };
+      entries.push({ ...entry, id, parentId, timestamp: new Date(timestamp).toISOString() });
+      parentId = id;
+      return id;
+    },
+    jsonl(): string {
+      return entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n";
+    },
+  };
+}
 
 /** Base for per-harness refusal errors; server.ts catches this one type. */
 export class ImportRefusalError extends Error {
