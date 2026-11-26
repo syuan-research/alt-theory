@@ -204,6 +204,9 @@
 }
 
 @layer base {
+  /* Hover fills fade instead of snapping (owner 2026-11-26); a component's own transition replaces this. */
+  button, summary, [role="button"] { transition: background-color 0.15s ease, color 0.15s ease; }
+  @media (prefers-reduced-motion: reduce) { button, summary, [role="button"] { transition: none; } }
   html,
   body,
   #root {
@@ -719,8 +722,12 @@
   .mk-at { display: flex; align-items: flex-start; gap: var(--space-hair); width: 100%; margin-top: var(--space-hair); padding: 0; border: none; background: none; text-align: left; font-size: var(--fs-secondary); color: var(--text-3); cursor: pointer; }
   .mk-at span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mk-at:hover { color: var(--ink); }
-  .msg.row-flash, [data-row].row-flash { animation: row-flash 1.2s ease-out; }
-  @keyframes row-flash { from { background: var(--selected); } to { background: transparent; } }
+  .msg.row-flash, [data-row].row-flash { animation: row-flash 1.4s ease-out; }
+  @keyframes row-flash { from { background: var(--blue-100); } to { background: transparent; } }
+  /* Popups arrive with the deck's motion: a short fade and rise. */
+  .menu.on, .list-menu, .context-menu, .msel-menu, .slash-palette { animation: pop-in 0.16s var(--ease-out); }
+  @keyframes pop-in { from { opacity: 0; transform: translateY(4px); } }
+  @media (prefers-reduced-motion: reduce) { .menu.on, .list-menu, .context-menu, .msel-menu, .slash-palette { animation: none; } }
   .workspaces-pinned { position: sticky; top: calc(-1 * var(--space-hair)); z-index: 2; background: var(--panel); padding-bottom: var(--space-tight); }
   /* Flat light-blue block (owner 2026-11-26, prototype WsLight a): the chosen workspace one step deeper. */
   .workspaces-box { background: var(--blue-25); border-radius: var(--r-lg); padding: var(--space-hair); }
