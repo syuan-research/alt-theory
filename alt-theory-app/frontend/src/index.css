@@ -1324,6 +1324,7 @@
   .composer .row.tiny .model-chip .chip-label { display: none; }
   .composer .row.tiny .model-chip .chip-icon { display: inline; }
   .composer .row.tiny .ctx-ring { font-size: 0; gap: 0; }
+  .composer .row.tiny > .send.continue span { display: none; }
   .composer .row > .flat,
   .composer .row > .send,
   .flat { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-secondary); color: var(--text-2); cursor: pointer; background: none; border: none; padding: 2px 4px; border-radius: var(--r-sm); }
