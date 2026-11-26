@@ -433,7 +433,7 @@ function SessionRootList({
   onToggleExpanded: () => void;
   foldedFamilies: Set<string>;
   onToggleFamily: (id: string) => void;
-  /** `newWorkspace`: Cmd/Ctrl+click or the menu's Open in new workspace. */
+  /** `newWorkspace`: Cmd/Ctrl+click or the menu's Open on a new desk. */
   onOpen: (id: string, newWorkspace?: boolean) => void;
   draggable: boolean;
   cap?: number;
@@ -1001,7 +1001,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                 is filtered. Workspaces stay at the top while the list scrolls. */}
             {visibleIds === null && main.workspaces.length > 0 ? (
               <div className="workspaces-pinned"><div className="workspaces-box">
-                <div className="workspace-list-head"><span className="workspace-list-title"><i className="ph ph-squares-four section-icon" aria-hidden="true" /><span className="lbl">{t("Workspaces")}</span></span><span className="ws-count">{main.workspaces.length}</span></div>
+                <div className="workspace-list-head"><span className="workspace-list-title"><i className="ph ph-squares-four section-icon" aria-hidden="true" /><span className="lbl">{t("Desks")}</span></span><span className="ws-count">{main.workspaces.length}</span></div>
                 {main.workspaces.map((workspace) => {
                   const summary = workspace.sessionId ? sessionsById.get(workspace.sessionId) : undefined;
                   const title = summary ? sessionTitle(summary, app.sessionDisplayNames, app.sessions) : t("New conversation");
@@ -1021,8 +1021,8 @@ function UserNav({ onImport }: { onImport: () => void }) {
                       <button
                         type="button"
                         className="workspace-close"
-                        aria-label={t("Close workspace")}
-                        data-tip={t("Close workspace")}
+                        aria-label={t("Close desk")}
+                        data-tip={t("Close desk")}
                         onClick={() => main.closeWorkspace(workspace.id)}
                       >
                         <i className="ph ph-x" aria-hidden="true" />
@@ -1408,7 +1408,7 @@ function SessionNode({
   session: SessionSummary;
   childrenByParent: Map<string, SessionSummary[]>;
   indent: number;
-  /** `newWorkspace`: Cmd/Ctrl+click or the menu's Open in new workspace. */
+  /** `newWorkspace`: Cmd/Ctrl+click or the menu's Open on a new desk. */
   onOpen: (id: string, newWorkspace?: boolean) => void;
   /** Rail filter result; null shows everything. */
   visibleIds?: Set<string> | null;
@@ -1486,7 +1486,7 @@ function SessionNode({
   });
   const pinned = app.pinnedSessions.includes(session.sessionId);
   const contextItems = (): ContextMenuItem[] => [
-    { label: t("Open in new workspace"), icon: "ph-squares-four", onSelect: () => onOpen(session.sessionId, true) },
+    { label: t("Open on a new desk"), icon: "ph-squares-four", onSelect: () => onOpen(session.sessionId, true) },
     { label: pinned ? t("Unpin") : t("Pin"), icon: pinned ? "ph-push-pin-slash" : "ph-push-pin", onSelect: () => app.togglePin(session.sessionId) },
     ...(session.forkedFrom && session.forkedFrom.purpose !== "fork" && isListMember(session) ? [{
       label: t("Hide from conversation list"), icon: "ph-list-minus", onSelect: () => void main.setRelatedSessionListed(session.sessionId, false),

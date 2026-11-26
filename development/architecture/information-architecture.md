@@ -214,23 +214,24 @@ surfaces remain designation-gated and absent for everyone else.
     (default: the main folder's). Its tooltip lists the main and companion
     paths; companions are not separate rail rows. The group menu offers Add
     folder and Manage folders actions.
-  - Workspaces (Owner 2026-11-26, `lib/workspaces.ts`): places the user
+  - Desks (工作位; Owner 2026-11-26, `lib/workspaces.ts` — the code keeps the
+    name workspace): places the user
     stays in and switches between, always listed at the top of the list in a
     flat light-blue block, the one on show a step deeper (title, where it
     lives, close on hover). Each keeps its center
     conversation and right pane; only the one on show is live, so switching
     reopens its conversation and restores its right pane (`restore` pane
     action). A plain list click stays in the current workspace unless the
-    Settings › General "New workspace" choice says it crosses — across
+    Settings › General "New desk" choice says it crosses — across
     projects (default; standalone conversations are one place), across
     families, every conversation, or never — and then goes to the workspace
     already holding that place, else a new one. Cmd/Ctrl+click and the row
-    menu's Open in new workspace always open one. Nothing restricts which
+    menu's Open on a new desk always open one. Nothing restricts which
     conversation a workspace holds.
   - Pinned (Owner 2026-11-26): a row menu pins a conversation; pinned rows
     show in their own section above the list, in pin order, and stay in
     their place below. The section exists only while something is pinned
-    and has no collapsed-strip icon. The Workspaces section stays at the
+    and has no collapsed-strip icon. The Desks section stays at the
     top of the list while it scrolls. Pins and the workspace choice live in
     app settings (`/api/settings/navigation`). The row's "…" menu and its
     right-click menu are one item list.

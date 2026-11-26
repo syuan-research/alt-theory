@@ -1246,11 +1246,11 @@ function AutoWorkspaceCard() {
     <div className="set-card">
       <div className="row2">
         <div>
-          <h4>{t("New workspace")}</h4>
+          <h4>{t("New desk")}</h4>
           <p>{t("Cmd/Ctrl+click always opens one.")}</p>
         </div>
         <MenuSelect
-          ariaLabel={t("New workspace")}
+          ariaLabel={t("New desk")}
           value={app.autoWorkspace}
           options={[
             { value: "project", label: t("Across projects") },
