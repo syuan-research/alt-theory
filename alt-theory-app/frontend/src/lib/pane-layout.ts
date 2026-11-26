@@ -11,8 +11,11 @@
  * - "Right full": the right pane takes the work area, the center is hidden
  *   (still mounted) and the left column docks as its strip.
  */
-export const LEFT_PANE = { key: "alt-theory-left-width", initial: 256, min: 200, max: 416, collapsed: 52 } as const;
-export const RIGHT_PANE = { initial: 0.4, min: 240, max: 1200, collapsed: 48 } as const;
+/* The strips are deliberately asymmetric: the icon's inner gap is 4px
+   shorter than its outer one, because the workcard's shadow reads as part
+   of the inner gap (owner 2026-11-26, picked from a visual calibration). */
+export const LEFT_PANE = { key: "alt-theory-left-width", initial: 256, min: 200, max: 416, collapsed: 48 } as const;
+export const RIGHT_PANE = { initial: 0.4, min: 240, max: 1200, collapsed: 44 } as const;
 /** Drag floor for the center; window-driven squeezing may go below it. */
 export const CENTER_MIN = 320;
 export const WORK_FLOAT_AT = 700;

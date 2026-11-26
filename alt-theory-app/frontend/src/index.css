@@ -618,10 +618,10 @@
   .left .mini { display: none; flex-direction: column; align-items: stretch; flex: 1; padding-bottom: var(--space-tight); }
   .app-root.leftCol .left .mini { display: flex; }
   .mini > .left-head { margin-bottom: var(--space-tight); }
-  .mini > button { flex: none; width: var(--rail-row-h); height: var(--rail-row-h); margin: 0 auto; padding: 0; border: none; background: transparent; border-radius: var(--r-sm); color: var(--text-2); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+  .mini > button { flex: none; width: var(--rail-row-h); height: var(--rail-row-h); margin: 0 0 0 8px; padding: 0; border: none; background: transparent; border-radius: var(--r-sm); color: var(--text-2); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
   .mini > button:hover { background: var(--hover); }
   .mini > button.on { background: var(--selected); color: var(--ink); }
-  .mini > .help-menu { flex: none; width: var(--rail-row-h); margin: 0 auto; }
+  .mini > .help-menu { flex: none; width: var(--rail-row-h); margin: 0 0 0 8px; }
   .mini > .help-menu > summary { width: var(--rail-row-h); height: var(--rail-row-h); padding: 0; color: var(--text-2); }
   .help-menu.compact .help-popover { left: 44px; right: auto; bottom: 0; }
   .app-root.leftCol .left-head .brand-btn { display: inline-flex; align-items: center; flex: none; width: 30px; height: 30px; padding: 0; border: none; background: none; border-radius: var(--r-sm); cursor: pointer; }
@@ -1278,7 +1278,7 @@
   /* ------- right rail + panel ------- */
   /* Shell supplies feasible dimensions; automatic min-content must not override them. */
   .right { flex: 0 0 calc(var(--right-width) + var(--right-rail-width)); transition: flex-basis 0.18s ease; min-width: 0; display: flex; background: var(--panel); border-left: 1px solid var(--hairline); }
-  .rail { width: var(--right-rail-width); flex-shrink: 0; display: flex; flex-direction: column; align-items: center; padding-top: var(--space-control); gap: var(--space-hair); }
+  .rail { width: var(--right-rail-width); flex-shrink: 0; display: flex; flex-direction: column; align-items: center; padding-top: var(--space-control); padding-right: 4px; gap: var(--space-hair); }
   .rail button { width: 36px; height: 36px; border: none; background: transparent; border-radius: var(--r-sm); color: var(--text-2); cursor: pointer; position: relative; font-size: 1.1rem; display: inline-flex; align-items: center; justify-content: center; }
   .rail button:hover { background: var(--hover); }
   .rail button.on { background: var(--selected); color: var(--ink); }
