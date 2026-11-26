@@ -626,7 +626,9 @@
   .help-menu.compact .help-popover { left: 44px; right: auto; bottom: 0; }
   .app-root.leftCol .left-head .brand-btn { display: inline-flex; align-items: center; flex: none; width: 30px; height: 30px; padding: 0; border: none; background: none; border-radius: var(--r-sm); cursor: pointer; }
   .app-root.leftCol .left-head .brand-btn:hover { background: var(--hover); }
-  .app-root.leftCol .set-rail { padding-inline: var(--space-tight); }
+  /* Asymmetric like the strip itself: the rows keep 36px under their icons,
+     so a settings nav toggle does not hop the icons (owner 2026-11-26). */
+  .app-root.leftCol .set-rail { padding-inline: var(--space-tight) var(--space-hair); }
   .app-root.leftCol .set-item { overflow: hidden; justify-content: center; padding: 0; }
   .app-root.leftCol .set-item .lbl,
   .app-root.leftCol .left-foot .lbl { display: none; }
