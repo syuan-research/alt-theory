@@ -62,7 +62,6 @@ export function PermissionChip({ open, onToggle, onClose }: {
             <i className={`ph ${PERMISSION_ICON[permission]}${permission === "full" ? " perm-warn-icon" : ""}`} />
             <span>
               {PERMISSION_LABEL[permission]()}
-              {permission === "smart" ? <span className="exp-tag">{t("Experimental")}</span> : null}
               <span className="d">{PERMISSION_DETAIL[permission]()}</span>
               {permission === "smart" || permission === "smart-strict" ? (
                 <span className="d">

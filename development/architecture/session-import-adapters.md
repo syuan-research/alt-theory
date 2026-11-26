@@ -177,6 +177,16 @@ Discovery prefers `state_5.sqlite.threads` for root metadata and rollout paths,
 excluding archived and subagent threads; bounded rollout scanning is the
 fallback.
 
+The default session directory is `$CODEX_HOME/sessions` or `~/.codex/sessions`.
+Discovery accepts both JSONL and Zstandard-compressed JSONL. A state index
+path that still points to the uncompressed file can resolve to its compressed
+sibling. Discovery does not filter by Codex account.
+
+For a rollout with `history_base`, import follows the referenced local
+rollout IDs and reads each inherited prefix up to the stored byte boundary
+after decompression. The selected rollout supplies the session metadata.
+The inherited records are projected in order and kept in source context.
+
 Top-level response items form the recoverable transcript.
 `replacement_history` is active context rather than a display transcript.
 The adapter uses the real compaction boundary, maps plaintext reasoning

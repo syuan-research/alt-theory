@@ -89,7 +89,7 @@ export interface ImportSourceSession {
   cwdAvailable: boolean;
   createdAt: string;
   updatedAt: string;
-  messageCount: number;
+  messageCount: number | null;
   preview: string;
   repeat: "new" | "unchanged" | "changed";
   importedSessionId: string | null;
@@ -124,7 +124,7 @@ export interface ImportDiscoveredSession {
   cwd: string;
   createdAt: string;
   updatedAt: string;
-  messageCount: number;
+  messageCount: number | null;
   preview: string;
 }
 
@@ -306,7 +306,7 @@ const piImportAdapter: ImportAdapter = {
 
 const codexImportAdapter: ImportAdapter = {
   harness: "codex",
-  label: "Codex",
+  label: "Codex (ChatGPT)",
   discover(args) {
     return Promise.resolve(discoverCodexSessions(args.codexSessionsDir));
   },
@@ -523,7 +523,7 @@ function registerPreparedImport(
     SessionManager.open(importedPath);
     let sourceSnapshot: string | undefined;
     if (args.rawSourceFile) {
-      sourceSnapshot = "source-rollout.jsonl";
+      sourceSnapshot = args.rawSourceFile.endsWith(".zst") ? "source-rollout.jsonl.zst" : "source-rollout.jsonl";
       const snapshotPath = join(dirs.recordsDir, sourceSnapshot);
       copyFileSync(resolve(args.rawSourceFile), snapshotPath);
       if (fingerprintFile(snapshotPath) !== args.sourceFingerprint) {

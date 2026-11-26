@@ -1208,7 +1208,6 @@
   .menu .mi .think .levels span:hover { background: var(--hover); color: var(--ink); }
   .menu .mi .think .levels span.on { background: var(--selected); color: var(--ink); }
   .menu .mi .d { font-size: var(--fs-secondary); color: var(--text-3); display: block; margin-top: 1px; }
-  .menu .mi .exp-tag { font-size: var(--fs-micro); color: var(--text-2); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 0 4px; margin-left: 6px; vertical-align: 1px; }
   /* Full Access (v1.4.8): warning-color shield states in the composer. */
   .flat.perm-on { color: var(--color-warning); }
   .menu .mi i.perm-warn-icon { color: var(--color-warning); }

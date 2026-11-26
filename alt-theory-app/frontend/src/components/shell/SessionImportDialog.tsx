@@ -23,7 +23,7 @@ function harnessLabel(harness: string): string {
     case "pi":
       return t("Pi");
     case "codex":
-      return t("Codex");
+      return t("Codex (ChatGPT)");
     case "opencode":
       return t("OpenCode");
     case "grok-build":
@@ -282,7 +282,8 @@ export function SessionImportDialog({
               <optgroup key={group.cwd || "no-folder"} label={group.label}>
                 {group.sessions.map((session) => (
                   <option key={session.sourceId} value={session.sourceId}>
-                    {session.messageCount} messages · {(session.name || session.preview || session.sourceSessionId).trim().replace(/\s+/g, " ").slice(0, 56)}
+                    {session.messageCount !== null && `${session.messageCount} messages · `}
+                    {(session.name || session.preview || session.sourceSessionId).trim().replace(/\s+/g, " ").slice(0, 56)}
                   </option>
                 ))}
               </optgroup>

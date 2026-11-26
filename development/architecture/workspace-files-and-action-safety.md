@@ -489,12 +489,11 @@ conversation starts from Settings > General > "New conversations start with"
 there asks for confirmation once) and each new draft starts from it again. A
 mode change mid-run is held until the turn ends, except that a pending switch
 to Read-only mediates at once (`holdReadOnly`): shell calls are refused, each
-write asks, and Full Access is off; the tool set follows at the turn's end. Derived conversations —
-subagents, branches, BTW, A/B arms — inherit the parent's mode at
-birth and never Full Access; a child of a smart-approval or Full parent
-starts on smart approval (`inheritsSmartApproval`; a strict parent's child
-on strict, a Full parent's on ordinary smart approval), so the inherited
-permission is at most smart approval;
+write asks, and Full Access is off; the tool set follows at the turn's end.
+Branches inherit the parent's mode, Full Access, and smart-approval setting
+at creation. Other derived conversations inherit permission up to smart
+approval (`inheritsSmartApproval`; a strict parent's child starts on strict,
+a Full parent's on ordinary smart approval).
 `spawn_agent` may ask for a read-only child (`clampSubagentMode`), A/B arms
 are read-only, and a later change on the parent does not reach existing
 children. Imported conversations start from the default permission without
@@ -600,9 +599,9 @@ traced as a `full_access_changed` session event (creation records it in
 `session_created`); every assembly of the conversation — reopen, app restart,
 and the instance swap of a role/soul/instruction switch — takes it back from
 the header. Under Read-only a stored value is dormant rather than cleared
-(the composer's Read-only choice turns it off). Children never inherit it:
-branches, BTW and subagents are written without the field and
-start on smart approval instead. Application-level boundaries outside
+(the composer's Read-only choice turns it off). Branches inherit the stored
+value. BTW and subagents from a Full Access conversation start with smart
+approval. Application-level boundaries outside
 agent-tool mediation (the access policy, REST file routes, trash and
 recoverable delete) are unaffected. See
 [`security-extension.ts`](../../alt-theory-app/core/security-extension.ts),

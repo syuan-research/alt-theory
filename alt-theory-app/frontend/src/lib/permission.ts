@@ -31,7 +31,7 @@ export const PERMISSION_LABEL: Record<Permission, () => string> = {
 export const PERMISSION_DETAIL: Record<Permission, () => string> = {
   "read-only": () => t("No commands; every file change asks you first"),
   ask: () => t("Asks before pushes, uploads, installs, and changes outside your folders"),
-  smart: () => t("Like Ask; a model answers instead of you"),
+  smart: () => t("Same approval scope as Ask"),
   "smart-strict": () => t("Smart approval for every command beyond simple reads"),
   full: () => t("Tools run without approval prompts"),
 };
@@ -39,11 +39,9 @@ export const PERMISSION_DETAIL: Record<Permission, () => string> = {
 /** What the Full access confirmation lists (composer and Settings alike). */
 export function fullAccessConsequences(): string[] {
   return [
-    t("Bypasses the security extension's command blocks and approvals"),
-    t("Bypasses credential-path access limits"),
-    t("Approval prompts and writable-folder checks for external reads and writes are skipped"),
-    t("Network access limits are skipped"),
-    t("Two brakes stay on: deleting or moving your home, top-level or project folders, and changing system folders"),
-    t("Branches, side conversations and subagents start with smart approval instead"),
+    t("Lifts the usual restrictions on commands, credential paths, file access, and network access"),
+    t("Basic limits still apply to deleting or moving home, top-level, or project folders, and to changing system folders"),
+    t("Branches inherit the original conversation’s permissions, including branches created by retrying or changing the prompt"),
+    t("BTW and subagents start with smart approval by default"),
   ];
 }

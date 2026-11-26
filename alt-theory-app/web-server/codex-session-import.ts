@@ -9,8 +9,9 @@ import {
   statSync,
 } from "fs";
 import { homedir } from "os";
-import { dirname, join, resolve } from "path";
+import { basename, dirname, join, resolve } from "path";
 import { DatabaseSync } from "node:sqlite";
+import { constants, zstdDecompressSync } from "node:zlib";
 import {
   CURRENT_SESSION_VERSION,
   parseSessionEntries,
@@ -36,7 +37,7 @@ export interface CodexDiscoveredSession {
   cwd: string;
   createdAt: string;
   updatedAt: string;
-  messageCount: number;
+  messageCount: number | null;
   preview: string;
 }
 
@@ -56,7 +57,8 @@ export class CodexImportRefusalError extends ImportRefusalError {
 
 export function defaultCodexSessionsDir(): string {
   return resolve(
-    process.env.CODEX_SESSIONS_DIR?.trim() || join(homedir(), ".codex", "sessions")
+    process.env.CODEX_SESSIONS_DIR?.trim() ||
+      join(process.env.CODEX_HOME?.trim() || join(homedir(), ".codex"), "sessions")
   );
 }
 
@@ -89,7 +91,7 @@ function discoverCodexFromStateDb(root: string): CodexDiscoveredSession[] | null
     const value = (name: string) =>
       columns.has(name) ? name : `NULL AS ${name}`;
     const rows = db.prepare(`
-      SELECT id, rollout_path, ${value("title")}, ${value("cwd")},
+      SELECT id, rollout_path, ${value("name")}, ${value("title")}, ${value("cwd")},
         ${value("created_at")}, ${value("updated_at")}, ${value("source")},
         ${value("thread_source")}, ${value("archived")}, ${value("preview")}
       FROM threads
@@ -100,28 +102,29 @@ function discoverCodexFromStateDb(root: string): CodexDiscoveredSession[] | null
         if (Number(row.archived ?? 0) !== 0) return [];
         if (String(row.thread_source ?? "") === "subagent") return [];
         if (isSubagentSource(row.source)) return [];
-        const path = resolve(String(row.rollout_path ?? ""));
-        if (!existsSync(path) || !statSync(path).isFile()) return [];
+        const path = existingRollout(row.rollout_path);
+        if (!path) return [];
         const stat = statSync(path);
-        const head = parseJsonl(readHead(path));
-        const meta = head.find((record) => record.type === "session_meta")?.payload;
+        if (!stat.isFile()) return [];
+        const head = path.endsWith(".zst") ? null : parseJsonl(readHead(path));
+        const meta = head?.find((record) => record.type === "session_meta")?.payload;
         const createdAt = timestamp(row.created_at, meta?.timestamp, stat.birthtimeMs);
         const updatedAt = timestamp(row.updated_at, null, stat.mtimeMs);
-        const preview = codexOpeningPreview(head) || String(row.preview ?? "").slice(0, 240);
+        const preview = (head && codexOpeningPreview(head)) || String(row.preview ?? "").slice(0, 240);
         return [{
           sourceId: `codex:${String(row.id)}`,
           sourceSessionId: String(row.id),
           sourceStore: path,
           sourceVersion: `${stat.size}:${stat.mtimeMs}`,
-          name: typeof row.title === "string" && row.title.trim() ? row.title : null,
+          name: String(row.name ?? "").trim() || String(row.title ?? "").trim() || null,
           cwd: String(row.cwd ?? meta?.cwd ?? ""),
           createdAt,
           updatedAt,
-          messageCount: head.filter(
+          messageCount: head?.filter(
             (record) =>
               record.type === "response_item" &&
               record.payload?.type === "message"
-          ).length,
+          ).length ?? null,
           preview,
         } satisfies CodexDiscoveredSession];
       } catch {
@@ -217,9 +220,11 @@ export function preflightCodexSession(args: {
   if (!path || !existsSync(path)) {
     throw new CodexImportRefusalError("source_store", 1, "Codex rollout is missing");
   }
+  let bytes: Buffer;
   let source: string;
   try {
-    source = readFileSync(path, "utf-8");
+    bytes = readFileSync(path);
+    source = rolloutText(path, bytes);
   } catch {
     throw new CodexImportRefusalError("source_store", 1, "Codex rollout cannot be read");
   }
@@ -261,24 +266,75 @@ export function preflightCodexSession(args: {
       );
     }
   }
-  validateCompleteRollout(records, meta);
-  const piSessionJsonl = projectToPi(records, meta);
+  const inherited = readHistoryBase(path, meta.history_base);
+  const history = [...inherited.flatMap((segment) => segment.records), ...records];
+  validateCompleteRollout(history, meta);
+  const piSessionJsonl = projectToPi(history, meta);
   parseSessionEntries(piSessionJsonl);
   const stat = statSync(path);
-  const sourceContextFiles = exportCodexChildContext(path, args.sourceSessionId);
-  const transformations = describeTransformations(records);
-  if (sourceContextFiles.length) {
+  const childContext = exportCodexChildContext(path, args.sourceSessionId);
+  const sourceContextFiles = [
+    ...inherited.map(({ id, source }) => ({ filename: `codex-history-${id}.jsonl`, content: source })),
+    ...childContext,
+  ];
+  const transformations = describeTransformations(history);
+  if (childContext.length) {
     transformations.push(
       "Child agent sessions are indexed beside the import; available records are preserved as searchable source context, not replayed into the main conversation."
     );
   }
   return {
     piSessionJsonl,
-    sourceFingerprint: createHash("sha256").update(source).digest("hex"),
+    sourceFingerprint: createHash("sha256").update(bytes).digest("hex"),
     sourceVersion: `${stat.size}:${stat.mtimeMs}`,
     transformations,
     sourceContextFiles,
   };
+}
+
+function readHistoryBase(path: string, base: Row | undefined) {
+  const segments: Array<{ id: string; source: string; records: Row[] }> = [];
+  if (base == null) return segments;
+  const root = namedAncestor(dirname(path), "sessions") ??
+    namedAncestor(dirname(path), "archived_sessions");
+  const roots = root
+    ? [join(dirname(root), "sessions"), join(dirname(root), "archived_sessions")]
+    : [dirname(path)];
+  const paths = new Map<string, string>();
+  for (const dir of roots) {
+    if (!existsSync(dir)) continue;
+    for (const file of jsonlFiles(dir)) {
+      const match = /-([\da-f-]{36})(?:_([\da-f-]{36}))?\.jsonl(?:\.zst)?$/i.exec(basename(file));
+      const id = match?.[2] ?? match?.[1];
+      if (id && (!paths.has(id) || !file.endsWith(".zst"))) paths.set(id, file);
+    }
+  }
+  const invalid = (reason: string) => new CodexImportRefusalError("history_base", 1, reason);
+  const visited = new Set<string>([path]);
+  while (base != null) {
+    const { thread_id: id, end_byte_offset: offset, end_ordinal_exclusive: ordinal } = base;
+    const file = paths.get(id);
+    if (!file || visited.has(file)) throw invalid("Codex history segment is missing or circular");
+    visited.add(file);
+    if (!Number.isSafeInteger(offset) || offset <= 0) {
+      throw invalid("Codex history segment has an invalid byte boundary");
+    }
+    const raw = readFileSync(file);
+    const bytes = file.endsWith(".zst") ? zstdDecompressSync(raw) : raw;
+    if (offset > bytes.length || bytes[offset - 1] !== 0x0a) {
+      throw invalid("Codex history segment does not end at a record boundary");
+    }
+    const source = bytes.subarray(0, offset).toString("utf-8");
+    const records = parseJsonl(source, true);
+    const meta = records[0];
+    if (meta?.type !== "session_meta" ||
+        (ordinal != null && records.at(-1)?.ordinal !== ordinal - 1)) {
+      throw invalid("Codex history segment metadata does not match its boundary");
+    }
+    segments.unshift({ id, source, records: records.filter((record) => record.type !== "session_meta") });
+    base = meta.payload?.history_base;
+  }
+  return segments;
 }
 
 function exportCodexChildContext(
@@ -323,7 +379,7 @@ function exportCodexChildContext(
     try {
       return {
         filename,
-        content: readFileSync(child.path, "utf-8"),
+        content: rolloutText(child.path, readFileSync(child.path)),
         index: {
           sourceSessionId: child.id,
           parentSessionId: child.parentId,
@@ -398,11 +454,12 @@ function codexRelationsFromDb(
       "SELECT id, rollout_path, source FROM threads"
     ).all() as Row[]).flatMap((row) => {
       const parentId = codexParentThreadId(row.source);
-      return parentId
+      const path = existingRollout(row.rollout_path);
+      return parentId && path
         ? [{
             id: String(row.id),
             parentId,
-            path: resolve(String(row.rollout_path)),
+            path,
           }]
         : [];
     });
@@ -448,11 +505,23 @@ function codexParentThreadId(source: unknown): string | null {
   return typeof parent === "string" && parent ? parent : null;
 }
 
+function existingRollout(value: unknown): string | undefined {
+  if (typeof value !== "string" || !value) return undefined;
+  const path = resolve(value);
+  if (existsSync(path)) return path;
+  if (path.endsWith(".jsonl") && existsSync(`${path}.zst`)) return `${path}.zst`;
+  return undefined;
+}
+
+function rolloutText(path: string, bytes: Buffer): string {
+  return (path.endsWith(".zst") ? zstdDecompressSync(bytes) : bytes).toString("utf-8");
+}
+
 function jsonlFiles(root: string): string[] {
   return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
     const path = join(root, entry.name);
     if (entry.isDirectory()) return jsonlFiles(path);
-    return entry.isFile() && entry.name.endsWith(".jsonl") ? [path] : [];
+    return entry.isFile() && /\.jsonl(?:\.zst)?$/.test(entry.name) ? [path] : [];
   });
 }
 
@@ -460,7 +529,11 @@ function readHead(path: string): string {
   const fd = openSync(path, "r");
   try {
     const buffer = Buffer.alloc(512 * 1024);
-    return buffer.subarray(0, readSync(fd, buffer)).toString("utf-8");
+    const prefix = buffer.subarray(0, readSync(fd, buffer));
+    return (path.endsWith(".zst") ? zstdDecompressSync(prefix, {
+      finishFlush: constants.ZSTD_e_flush,
+      maxOutputLength: 16 * 1024 * 1024,
+    }).subarray(0, buffer.length) : prefix).toString("utf-8");
   } finally {
     closeSync(fd);
   }
@@ -475,12 +548,17 @@ function parseJsonl(source: string, strict = false): Row[] {
   });
 }
 
+function isCodexAmbientContext(item: Row): boolean {
+  return item.type === "function_call_output" && item.namespace === "agent" && item.call_id == null;
+}
+
 function validateCompleteRollout(records: Row[], meta: Row): void {
   const allowedTop = new Set([
     "session_meta",
     "response_item",
     "event_msg",
     "turn_context",
+    "token_usage_record",
     "world_state",
     "compacted",
     "inter_agent_communication_metadata",
@@ -508,7 +586,7 @@ function validateCompleteRollout(records: Row[], meta: Row): void {
     }
   }
   if (
-    meta.history_base || meta.parent_thread_id ||
+    meta.parent_thread_id ||
     meta.subagent_history_start_ordinal != null || meta.agent_role || meta.agent_path
   ) {
     throw new CodexImportRefusalError(
@@ -534,6 +612,7 @@ function validateCompleteRollout(records: Row[], meta: Row): void {
   )) {
     const item = record.payload;
     const type = String(item?.type ?? "missing_response_item_type");
+    if (type === "additional_tools" || type === "configuration_update") continue;
     if (type === "reasoning") {
       validateReasoning(item);
       continue;
@@ -627,6 +706,7 @@ function validateCompleteRollout(records: Row[], meta: Row): void {
       continue;
     }
     if (type === "function_call_output" || type === "custom_tool_call_output") {
+      if (isCodexAmbientContext(item)) continue;
       const call = calls.get(String(item.call_id ?? ""));
       if (!call) {
         throw new CodexImportRefusalError(type, 1, "tool output has no earlier source call");
@@ -1157,6 +1237,7 @@ function projectToPi(records: Row[], meta: Row): string {
       continue;
     }
     if (item.type === "function_call_output" || item.type === "custom_tool_call_output") {
+      if (isCodexAmbientContext(item)) continue;
       flushThinking(record);
       const id = append({
         type: "message",

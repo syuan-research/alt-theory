@@ -238,7 +238,7 @@ test("full access lifetime on the managed session", async () => {
   assert.equal(fresh.fullAccess, false, "fresh runtime starts off");
 });
 
-test("full access follows the conversation across restart and instance swap, never into a child", async () => {
+test("full access follows the conversation across restart, instance swap, and branching", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const created = await service.createSession(selectors, { mode: "work" });
@@ -263,13 +263,13 @@ test("full access follows the conversation across restart and instance swap, nev
   const reopened = await restarted.openSession(created.sessionId, selectors);
   assert.equal(reopened.fullAccess, true, "restored from the header");
 
-  // Children start without it — the header field is never copied.
   const child = await restarted.forkSession(created.sessionId, "fork");
-  assert.equal(child.fullAccess, false, "a branch does not inherit");
+  assert.equal(child.fullAccess, true, "the branch starts with full access");
   const childRecords = join(fixture.dataDir, "sessions", child.sessionId, "records");
-  assert.equal(readV4SessionHeader(childRecords)?.fullAccess, undefined);
+  assert.equal(readV4SessionHeader(childRecords)?.fullAccess, true);
   const side = await restarted.forkSession(created.sessionId, "side");
   assert.equal(side.fullAccess, false, "BTW does not inherit");
+  assert.equal(side.smartApproval, true, "BTW starts with smart approval");
 });
 
 test("native pi can enable full access", async () => {

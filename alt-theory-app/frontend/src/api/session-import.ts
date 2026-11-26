@@ -6,7 +6,7 @@ export interface ImportSourceSession {
   cwdAvailable: boolean;
   createdAt: string;
   updatedAt: string;
-  messageCount: number;
+  messageCount: number | null;
   preview: string;
   repeat: "new" | "unchanged" | "changed";
   importedSessionId: string | null;

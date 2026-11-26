@@ -2130,6 +2130,11 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
       throw new Error(`Unsupported conversation purpose: ${purpose}`);
     }
     const previous = this.requireSession(sessionId);
+    const mode = previous.getAltMode();
+    const fullAccess = purpose === "fork" && previous.getFullAccess();
+    const smartApproval = purpose === "fork"
+      ? previous.getSmartApproval()
+      : inheritsSmartApproval(previous, mode);
     // The sub-session substrate (M5): a fork inherits the parent by default, but
     // an A/B arm (or any child that must differ) can override any assembly layer
     // — role, KB domain, soul, instruction — while keeping the parent's
@@ -2264,8 +2269,9 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
         transcript: previous.transcript,
         overrideSessionCwd: !externalPrimary,
         activeLeafEntryId: leafId,
-        mode: previous.getAltMode(),
-        smartApproval: inheritsSmartApproval(previous, previous.getAltMode()),
+        mode,
+        fullAccess,
+        smartApproval,
         ...(readV4SessionHeader(previous.manifest.recordsDir)?.workspace
           ? { workspace: previous.getWorkspace() }
           : {}),
@@ -2285,14 +2291,15 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
         manifest: result.manifest,
         visibility,
         consentSnapshot: sourceHeader?.consentSnapshot ?? null,
-        mode: previous.getAltMode(),
+        mode,
         workspace: sourceHeader?.workspace
           ? result.manifest.workspace
           : null,
         forkedFrom: { sessionId, purpose },
         studyTag: sourceHeader?.studyTag ?? null,
         modelOverride: sourceHeader?.modelOverride ?? null,
-        smartApproval: inheritsSmartApproval(previous, previous.getAltMode()),
+        fullAccess,
+        smartApproval,
       });
       copyMarks(previous.manifest.recordsDir, forkDirs.recordsDir);
       appendConfigEvent(result.manifest.recordsDir, {
@@ -5206,6 +5213,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
     modelOverride?: SessionModelOverride | null;
     /** Fork flows call this before the child's header exists on disk. */
     forkPurpose?: ForkPurpose;
+    fullAccess?: boolean;
     smartApproval?: SmartApprovalSetting;
   }): Promise<ManagedSession> {
     const persistedHeader = readV4SessionHeader(args.sessionDirs.recordsDir);
@@ -5231,6 +5239,7 @@ export class SessionService implements AgentTeamBridge, HistoryBridge {
         modelArgs: this.modelArgsFor(modelOverride),
         altMode: persistedMode,
         forkPurpose: args.forkPurpose ?? persistedHeader?.forkedFrom?.purpose ?? null,
+        fullAccess: args.fullAccess ?? persistedHeader?.fullAccess,
         smartApproval: args.smartApproval ?? persistedHeader?.smartApproval,
       }),
     });
