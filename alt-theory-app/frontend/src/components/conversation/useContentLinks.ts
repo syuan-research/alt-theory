@@ -1,6 +1,8 @@
 import { isImagePath, isHtmlPath } from "../../../../shared/artifact-types";
 import { getSessionFileContent, listWorkingFolders } from "@/api/session-files";
 import { useShell } from "@/context/ShellContext";
+import { useMainView } from "@/context/MainView";
+import { requestRowJump } from "@/lib/rowJump";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 import { contentLink, resolveFileLink } from "@/lib/contentLinks";
 import type { FileRef } from "@/lib/fileContent";
@@ -11,6 +13,7 @@ import { t } from "@/i18n";
 export function useContentLinks(sessionId: string | null, base?: FileRef, baseFolderPath?: string | null, draftPrimaryDir?: string | null) {
   const owner = sessionId ?? (draftPrimaryDir !== undefined ? { primaryDir: draftPrimaryDir } : null);
   const shell = useShell();
+  const main = useMainView();
   const menu = useContextMenu();
   const report = (error: unknown) => window.alert(error instanceof Error ? error.message : String(error));
   const resolve = async (href: string) => {
@@ -39,6 +42,12 @@ export function useContentLinks(sessionId: string | null, base?: FileRef, baseFo
   const open = async (href: string, externally = false, image = false) => {
     const { link, ref } = await resolve(href);
     if (!link || link.kind === "anchor") return;
+    if (link.kind === "conversation") {
+      shell.openApp();
+      main.openCatalogSession(link.sessionId);
+      requestRowJump(link.sessionId, link.row);
+      return;
+    }
     if (image && (link.kind === "web" || link.kind === "page") && !externally) {
       shell.openTarget({ kind: "page", sessionId, url: link.address, image: true }); return;
     }
@@ -88,7 +97,7 @@ export function useContentLinks(sessionId: string | null, base?: FileRef, baseFo
       if (!link || link.kind === "anchor" || !anchor.isConnected) return;
       const items: ContextMenuItem[] = [
         { label: t("Copy link"), icon: "ph-link", onSelect: () => void copyText(href) },
-        { label: t("Open with default app"), icon: "ph-arrow-square-out", onSelect: () => void open(href, true).catch(report) },
+        ...(link.kind === "conversation" ? [] : [{ label: t("Open with default app"), icon: "ph-arrow-square-out", onSelect: () => void open(href, true).catch(report) }]),
       ];
       if (link.kind === "file") {
         if (ref) items.push({ label: t("Show in file tree"), icon: "ph-tree-structure", onSelect: () => shell.revealWorkspacePath(link.address) });

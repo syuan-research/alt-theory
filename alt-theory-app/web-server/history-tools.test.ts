@@ -108,6 +108,7 @@ test("history tools: another conversation needs the user's Session ID or approva
   const row = readVisibleTranscript(fixture.dataDir, c)[0].rowId!;
   const reference = `conversation:${c}#${row}`;
   assert.deepEqual(REFERENCE_PATTERN.exec(`see ${reference} please`)?.slice(1), [c, row]);
+  assert.deepEqual(REFERENCE_PATTERN.exec(`[↗](${reference})`)?.slice(1), [c, row], "a Markdown link's parenthesis is not part of the row");
   say(service, a, `Look at ${reference}`, "reading");
   const pasted = await run(service, a, "read_conversation", { session_id: c, row });
   assert.equal(pasted.asked, null);

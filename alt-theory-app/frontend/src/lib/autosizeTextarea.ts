@@ -1,10 +1,20 @@
 import { useEffect, type RefObject } from "react";
 
-/** Grow a textarea to its content height (CSS max-height still caps it). */
+/**
+ * Grow a textarea to its content height (CSS max-height still caps it).
+ * Measuring collapses it to one line for a moment; its parent keeps its
+ * height meanwhile, so the transcript above never grows and shrinks back —
+ * that clamped a bottom-pinned transcript and made the streaming answer jump
+ * on every keystroke of a multi-line draft (owner 2026-11-26, IME on Windows).
+ */
 export function autosizeTextarea(el: HTMLTextAreaElement | null) {
   if (!el) return;
+  const parent = el.parentElement;
+  const held = parent?.style.minHeight ?? "";
+  if (parent) parent.style.minHeight = `${parent.offsetHeight}px`;
   el.style.height = "auto";
   el.style.height = `${el.scrollHeight}px`;
+  if (parent) parent.style.minHeight = held;
 }
 
 /**

@@ -1172,6 +1172,20 @@ const catalog: Record<string, string> = {
   "Open a conversation to see its bookmarks and marks.": "打开一个对话，查看它的收藏和标记。",
   "Not on this conversation's current branch": "不在本对话当前的分支上",
   "The latest message when this was bookmarked": "收藏时对话里最新的一条消息",
+  "“{opening}”": "「{opening}」",
+  "This conversation and its family": "本对话及其家族",
+  "This conversation and its project": "本对话及其项目",
+  "All conversations": "全部对话",
+  "Underlined": "下划线",
+  "Struck through": "删除线",
+  "Bookmarks and marks · {date}": "收藏与标记 · {date}",
+  "Bookmarks {date}": "收藏与标记 {date}",
+  "Make a note from these": "把这些生成一份笔记",
+  "Untitled": "未命名",
+  "Note: {note}": "备注：{note}",
+  "Scope: {scope}": "范围：{scope}",
+  "Conversation: {name}": "对话：{name}",
+  ": ": "：",
 };
 
 export default catalog;

@@ -35,3 +35,8 @@ test("file links reuse working/managed addresses and resolve relative to the sho
     { root: "records", path: "other.md" });
   assert.deepEqual(resolveFileLink("c:/work/session/records/summary.md", folders).ref, { root: "records", path: "summary.md" });
 });
+
+test("a conversation reference is its own link kind, and a closing parenthesis is not part of the row", () => {
+  assert.deepEqual(contentLink("conversation:2026-a_b.c#3619b1c0:0"), { kind: "conversation", address: "conversation:2026-a_b.c#3619b1c0:0", sessionId: "2026-a_b.c", row: "3619b1c0:0" });
+  assert.equal(contentLink("conversation:x"), null);
+});

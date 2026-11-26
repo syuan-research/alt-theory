@@ -1,9 +1,16 @@
 import type { WorkingFolderDescriptor } from "@/api/types";
 import type { FileRef } from "@/lib/fileContent";
 
-export type ContentLink = { kind: "page" | "web"; address: string } | { kind: "file"; address: string } | { kind: "anchor"; address: string };
+export type ContentLink =
+  | { kind: "page" | "web"; address: string }
+  | { kind: "file"; address: string }
+  | { kind: "anchor"; address: string }
+  /** A row of a conversation, `conversation:<Session ID>#<row id>` (Copy reference, exported notes). */
+  | { kind: "conversation"; address: string; sessionId: string; row: string };
 
 export function contentLink(href: string): ContentLink | null {
+  const reference = /^conversation:([A-Za-z0-9][A-Za-z0-9._-]*)#([^\s#)]+)$/.exec(href);
+  if (reference) return { kind: "conversation", address: href, sessionId: reference[1], row: reference[2] };
   if (href.startsWith("#")) return { kind: "anchor", address: href };
   if (/^https?:\/\//i.test(href)) {
     try {

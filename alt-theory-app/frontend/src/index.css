@@ -288,6 +288,7 @@
   .markdown-body ol { list-style: decimal; }
 
   .markdown-body strong { font-weight: 600; }
+  .markdown-body blockquote { margin: 0.5em 0; padding: 0.1em 0 0.1em 0.9em; border-left: 3px solid var(--hairline); color: var(--text-2); }
 
   .markdown-body pre {
     margin: 0 0 var(--space-control);

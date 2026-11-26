@@ -58,7 +58,7 @@ const MAX_MATCHES = 30;
 const RECENT_LIMIT = 20;
 
 /** A reference the user pastes, `conversation:<Session ID>#<row id>`. */
-export const REFERENCE_PATTERN = /conversation:([A-Za-z0-9][A-Za-z0-9._-]*)#([^\s#]+)/;
+export const REFERENCE_PATTERN = /conversation:([A-Za-z0-9][A-Za-z0-9._-]*)#([^\s#)]+)/;
 
 function titleOf(summary: SessionSummary | undefined): string {
   return summary?.alias?.trim() || summary?.snippet?.trim() || "(untitled)";

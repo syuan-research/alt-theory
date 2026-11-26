@@ -316,6 +316,14 @@ surfaces remain designation-gated and absent for everyone else.
     card shows that row in the center (opening its conversation through the
     list's workspace rule) and flashes it; dragging a card carries
     `conversation:<id>#<row>`, the quote and the note as plain text.
+    Make a note writes the list as shown (scope, arrangement, search) to a
+    new Markdown note where New note puts one, once, and opens it
+    (`lib/markedNote.ts`, after Zotero's note from annotations): per
+    conversation a heading (its name, or its opening words in quotes), each
+    entry's sign (bookmark, color, underline, strikethrough), speaker and
+    link, a whole bookmarked message quoted in full, the note under it, and
+    rules between entries. A `conversation:<id>#<row>` link in any rendered
+    Markdown opens that conversation and shows the row.
   - Branches (purpose `fork`), BTW and subagents open in this rail at the
     pane's current width.
   - Navigation has one owner, `ShellContext`, which changes one state only

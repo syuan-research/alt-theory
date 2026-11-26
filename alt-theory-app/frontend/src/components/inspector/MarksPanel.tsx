@@ -10,7 +10,11 @@ import { usePaneMemory } from "@/lib/paneMemory";
 import { sessionTitle } from "@/lib/sessionList";
 import { arrangeMarked, type MarkedArrangement } from "@/lib/markedItems";
 import { MenuButton } from "@/components/inspector/FolderList";
-import { t } from "@/i18n";
+import { createNoteFile, putSessionFileContent } from "@/api/session-files";
+import { useShell } from "@/context/ShellContext";
+import { conversationLabel, markedNote } from "@/lib/markedNote";
+import { fileNameDate } from "@/lib/format";
+import { currentLang, t } from "@/i18n";
 
 /**
  * The collection (owner 2026-11-26): a right-pane tab listing the user's
@@ -24,6 +28,8 @@ export function MarksPanel() {
   const sessionId = conv.sessionId;
   const app = useApp();
   const main = useMainView();
+  const shell = useShell();
+  const [writing, setWriting] = useState(false);
   const [scope, setScope] = usePaneMemory<MarkedScope>("marks:scope", "this");
   // null = the default for the scope: by time in one conversation, by source once extended.
   const [chosen, setChosen] = usePaneMemory<MarkedArrangement | null>("marks:arrange", null);
@@ -63,6 +69,27 @@ export function MarksPanel() {
     setScope((prev) => (prev === next ? "this" : next));
     setChosen(null);
   };
+  // Zotero's "note from annotations": the list as shown, written once to a new note.
+  const makeNote = async () => {
+    if (!sessionId || writing) return;
+    setWriting(true);
+    try {
+      const date = fileNameDate(new Date(), currentLang());
+      const labelOf = (id: string) => {
+        const names = app.sessionDisplayNames[id];
+        return conversationLabel(names?.alias ?? null, names?.snippet ?? titleOf(id));
+      };
+      const content = markedNote(groups, { date, scope, arrangement, labelOf });
+      const note = await createNoteFile(sessionId, `${t("Bookmarks {date}", { date })}.md`);
+      await putSessionFileContent(sessionId, { root: "working", path: note.path, content, expectedUpdatedAt: note.updatedAt ?? undefined, expectedFolderPath: note.folderPath });
+      const rel = note.path.slice(note.path.indexOf("/") + 1);
+      shell.openTarget({ kind: "file", sessionId, root: "working", path: note.path, absolutePath: `${note.folderPath}/${rel}` }, "rendered");
+    } catch (reason) {
+      window.alert(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setWriting(false);
+    }
+  };
   const hasProject = Boolean(sessionId && summaries.get(sessionId)?.workspacePrimaryDir);
   const total = groups.reduce((n, group) => n + group.items.length, 0);
 
@@ -86,6 +113,16 @@ export function MarksPanel() {
           </button>
         ))}
         <span className="fspacer" />
+        <button
+          type="button"
+          className="fsearch-btn"
+          data-tip={t("Make a note from these")}
+          aria-label={t("Make a note from these")}
+          disabled={writing || total === 0}
+          onClick={() => void makeNote()}
+        >
+          <i className="ph ph-note-pencil" />
+        </button>
         <button
           type="button"
           className={`fsearch-btn${searchOpen || query ? " on" : ""}`}
