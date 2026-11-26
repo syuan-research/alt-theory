@@ -979,8 +979,10 @@
   .mi .soon { margin-left: auto; font-size: var(--fs-micro); color: var(--text-3); border: 1px solid var(--hairline); border-radius: 999px; padding: 1px var(--space-tight); }
 
   /* quiet secondary import entry on the empty state */
-  .import-link { border: none; background: none; font-size: var(--fs-primary); font-weight: 500; color: var(--ink); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; padding: var(--space-hair) var(--space-tight); align-self: center; }
-  .import-link:hover { color: var(--text-2); }
+  /* A quiet second way in under the greeting (owner 2026-11-26): smaller, muted, an icon instead of an underline; a step of fill on hover. */
+  .import-link { display: inline-flex; align-items: center; gap: 6px; border: none; background: none; font-size: var(--fs-secondary); font-weight: 400; color: var(--text-3); cursor: pointer; padding: var(--space-hair) var(--space-control); border-radius: var(--r-md); align-self: center; }
+  .import-link:hover { color: var(--ink); background: var(--step-on-white); }
+  .greet + .import-link, .native-pi-empty-note + .import-link { margin-top: calc(-1 * var(--space-control)); }
 
   /* new-conversation row + overflow menu in the session list */
   .new-row { display: flex; align-items: center; gap: var(--space-tight); }

@@ -50,6 +50,7 @@ function EmptyState() {
           data-tip={t("Import conversations from OpenCode, Codex (ChatGPT), Claude Code, Grok Build, and Pi. The original conversations are unaffected.")}
           onClick={() => shell.setImportOpen(true)}
         >
+          <i className="ph ph-arrow-square-in" aria-hidden="true" />
           {t("Or continue a conversation from another app…")}
         </button>
       </div>
