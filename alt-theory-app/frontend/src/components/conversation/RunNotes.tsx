@@ -118,18 +118,6 @@ export function NoticeLine() {
   );
 }
 
-/** Continue from the break point — offered only by the snapshot's recovery. */
-export function ContinueButton() {
-  const conversation = useConversationContext();
-  if (conversation.isRunning || !conversation.recovery?.canContinue) return null;
-  return (
-    <button className="flat retry-run" onClick={() => conversation.continueLatest()}>
-      <i className="ph ph-play" aria-hidden="true" />
-      {t("Continue")}
-    </button>
-  );
-}
-
 /** Whether any of the rows above has something to show. `continueInSend`: the
  *  caller offers Continue on its send button, so that alone needs no row. */
 export function hasRunNotes(conversation: ReturnType<typeof useConversationContext>, continueInSend = false): boolean {

@@ -23,7 +23,7 @@ import { CtxPicker } from "@/components/conversation/CtxPicker";
 import { PermissionChip } from "@/components/conversation/PermissionChip";
 import { useComposerRow } from "@/components/conversation/useComposerRow";
 import { QueuedCards } from "@/components/conversation/QueuedCards";
-import { ContinueButton, hasRunNotes, NoticeLine, RunStatusSlot } from "@/components/conversation/RunNotes";
+import { hasRunNotes, NoticeLine, RunStatusSlot } from "@/components/conversation/RunNotes";
 import { SlashPalette, SkillDraftChip, useSlashCommands, useSlashPalette } from "@/components/conversation/SlashPalette";
 import { KB_OFF_VALUE } from "@/lib/constants";
 import { useComposerAttachments } from "./useComposerAttachments";
@@ -164,10 +164,17 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
     else setDraft(seed.text);
   }, [conversation, main, seed, sessionId]);
 
+  // Same rule as the main composer: with nothing to send after a stopped or
+  // failed turn, the send button (and Enter) continues that turn.
+  const canContinue = conversation.sessionReady && !running && !(draft.trim() || conversation.stagedWorkspacePaths.length) && Boolean(conversation.recovery?.canContinue);
   const send = () => {
     // Nothing goes out before this conversation is open (or re-opened after
     // a reconnect): the socket would be on its draft and create a new one.
     if (!conversation.sessionReady) return;
+    if (canContinue) {
+      conversation.continueLatest();
+      return;
+    }
     if (palette.runImmediate()) return;
     const text = palette.prompt.trim();
     // Files handed back to this draft (Stop) go out with the text.
@@ -282,11 +289,10 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
         />
       ) : null}
 
-      {hasRunNotes(conversation) ? (
+      {hasRunNotes(conversation, true) ? (
         <div className="composer-notes">
           <RunStatusSlot />
           <NoticeLine />
-          <ContinueButton />
         </div>
       ) : null}
       <SkillDraftChip palette={palette} />
@@ -442,14 +448,21 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
           />
           <ModelChip open={menu === "model"} onToggle={() => setMenu(menu === "model" ? null : "model")} />
           <ContextRing />
-          <button
-            className="send"
-            disabled={!(draft.trim() || conversation.stagedWorkspacePaths.length) || !conversation.sessionReady}
-            onClick={send}
-            data-tip={running ? runPhaseLabels().queued : t("Send")}
-          >
-            <i className="ph ph-arrow-up" aria-hidden="true" />
-          </button>
+          {canContinue ? (
+            <button className="send continue" onClick={send} data-tip={t("Continue the last answer from where it stopped")}>
+              <i className="ph ph-play" aria-hidden="true" />
+              <span>{t("Continue")}</span>
+            </button>
+          ) : (
+            <button
+              className="send"
+              disabled={!(draft.trim() || conversation.stagedWorkspacePaths.length) || !conversation.sessionReady}
+              onClick={send}
+              data-tip={running ? runPhaseLabels().queued : t("Send")}
+            >
+              <i className="ph ph-arrow-up" aria-hidden="true" />
+            </button>
+          )}
           {running ? (
             <button
               className="send stop"

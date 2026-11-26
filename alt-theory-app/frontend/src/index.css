@@ -662,7 +662,8 @@
   .app-root.leftCol .left .full { display: none !important; }
   /* Opening the left pane: the full rail waits until the width has nearly arrived, then fades in, so nothing
      lays out at a half width (owner 2026-11-26). */
-  .left > .full { animation: left-full-in 0.14s ease-out 0.13s both; }
+  /* backwards, not both: a fill that outlasts the fade would keep the rail its own stacking context and trap its menus under the center. */
+  .left > .full { animation: left-full-in 0.14s ease-out 0.13s backwards; }
   @keyframes left-full-in { from { opacity: 0; } }
   @media (prefers-reduced-motion: reduce) { .left > .full { animation: none; } }
   .left .mini { display: none; flex-direction: column; align-items: stretch; flex: 1; padding-bottom: var(--space-tight); }
@@ -1260,7 +1261,6 @@
   .composer-notes { display: flex; flex-direction: column; gap: var(--space-hair); padding: 4px var(--space-tight); font-family: var(--mono); font-size: var(--fs-secondary); color: var(--text-2); }
   .composer-notes .flat { padding-block: 0; }
   .composer-notes .danger { color: var(--danger); }
-  .composer-notes .retry-run { align-self: flex-start; padding: var(--space-hair) 0; }
   .composer-notes .run-tip { display: flex; align-items: center; gap: var(--space-tight); min-height: 1.25em; color: var(--text-3); font-family: inherit; }
   .composer-notes .run-notice { max-height: min(8lh, 20vh); overflow-y: auto; overscroll-behavior: contain; overflow-wrap: anywhere; align-items: flex-start; }
   .composer-notes .run-notice > i { flex-shrink: 0; }
