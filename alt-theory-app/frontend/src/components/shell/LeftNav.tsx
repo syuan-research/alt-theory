@@ -991,12 +991,13 @@ function UserNav({ onImport }: { onImport: () => void }) {
           <div className="rp-empty">{app.sessionsError}</div>
         ) : (
           <>
-            {/* Workspaces once there are two, then pins once there is one
-                (owner 2026-11-26); neither shows while the list is filtered.
-                Workspaces stay at the top while the list scrolls. */}
-            {visibleIds === null && main.workspaces.length > 1 ? (
-              <div className="workspaces-pinned">
-                <div className="workspace-list-head"><span className="workspace-list-title"><i className="ph ph-squares-four section-icon" aria-hidden="true" /><span className="lbl">{t("Workspaces")}</span></span></div>
+            {/* Workspaces always, in their own light-blue block (owner
+                2026-11-26: where you are now, apart from the lists of what you
+                have), then pins once there is one; neither shows while the list
+                is filtered. Workspaces stay at the top while the list scrolls. */}
+            {visibleIds === null && main.workspaces.length > 0 ? (
+              <div className="workspaces-pinned"><div className="workspaces-box">
+                <div className="workspace-list-head"><span className="workspace-list-title"><i className="ph ph-squares-four section-icon" aria-hidden="true" /><span className="lbl">{t("Workspaces")}</span></span><span className="ws-count">{main.workspaces.length}</span></div>
                 {main.workspaces.map((workspace) => {
                   const summary = workspace.sessionId ? sessionsById.get(workspace.sessionId) : undefined;
                   const title = summary ? sessionTitle(summary, app.sessionDisplayNames, app.sessions) : t("New conversation");
@@ -1025,7 +1026,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     </div>
                   );
                 })}
-              </div>
+              </div></div>
             ) : null}
             {(() => {
               if (visibleIds !== null) return null;

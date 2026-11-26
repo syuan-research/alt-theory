@@ -207,8 +207,9 @@ surfaces remain designation-gated and absent for everyone else.
     paths; companions are not separate rail rows. The group menu offers Add
     folder and Manage folders actions.
   - Workspaces (Owner 2026-11-26, `lib/workspaces.ts`): places the user
-    stays in and switches between, listed at the top of the list once there
-    are two (title, where it lives, close on hover). Each keeps its center
+    stays in and switches between, always listed at the top of the list in a
+    flat light-blue block, the one on show a step deeper (title, where it
+    lives, close on hover). Each keeps its center
     conversation and right pane; only the one on show is live, so switching
     reopens its conversation and restores its right pane (`restore` pane
     action). A plain list click stays in the current workspace unless the

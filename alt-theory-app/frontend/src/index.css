@@ -56,6 +56,11 @@
   --shadow-popup: 0 6px 22px rgba(0, 0, 0, 0.5);
   --selection: #2e3d52;
   --focus-ring: #86a9d3;
+  --blue-25: #222935;
+  --blue-100: #2b3648;
+  --blue-300: #4a6488;
+  --blue-500: #86a9d3;
+  --blue-700: #c3d4ea;
   --hl-1: #6b5d18;
   --hl-2: #4a4e24;
   --hl-3: #704617;
@@ -108,6 +113,16 @@
    them in spectrum order red, orange, yellow, green, blue; light stays low-saturation, dark goes one step
    stronger so the marks still read on the dark canvas). The selection
    becomes a light step of the brand color once there is one. */
+/* Steel blue, the de facto brand color (owner 2026-11-26): 25 a block's
+   ground, 100 the chosen row, 300 lines, 500 solid marks and icons, 700
+   text on blue. */
+:root {
+  --blue-25: #f5f8fc;
+  --blue-100: #e3ebf5;
+  --blue-300: #aec3dd;
+  --blue-500: #4676ad;
+  --blue-700: #2c4b70;
+}
 :root {
   --selection: #dce8f7;
   --focus-ring: #6b8db5;
@@ -560,7 +575,7 @@
   .bookmark-popover-head { display: flex; justify-content: space-between; align-items: center; color: var(--text-3); margin-bottom: var(--space-tight); padding-bottom: var(--space-tight); border-bottom: 1px solid var(--hairline); }
   .bookmark-popover-title { display: flex; align-items: center; gap: var(--space-hair); font-size: var(--fs-secondary); color: var(--text-2); }
   .bookmark-glyph { width: 16px; height: 16px; display: block; color: var(--text-3); }
-  .bookmark-glyph.is-bookmarked { color: #4676ad; }
+  .bookmark-glyph.is-bookmarked { color: var(--blue-500); }
   .bookmark-toggle, .bookmark-corner { border: none; background: transparent; border-radius: var(--r-sm); padding: var(--space-hair); cursor: pointer; }
   .bookmark-toggle:hover, .bookmark-corner:hover { background: var(--hover); }
   .bookmark-toggle:disabled, .bookmark-corner:disabled { cursor: default; opacity: 0.5; }
@@ -700,7 +715,18 @@
   .mk-at:hover { color: var(--ink); }
   .msg.row-flash, [data-row].row-flash { animation: row-flash 1.2s ease-out; }
   @keyframes row-flash { from { background: var(--selected); } to { background: transparent; } }
-  .workspaces-pinned { position: sticky; top: calc(-1 * var(--space-hair)); z-index: 2; background: var(--panel); padding-bottom: var(--space-hair); border-bottom: 1px solid var(--hairline); }
+  .workspaces-pinned { position: sticky; top: calc(-1 * var(--space-hair)); z-index: 2; background: var(--panel); padding-bottom: var(--space-tight); }
+  /* Flat light-blue block (owner 2026-11-26, prototype WsLight a): the chosen workspace one step deeper. */
+  .workspaces-box { background: var(--blue-25); border-radius: var(--r-lg); padding: var(--space-hair); }
+  .workspaces-box .workspace-list-head { margin: 0; min-height: 0; padding: var(--space-hair) var(--space-tight); }
+  .workspaces-box .workspace-list-title, .workspaces-box .section-icon { color: var(--blue-500); cursor: default; }
+  .workspaces-box .ws-count { font-size: var(--fs-secondary); font-weight: 400; color: var(--blue-500); }
+  .workspaces-box .session-row:is(:hover, :focus-within) .sess { background: color-mix(in srgb, var(--blue-100) 55%, var(--blue-25)); }
+  .workspaces-box .sess.active, .workspaces-box .session-row:is(:hover, :focus-within) .sess.active { background: var(--blue-100); }
+  /* The close sits over the place label, so every row spans the block's full width. */
+  .workspaces-box .workspace-close { position: absolute; right: var(--space-hair); }
+  .workspaces-box .workspace-close:hover { background: color-mix(in srgb, var(--blue-300) 45%, transparent); }
+  .workspaces-box .workspace-row:is(:hover, :focus-within) .workspace-place { opacity: 0; }
   .session-row {
     display: flex;
     align-items: center;
@@ -833,7 +859,7 @@
   .scrub-rail .tick-slot { flex: 0 1 12px; min-height: 2px; display: flex; align-items: center; justify-content: flex-end; gap: 3px; pointer-events: none; }
   .scrub-rail .tick { width: 9px; height: 1px; border-radius: 1px; background: var(--text-3); opacity: 0.3; transition: opacity 0.15s; }
   .scrub-rail .tick.marked { height: 3px; opacity: 1; }
-  .scrub-rail .tick-dot { width: 4px; height: 4px; flex: 0 0 4px; border-radius: 50%; background: #4676ad; }
+  .scrub-rail .tick-dot { width: 4px; height: 4px; flex: 0 0 4px; border-radius: 50%; background: var(--blue-500); }
   .scrub-rail:hover .tick, .scrub-rail.dragging .tick { opacity: 1; }
   .scrub-rail .tick-slot.hover .tick { width: 13px; height: 2px; background: var(--ink); }
   .scrub-rail .tick-slot.hover .tick.marked { height: 4px; box-shadow: 0 0 0 1px var(--ink); }
