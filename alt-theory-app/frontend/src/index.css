@@ -1441,7 +1441,7 @@
      ::after tooltip went with it. The copied state keeps its own accent. */
   .files-section-title { margin: var(--space-tight) var(--space-hair) var(--space-tight); color: var(--text-3); font-size: var(--fs-micro); font-weight: 600; }
   .working-folders { margin-bottom: var(--space-control); padding: 0; }
-  .working-folder-group + .working-folder-group { border-top: 1px solid var(--hairline); padding-top: var(--space-tight); }
+  .working-folder-group + .working-folder-group { padding-top: var(--space-tight); }
   .working-folder-missing { margin: 0 var(--space-hair) var(--space-tight) 28px; color: var(--danger); font-size: var(--fs-secondary); }
   .working-tree { max-height: 46.5vh; overflow: auto; margin: 0 0 var(--space-tight) 0; padding-left: var(--space-hair); }
   .working-tree .ti { display: flex; align-items: center; gap: var(--space-tight); width: 100%; border: none; background: transparent; color: var(--ink-soft); padding: var(--space-hair) var(--space-tight); text-align: left; font: inherit; font-size: var(--fs-primary); cursor: pointer; line-height: var(--row-lh); }
