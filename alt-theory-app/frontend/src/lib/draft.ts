@@ -24,11 +24,13 @@ export const NEW_DRAFT = "new";
 export interface Draft {
   text: string;
   attachments: string[];
+  /** Conversations dragged into the composer; the message names their session IDs. */
+  sessions: string[];
   /** New-conversation draft only: what the user chose on that screen. */
   settings?: NewConversationSettings;
 }
 
-const EMPTY: Draft = { text: "", attachments: [] };
+const EMPTY: Draft = { text: "", attachments: [], sessions: [] };
 const PREFIX = "alt-theory:draft:";
 const WRITE_DELAY_MS = 400;
 
@@ -72,6 +74,9 @@ function load(key: string): Draft {
       attachments: Array.isArray(parsed.attachments)
         ? parsed.attachments.filter((path): path is string => typeof path === "string")
         : [],
+      sessions: Array.isArray(parsed.sessions)
+        ? parsed.sessions.filter((id): id is string => typeof id === "string")
+        : [],
     };
   } catch {
     return EMPTY;
@@ -110,6 +115,21 @@ export function unstageInDraft(key: string, paths: string[]): void {
   updateDraft(key, (draft) =>
     draft.attachments.some((path) => paths.includes(path))
       ? { ...draft, attachments: draft.attachments.filter((path) => !paths.includes(path)) }
+      : draft,
+  );
+}
+
+export function stageSessionsInDraft(key: string, sessions: string[]): void {
+  updateDraft(key, (draft) => {
+    const added = [...new Set(sessions)].filter((id) => id && !draft.sessions.includes(id));
+    return added.length ? { ...draft, sessions: [...draft.sessions, ...added] } : draft;
+  });
+}
+
+export function unstageSessionsInDraft(key: string, sessions: string[]): void {
+  updateDraft(key, (draft) =>
+    draft.sessions.some((id) => sessions.includes(id))
+      ? { ...draft, sessions: draft.sessions.filter((id) => !sessions.includes(id)) }
       : draft,
   );
 }

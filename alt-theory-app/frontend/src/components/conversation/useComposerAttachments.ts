@@ -1,7 +1,8 @@
 import { useState, type ClipboardEvent, type DragEvent, type DragEventHandler } from "react";
 import { classifyDroppedFiles, stageAttachmentFile } from "@/api/session-files";
 import { useConversationContext } from "@/context/ConversationContext";
-import { NEW_DRAFT, stageInDraft } from "@/lib/draft";
+import { NEW_DRAFT, stageInDraft, stageSessionsInDraft } from "@/lib/draft";
+import { draggedSession, SESSION_MIME } from "@/lib/sessionDrag";
 import { pathsFromDroppedFiles } from "@/lib/native";
 import { WORKSPACE_PATH_MIME } from "@/lib/workspace";
 import { t } from "@/i18n";
@@ -22,7 +23,7 @@ export function useComposerAttachments() {
   };
 
   const acceptsDrop = (event: DragEvent) =>
-    sessionReady && event.dataTransfer.types.some((type) => type === WORKSPACE_PATH_MIME || type === "Files");
+    sessionReady && event.dataTransfer.types.some((type) => type === WORKSPACE_PATH_MIME || type === SESSION_MIME || type === "Files");
 
   async function attachDroppedFiles(files: File[]) {
     const paths = files.map((file) => pathsFromDroppedFiles([file])[0] ?? "");
@@ -55,9 +56,14 @@ export function useComposerAttachments() {
       setDragOver(false);
       if (!acceptsDrop(event)) return;
       event.preventDefault();
-      const internal = event.dataTransfer.getData(WORKSPACE_PATH_MIME);
-      if (internal) stage(internal);
-      else void attachDroppedFiles([...event.dataTransfer.files]).catch(reportError);
+      // A dragged conversation goes to the next message by its session ID.
+      const session = draggedSession(event);
+      if (session) stageSessionsInDraft(sessionId ?? NEW_DRAFT, [session]);
+      else {
+        const internal = event.dataTransfer.getData(WORKSPACE_PATH_MIME);
+        if (internal) stage(internal);
+        else void attachDroppedFiles([...event.dataTransfer.files]).catch(reportError);
+      }
     },
   } satisfies Record<string, DragEventHandler<HTMLDivElement>>;
 

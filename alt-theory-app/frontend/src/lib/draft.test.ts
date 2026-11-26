@@ -40,7 +40,7 @@ test("drafts are kept per account on this device, and nothing before the account
   updateDraft("s1", (draft) => ({ ...draft, text: "hello", attachments: ["a.md"] }));
   updateDraft(NEW_DRAFT, (draft) => ({ ...draft, settings: { mode: "work", fullAccess: true } }));
   flushDrafts();
-  assert.deepEqual(JSON.parse(store.get("alt-theory:draft:local:s1")!), { text: "hello", attachments: ["a.md"] });
+  assert.deepEqual(JSON.parse(store.get("alt-theory:draft:local:s1")!), { text: "hello", attachments: ["a.md"], sessions: [] });
 
   // A restart reads them back; another account sees none of them.
   setDraftScope("account:p01");
@@ -56,7 +56,7 @@ test("drafts are kept per account on this device, and nothing before the account
   assert.deepEqual(readDraft("s1").attachments, ["a.md", "b.md"]);
 
   // An emptied draft leaves nothing stored.
-  updateDraft("s1", () => ({ text: "", attachments: [] }));
+  updateDraft("s1", () => ({ text: "", attachments: [], sessions: [] }));
   flushDrafts();
   assert.equal(store.has("alt-theory:draft:local:s1"), false);
 });
@@ -110,7 +110,7 @@ test("a hand-back seen by two windows lands once; staging names its conversation
   assert.deepEqual(readDraft("s6").attachments, ["a.md", "b.md"]);
   assert.equal(readDraft("s5").attachments.length, 0);
   updateDraft("s7", (draft) => ({ ...draft, settings: { fullAccess: false } }));
-  updateDraft("s7", () => ({ text: "", attachments: [], settings: {} }));
+  updateDraft("s7", () => ({ text: "", attachments: [], sessions: [], settings: {} }));
   flushDrafts();
   assert.equal(store.has("alt-theory:draft:local:s7"), false);
 });

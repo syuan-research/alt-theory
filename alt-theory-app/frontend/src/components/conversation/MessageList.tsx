@@ -24,6 +24,7 @@ import { toolOutcome, type ToolOutcome } from "@/lib/toolOutcome";
 import { relatedDisplayMarker } from "@/lib/sessionList";
 import { isListMember } from "@/lib/listMember";
 import { locateInList, showInList } from "@/lib/listLocate";
+import { draggableSession } from "@/lib/sessionDrag";
 import { copyText } from "@/lib/clipboard";
 import { useMainView } from "@/context/MainView";
 import { t } from "@/i18n";
@@ -496,6 +497,7 @@ function AgentReferenceLink({ agent }: { agent: AgentReference }) {
       void open();
     }}
       onContextMenu={(event) => { if (agent.sessionId) menu.open(event, items()); }}
+      {...draggableSession(agent.sessionId)}
       onMouseEnter={() => {
         if (!agent.sessionId) return;
         hover.current.timer = window.setTimeout(() => {

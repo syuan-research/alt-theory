@@ -41,6 +41,7 @@ import {
   readDraft,
   stageInDraft,
   unstageInDraft,
+  unstageSessionsInDraft,
   updateDraft,
   useDraft,
   type Draft,
@@ -458,9 +459,11 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
           ...draft,
           text: "",
           attachments: draft.attachments.filter((path) => !sent.includes(path)),
+          sessions: [],
         })),
       stage: (...paths: string[]) => stageInDraft(key(), paths),
       unstage: (paths: string[]) => unstageInDraft(key(), paths),
+      unstageSessions: (sessions: string[]) => unstageSessionsInDraft(key(), sessions),
       notify: (body: NoticeBody, ttlMs?: number) => dispatch({ type: "notice", body, ttlMs }),
     };
   }, [send]);
@@ -547,6 +550,7 @@ function useConversationView(
       draft,
       draftText: draft.text,
       stagedWorkspacePaths: draft.attachments,
+      stagedSessions: draft.sessions,
       draftSaveFailed,
       /** Bumps when text is handed back to this conversation's draft (the editor takes focus). */
       draftReturns,

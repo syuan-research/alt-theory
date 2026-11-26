@@ -51,6 +51,7 @@ import { conversationState } from "@/lib/listActivity";
 import { ConversationState } from "@/components/conversation/ConversationState";
 import { usePaneMemory } from "@/lib/paneMemory";
 import { clearLocate, showInList, useListLocate } from "@/lib/listLocate";
+import { draggableSession, draggedSession } from "@/lib/sessionDrag";
 import { isPathQuery, quickFindScore, quickFindTerms } from "../../../../shared/quick-find";
 
 /** Hover text saying where a listed child came from (alpha.6). */
@@ -794,7 +795,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
   const dropSession = (dir: string, event: React.DragEvent) => {
     event.preventDefault();
     setDropTarget(null);
-    const sessionId = event.dataTransfer.getData("text/alt-theory-session");
+    const sessionId = draggedSession(event);
     if (!sessionId) return;
     const target = dir || null;
     const dragged = app.sessions.find((s) => s.sessionId === sessionId);
@@ -1487,18 +1488,7 @@ function SessionNode({
               menu.openAt(rect.left + 18, rect.bottom, contextItems(), event.currentTarget);
             }}
             data-tip={title}
-            draggable={draggable}
-            onDragStart={
-              draggable
-                ? (e) => {
-                    e.dataTransfer.setData(
-                      "text/alt-theory-session",
-                      session.sessionId,
-                    );
-                    e.dataTransfer.effectAllowed = "move";
-                  }
-                : undefined
-            }
+            {...draggableSession(draggable ? session.sessionId : undefined)}
           >
             {session.forkedFrom ? (
               !isFamilyHead(session, app.sessions) ? (

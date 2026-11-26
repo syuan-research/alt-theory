@@ -19,6 +19,7 @@ import { t } from "@/i18n";
 import { useAutosizeTextarea } from "@/lib/autosizeTextarea";
 import { dismissApprovalHint, useApprovalReviewer } from "@/lib/approvalReviewer";
 import { runPhaseLabels } from "@/lib/runState";
+import { sessionTitle } from "@/lib/sessionList";
 
 type MenuKey = "model" | "role" | "kb" | "presetcfg" | "perm" | null;
 const SHOW_HELP_STARTERS = false;
@@ -92,7 +93,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const altControlsDisabled = app.runtimeMode === "native-pi";
   const canSend =
     interactive &&
-    (hasText || conv.stagedWorkspacePaths.length > 0);
+    (hasText || conv.stagedWorkspacePaths.length > 0 || conv.stagedSessions.length > 0);
   const showVisibility = app.viewMode === "researcher";
   const withheld = isWithheld(conv.selectors.visibility);
 
@@ -105,12 +106,16 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     if (palette.runImmediate()) return true;
     const typed = palette.prompt.trim();
     const attachments = [...conv.stagedWorkspacePaths];
-    if (!typed && attachments.length === 0) return false;
+    const sessions = [...conv.stagedSessions];
+    if (!typed && attachments.length === 0 && sessions.length === 0) return false;
+    // A dragged conversation joins the message as its session ID line.
+    const quoted = sessions.map((id) => t("Session ID: {id}", { id })).join("\n");
+    const body = [typed, quoted].filter(Boolean).join("\n\n");
     const pending = app.pendingPreset(conv.sessionId);
     // Merge AFTER the empty-guard, and also for attachment-only sends (opus
     // B4: the announcement must never be silently discarded while the
     // button still claims to be active).
-    const text = pending?.texts.length ? [...pending.texts, typed].filter(Boolean).join("\n\n") : typed;
+    const text = pending?.texts.length ? [...pending.texts, body].filter(Boolean).join("\n\n") : body;
     const sent = conv.prompt(pending?.invoke ? `/skill:${pending.invoke} ${text}` : text, attachments, typed);
     if (sent) app.presetSent(conv.sessionId);
     return sent;
@@ -256,6 +261,28 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
         ) : null}
 
         <SkillDraftChip palette={palette} />
+        {conv.stagedSessions.length > 0 ? (
+          <div className="staged-attachments" aria-label={t("Referenced conversations")}>
+            {conv.stagedSessions.map((id) => {
+              const session = app.sessions.find((item) => item.sessionId === id);
+              const name = session ? sessionTitle(session, app.sessionDisplayNames, app.sessions) : id;
+              return (
+                <span className="attachment-chip" key={id} data-tip={id}>
+                  <i className="ph ph-chats" aria-hidden="true" />
+                  <span>{name}</span>
+                  <button
+                    type="button"
+                    onClick={() => conv.unstageSessions([id])}
+                    data-tip={t("Remove referenced conversation")}
+                    aria-label={t("Remove referenced conversation")}
+                  >
+                    <i className="ph ph-x" aria-hidden="true" />
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+        ) : null}
         {conv.stagedWorkspacePaths.length > 0 ? (
           <div className="staged-attachments" aria-label={t("Attached files")}>
             {conv.stagedWorkspacePaths.map((path) => (
