@@ -158,7 +158,12 @@ export function ShellProvider({ children }: { children: ReactNode }) {
     setSurface("settings");
   }, []);
   const openReview = useCallback(() => setSurface("review"), []);
-  const openFiles = useCallback(() => setSurface("files"), []);
+  // Second click on the rail entry closes it again (owner 2026-11-26): the
+  // files page has no other way back, collapsed or expanded alike.
+  const openFiles = useCallback(
+    () => setSurface((s) => (s === "files" ? "app" : "files")),
+    [],
+  );
   const openExternalAiSetup = useCallback(() => setExternalAiSetupOpen(true), []);
   const closeExternalAiSetup = useCallback(() => setExternalAiSetupOpen(false), []);
 
