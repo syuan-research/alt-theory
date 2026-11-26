@@ -75,6 +75,10 @@
   --fs-micro: calc(var(--fs-primary) - 3px);         /* 11 */
   --fs-title: calc(var(--fs-primary) + 2px);         /* 16 */
   --fs-page: calc(var(--fs-primary) * 1.7);          /* ~24 */
+  /* One row pitch for icon+label list rows: 14px x 1.3 + 4px padding ~ 26px.
+     Strip icon buttons and the settings nav keep --rail-row-h: 36px (owner 2026-11-26). */
+  --row-lh: 1.3;
+  --row-h: 26px;
 
 /* Spacing steps: the only spacing values (4px module). */
   --space-hair: 4px;
@@ -668,7 +672,7 @@
   .session-rename-inline button:hover { background: var(--hover); color: var(--ink); }
   .sess {
     flex: 1;
-    min-width: 0; display: flex; align-items: center; gap: var(--space-tight); padding: var(--space-tight) var(--space-control); border-radius: var(--r-sm); cursor: pointer; color: var(--ink-soft); font-size: var(--fs-primary); text-align: left; white-space: nowrap; overflow: hidden; }
+    min-width: 0; display: flex; align-items: center; gap: var(--space-tight); padding: var(--space-hair) var(--space-control); border-radius: var(--r-sm); cursor: pointer; color: var(--ink-soft); font-size: var(--fs-primary); text-align: left; white-space: nowrap; overflow: hidden; line-height: var(--row-lh); }
   .session-row:hover .sess, .session-row:focus-within .sess { background: var(--row-active); }
   .sess.active { background: var(--row-active); font-weight: 500; }
   .sess .s-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -757,7 +761,7 @@
   .wb-actions button { display: flex; align-items: center; gap: var(--space-tight); border: none; background: var(--canvas); border-radius: var(--r-md); padding: var(--space-tight) var(--space-control); font-size: var(--fs-primary); cursor: pointer; color: var(--ink-soft); text-align: left; }
   .wb-actions button:hover { background: var(--hover); }
   .wb-sessions { flex: 1; overflow-y: auto; margin-top: var(--space-tight); padding: 0 var(--space-tight); }
-  .wb-sess { display: flex; align-items: center; gap: var(--space-tight); padding: var(--space-tight) var(--space-control); border-radius: var(--r-sm); font-size: var(--fs-primary); color: var(--ink-soft); cursor: pointer; white-space: nowrap; overflow: hidden; }
+  .wb-sess { display: flex; align-items: center; gap: var(--space-tight); padding: var(--space-hair) var(--space-control); border-radius: var(--r-sm); font-size: var(--fs-primary); color: var(--ink-soft); cursor: pointer; white-space: nowrap; overflow: hidden; line-height: var(--row-lh); }
   .wb-sess:hover { background: var(--hover); }
   .wb-sess.active { background: var(--selected); font-weight: 500; }
   .wb-sess .tag { margin-left: auto; font-size: var(--fs-micro); color: var(--text-3); font-family: var(--mono); flex-shrink: 0; }
@@ -876,7 +880,7 @@
   .new-row { display: flex; align-items: center; gap: var(--space-tight); }
   .new-row .btn-new { flex: 1; }
   .workspace-list-head { display: flex; align-items: center; justify-content: space-between; margin: 0 var(--space-control); padding: var(--space-hair) var(--space-tight) var(--space-hair); color: var(--ink); font-size: var(--fs-primary); font-weight: 600; }
-  .sessions .workspace-list-head { flex: none; min-height: var(--rail-row-h); margin: var(--space-tight) 0; }
+  .sessions .workspace-list-head { flex: none; min-height: var(--row-h); margin: var(--space-tight) 0; line-height: var(--row-lh); }
   .sessions > :first-child .workspace-list-head { margin-top: 0; }
   .workspace-list-title { display: flex; align-items: center; gap: var(--space-tight); min-width: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: inherit; cursor: pointer; padding: 0; text-align: left; white-space: nowrap; }
   .workspace-list-title .section-icon { color: var(--ink); }
@@ -903,12 +907,12 @@
 
   /* split new-conversation control: [folder picker | search | +] (owner 2026-09-18:
      search joined the row because it filters all conversations, not only projects) */
-  .split-new { flex: 1 0 var(--rail-row-h); display: flex; align-items: stretch; min-width: 0; height: var(--rail-row-h); border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--canvas); overflow: visible; }
+  .split-new { flex: 1 0 var(--row-h); display: flex; align-items: stretch; min-width: 0; height: var(--row-h); border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--canvas); overflow: visible; }
   .split-new .ws-pick { flex: 1; min-width: 0; }
   .split-new .ws-pick > .list-menu { left: 0; right: auto; width: min(320px, calc(100vw - 24px)); }
   /* The selector's outer border occupies 1px of the shared row inset. */
   .split-new .ws-pick > summary { width: 100%; height: 100%; padding: var(--space-tight) var(--space-tight); padding-left: calc(var(--space-tight) - 1px); display: flex; align-items: center; gap: var(--space-tight); border-radius: var(--r-md) 0 0 var(--r-md); font-size: var(--fs-primary); color: var(--ink-soft); }
-  .files-entry, .files-entry .sess { height: var(--rail-row-h); flex: none; }
+  .files-entry, .files-entry .sess { height: var(--row-h); flex: none; }
   .files-entry .sess { padding-inline: var(--space-tight); }
   .left :is(.mini > button, .mini > .help-menu > summary, .ws-pick > summary, .split-new > button, .files-entry .sess, .workspace-list-title, .group-label.ws, .set-item, .left-foot .gear, .left-foot .icon-btn, .left-foot .help-menu > summary) > i:first-child {
     display: inline-flex; align-items: center; justify-content: center;
@@ -1029,7 +1033,7 @@
     }
   }
   .list-menu { position: absolute; right: 0; top: 30px; z-index: 60; background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--r-md); box-shadow: var(--shadow-popup); padding: var(--space-hair); min-width: 200px; }
-  .list-menu button { display: flex; align-items: center; gap: var(--space-tight); width: 100%; border: none; background: none; padding: var(--space-tight) var(--space-control); border-radius: var(--r-sm); font-size: var(--fs-primary); color: var(--ink-soft); cursor: pointer; text-align: left; }
+  .list-menu button { display: flex; align-items: center; gap: var(--space-tight); width: 100%; border: none; background: none; padding: var(--space-hair) var(--space-control); border-radius: var(--r-sm); font-size: var(--fs-primary); color: var(--ink-soft); cursor: pointer; text-align: left; line-height: var(--row-lh); }
   .list-menu button:hover { background: var(--hover); }
   /* thinking block: collapsible, amber bar (v0.5.x lineage) */
   .think-block { max-width: 660px; margin: 0 auto var(--space-column); padding: 0 var(--space-column); font-size: var(--fs-secondary); color: var(--text-3); border-left: 2px solid var(--color-text-muted); }
@@ -1129,7 +1133,7 @@
   .queued-prompt-action:hover { background: var(--hover); color: var(--ink); }
   .queued-prompt-action.primary { color: var(--ink); }
   .slash-palette { margin-bottom: var(--space-tight); max-height: 200px; overflow-y: auto; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-md); box-shadow: var(--shadow-popup); padding: var(--space-hair); }
-  .slash-item { display: flex; align-items: baseline; gap: var(--space-control); width: 100%; text-align: left; padding: var(--space-tight) var(--space-control); border: none; background: none; border-radius: var(--r-sm); cursor: pointer; }
+  .slash-item { display: flex; align-items: baseline; gap: var(--space-control); width: 100%; text-align: left; padding: var(--space-hair) var(--space-control); border: none; background: none; border-radius: var(--r-sm); cursor: pointer; line-height: var(--row-lh); }
   .slash-item.on { background: var(--selected); }
   .slash-item:hover { background: var(--hover); }
   .slash-item .cmd { font-family: var(--mono); font-size: var(--fs-primary); color: var(--ink); flex-shrink: 0; }
@@ -1187,7 +1191,7 @@
   .menu.on { display: block; }
   /* .mi rows are real <button>s where menus are keyboard-operable; this reset
      strips the UA button chrome so they render exactly like the old divs. */
-  .menu .mi { display: flex; align-items: center; gap: var(--space-control); width: 100%; padding: var(--space-tight) var(--space-control); border-radius: var(--r-sm); border: 0; background: transparent; font: inherit; font-size: var(--fs-primary); color: var(--ink-soft); cursor: pointer; position: relative; text-align: left; }
+  .menu .mi { display: flex; align-items: center; gap: var(--space-control); width: 100%; padding: var(--space-hair) var(--space-control); border-radius: var(--r-sm); border: 0; background: transparent; font: inherit; font-size: var(--fs-primary); color: var(--ink-soft); cursor: pointer; position: relative; text-align: left; line-height: var(--row-lh); }
   .menu .mi:hover { background: var(--hover); }
   .menu .mi:focus-visible { background: var(--hover); outline: none; }
   .menu .mi i { color: var(--text-2); }
@@ -1394,11 +1398,11 @@
   .sc-item:hover { background: var(--hover); }
   .sc-item .t { font-size: var(--fs-primary); font-weight: 500; display: flex; align-items: center; gap: var(--space-tight); color: var(--ink-soft); }
   .sc-item .d { font-size: var(--fs-secondary); color: var(--text-3); margin-top: var(--space-hair); }
-  .file-item { display: flex; align-items: center; gap: var(--space-tight); padding: var(--space-tight) var(--space-tight); border-radius: var(--r-sm); background: none; border: none; margin: 0; cursor: pointer; width: 100%; text-align: left; font-size: var(--fs-primary); color: var(--ink-soft); }
+  .file-item { display: flex; align-items: center; gap: var(--space-tight); padding: var(--space-hair) var(--space-tight); border-radius: var(--r-sm); background: none; border: none; margin: 0; cursor: pointer; width: 100%; text-align: left; font-size: var(--fs-primary); color: var(--ink-soft); line-height: var(--row-lh); }
   .file-item:hover { background: var(--row-active); }
   .file-item .delta { margin-left: auto; font-family: var(--mono); font-size: var(--fs-micro); color: var(--text-2); flex-shrink: 0; }
   .tree { font-size: var(--fs-primary); }
-  .tree .ti { display: flex; align-items: center; gap: var(--space-tight); padding: var(--space-tight) var(--space-tight); border-radius: var(--r-sm); cursor: pointer; color: var(--ink-soft); width: 100%; text-align: left; background: none; border: none; }
+  .tree .ti { display: flex; align-items: center; gap: var(--space-tight); padding: var(--space-hair) var(--space-tight); border-radius: var(--r-sm); cursor: pointer; color: var(--ink-soft); width: 100%; text-align: left; background: none; border: none; line-height: var(--row-lh); }
   .tree .ti:hover { background: var(--row-active); }
   .tree .ti span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tree .ti.indent { padding-left: 28px; }
@@ -1425,7 +1429,7 @@
     .child-ctx-line .ctx-label { display: none; }
     .child-ctx-line .ctx-picker { max-width: none; }
   }
-  .tree-copy { position: relative; margin-left: auto; padding: var(--space-hair); border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-3); cursor: pointer; opacity: 0; }
+  .tree-copy { position: relative; margin-left: auto; padding: 0; height: 18px; min-width: 18px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-3); cursor: pointer; opacity: 0; }
   .ti:hover .tree-copy, .ti:focus-within .tree-copy { opacity: 1; }
   .tree-copy:hover { background: var(--selected); color: var(--ink); }
   .tree-copy.copied { color: var(--ink); opacity: 1; }
@@ -1436,7 +1440,7 @@
   .working-folder-group + .working-folder-group { border-top: 1px solid var(--hairline); padding-top: var(--space-tight); }
   .working-folder-missing { margin: 0 var(--space-hair) var(--space-tight) 28px; color: var(--danger); font-size: var(--fs-secondary); }
   .working-tree { max-height: 46.5vh; overflow: auto; margin: 0 0 var(--space-tight) 0; padding-left: var(--space-hair); }
-  .working-tree .ti { display: flex; align-items: center; gap: var(--space-tight); width: 100%; border: none; background: transparent; color: var(--ink-soft); padding: var(--space-hair) var(--space-tight); text-align: left; font: inherit; font-size: var(--fs-primary); cursor: pointer; }
+  .working-tree .ti { display: flex; align-items: center; gap: var(--space-tight); width: 100%; border: none; background: transparent; color: var(--ink-soft); padding: var(--space-hair) var(--space-tight); text-align: left; font: inherit; font-size: var(--fs-primary); cursor: pointer; line-height: var(--row-lh); }
   .working-tree .ti span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .working-tree .ti:hover { background: var(--row-active); }
   .working-tree .ti[aria-disabled="true"] { opacity: 0.45; cursor: default; }
@@ -1652,6 +1656,9 @@
   /* Settings nav rows live in the shared left rail (.set-rail in LeftNav);
      same row styling the old in-page set-nav used. */
   .set-rail { flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-control) var(--space-tight); display: flex; flex-direction: column; }
+  /* Deliberately kept at the strip's 36px (owner 2026-11-26): this row is
+     also the collapsed strip's row, so it follows --rail-row-h, not the
+     list-row pitch. */
   .set-item { display: flex; flex: 0 0 var(--rail-row-h); align-items: center; gap: var(--space-control); height: var(--rail-row-h); padding: 0 calc(var(--space-tight) + 2px); border-radius: var(--r-sm); font-size: var(--fs-primary); color: var(--ink-soft); cursor: pointer; width: 100%; text-align: left; background: none; border: none; }
   .set-item:hover { background: var(--hover); }
   .set-item.on { background: var(--selected); font-weight: 500; }
@@ -1678,7 +1685,7 @@
   .global-approval-notice span:last-of-type { color: color-mix(in srgb, var(--on-ink) 82%, transparent); white-space: nowrap; }
   .global-approval-notice b { min-width: 18px; padding: 1px var(--space-tight); border-radius: 999px; background: var(--on-ink); color: var(--ink); font-size: var(--fs-micro); }
   .context-menu { position: fixed; z-index: 260; width: 220px; max-height: min(320px, calc(100vh - 16px)); overflow-y: auto; padding: var(--space-tight); border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--panel); box-shadow: var(--shadow-popup); }
-  .context-menu button { display: flex; align-items: center; gap: var(--space-tight); width: 100%; padding: var(--space-tight) var(--space-control); border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-soft); text-align: left; cursor: pointer; }
+  .context-menu button { display: flex; align-items: center; gap: var(--space-tight); width: 100%; padding: var(--space-hair) var(--space-control); border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-soft); text-align: left; cursor: pointer; line-height: var(--row-lh); }
   .context-menu button:hover, .context-menu button:focus-visible { background: var(--hover); outline: none; }
   .context-menu button.danger { color: var(--danger); }
   .context-menu-swatches { display: flex; gap: var(--space-tight); padding: var(--space-hair) var(--space-control); }
@@ -1907,7 +1914,7 @@
   .add-provider-primary { width: 100%; display: flex; align-items: center; justify-content: center; gap: var(--space-tight); padding: var(--space-control) var(--space-control); border: 1px solid var(--ink); border-radius: var(--r-md); background: var(--ink); color: var(--on-ink); font: inherit; font-size: var(--fs-primary); font-weight: 600; cursor: pointer; }
   .add-provider-primary:hover { opacity: 0.9; }
   .provider-master-list { display: flex; flex-direction: column; gap: var(--space-hair); margin-top: var(--space-tight); }
-  .provider-master-row { display: flex; align-items: center; gap: var(--space-tight); width: 100%; padding: var(--space-tight) var(--space-control); border: none; border-radius: var(--r-sm); background: transparent; color: var(--ink-soft); font: inherit; font-size: var(--fs-primary); cursor: pointer; text-align: left; }
+  .provider-master-row { display: flex; align-items: center; gap: var(--space-tight); width: 100%; padding: var(--space-hair) var(--space-control); border: none; border-radius: var(--r-sm); background: transparent; color: var(--ink-soft); font: inherit; font-size: var(--fs-primary); cursor: pointer; text-align: left; line-height: var(--row-lh); }
   .provider-master-row:hover { background: var(--hover); }
   .provider-master-row.on { background: var(--selected); color: var(--ink); }
   .provider-master-entry { min-width: 0; }
