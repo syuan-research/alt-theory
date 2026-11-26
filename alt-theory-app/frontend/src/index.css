@@ -1569,7 +1569,7 @@
      own surface. */
   .open-file-tab { position: relative; display: inline-flex; flex: 0 1 auto; min-width: calc(110px + 16px); max-width: 100%; }
   .open-file-tab.on { flex-shrink: 0; }
-  .open-file-tab > [role="tab"] { flex: 0 1 auto; min-width: 0; max-width: 15rem; padding-right: calc(var(--space-tight) + 16px); }
+  .open-file-tab > [role="tab"] { flex: 1 1 auto; min-width: 0; max-width: 15rem; padding-right: calc(var(--space-tight) + 16px); }
   .open-file-tab .file-name { display: flex; flex: 0 1 auto; min-width: 0; }
   .open-file-tab .file-stem { flex: 0 1 auto; min-width: 0; }
   .open-file-tab .file-ext { flex: 0 0 auto; }
