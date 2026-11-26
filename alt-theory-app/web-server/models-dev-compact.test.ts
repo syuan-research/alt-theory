@@ -63,6 +63,7 @@ test("the compact catalog answers every lookup exactly as the full one", () => {
     name: "Acme One",
     reasoning: true,
     availableThinkingLevels: ["off", "low", "high"],
+    offEffort: "none",
     input: ["text", "image"],
     contextWindow: 200000,
     maxTokens: 16000,

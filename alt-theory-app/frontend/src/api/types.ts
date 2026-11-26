@@ -465,6 +465,7 @@ export type ApiType =
 
 export interface ModelCompat {
   thinkingFormat?: string;
+  supportsReasoningEffort?: boolean;
   requiresReasoningContentOnAssistantMessages?: boolean;
   maxTokensField?: string;
 }

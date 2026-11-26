@@ -6,9 +6,11 @@ import { join } from "path";
 import test from "node:test";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import {
+  clampThinkingLevel,
   getSupportedThinkingLevels,
   type Model,
 } from "@earendil-works/pi-ai";
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import {
   getConfigStatus,
   getRuntimeModelConfig,
@@ -456,4 +458,197 @@ test("user-explicit thinkingLevels survive a catalog hit", async () => {
   );
   assert.deepEqual(entry.thinkingLevels, ["off", "high"]);
   assert.deepEqual(piThinkingLevels(entry), ["off", "high"]);
+});
+
+/** The request Pi really sends for a saved entry (network stubbed), minus the conversation. */
+async function piRequestFor(
+  agentDir: string,
+  provider: string,
+  modelId: string,
+  level: ThinkingLevel,
+) {
+  const runtime = await ModelRuntime.create({
+    authPath: join(agentDir, "auth.json"),
+    modelsPath: join(agentDir, "models.json"),
+  });
+  const model = runtime.getModel(provider, modelId);
+  assert.ok(model, `${provider}/${modelId} is a Pi model`);
+  const originalFetch = globalThis.fetch;
+  let body: Record<string, unknown> = {};
+  globalThis.fetch = (async (_url, init) => {
+    body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+    return new Response("stub", { status: 400 });
+  }) as typeof fetch;
+  try {
+    // What Pi's simple API passes on: the clamped level, and off means "no effort".
+    await runtime.stream(
+      model,
+      {
+        messages: [{ role: "user", content: "hi", timestamp: 0 }],
+        tools: [],
+      } as never,
+      (() => {
+        const clamped = clampThinkingLevel(model, level);
+        return { reasoningEffort: clamped === "off" ? undefined : clamped };
+      })() as never,
+    ).result();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.ok(body.model, "Pi made a request");
+  const { messages, model: _model, tools, ...params } = body;
+  return params;
+}
+
+const THINKING_PARAMS = ["reasoning_effort", "thinking", "enable_thinking", "reasoning"];
+
+async function saveLiteral(
+  agentDir: string,
+  name: string,
+  baseUrl: string,
+  model: Record<string, unknown>,
+) {
+  await upsertProvider(
+    agentDir,
+    {
+      name,
+      baseUrl,
+      api: "openai-completions",
+      apiKey: "test-key",
+      models: [model] as never,
+    },
+    { keyStorage: "literal" },
+  );
+}
+
+test("a model Pi ships a definition for is saved with Pi's thinking fields, whatever the provider is called", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-thinking-shipped-"));
+  // No models.dev cache here: Pi's shipped catalog alone answers. The
+  // provider name is Alt's, not Pi's, and the URL carries the match.
+  await saveLiteral(
+    agentDir,
+    "xiaomi-mimo-token-plan-cn",
+    "https://token-plan-cn.xiaomimimo.com/v1/",
+    { id: "mimo-v2.6-pro" },
+  );
+  const entry = writtenProviderModel(agentDir, "xiaomi-mimo-token-plan-cn", "mimo-v2.6-pro");
+  assert.equal(entry.reasoning, true);
+  assert.deepEqual(entry.thinkingLevelMap, {
+    off: "off", minimal: null, low: null, medium: null, high: "high", xhigh: null, max: null,
+  });
+  assert.equal(entry.compat?.thinkingFormat, "deepseek");
+  assert.equal(entry.compat?.supportsReasoningEffort, false);
+  assert.deepEqual(piThinkingLevels(entry), ["off", "high"]);
+  assert.deepEqual(
+    listProviders(agentDir).find((provider) => provider.name === "xiaomi-mimo-token-plan-cn")
+      ?.models[0].availableThinkingLevels,
+    ["off", "high"],
+  );
+
+  // On the wire: a switch, never an effort, whatever level is picked.
+  for (const [level, type] of [["high", "enabled"], ["medium", "enabled"], ["off", "disabled"]] as const) {
+    const params = await piRequestFor(agentDir, "xiaomi-mimo-token-plan-cn", "mimo-v2.6-pro", level);
+    assert.deepEqual(params.thinking, { type });
+    assert.equal("reasoning_effort" in params, false, `reasoning_effort sent for ${level}`);
+  }
+});
+
+test("a model with thinking but no effort levels sends no thinking parameter", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-thinking-toggle-"));
+  writeFileSync(
+    join(agentDir, "models-dev-cache.json"),
+    JSON.stringify({
+      "acme-toggle": {
+        api: "https://toggle.example/v1",
+        models: { "t-1": { reasoning: true, reasoning_options: [{ type: "toggle" }] } },
+      },
+    }),
+  );
+  await saveLiteral(agentDir, "acme-toggle", "https://toggle.example/v1", { id: "t-1" });
+  const entry = writtenProviderModel(agentDir, "acme-toggle", "t-1");
+  assert.equal(entry.reasoning, true);
+  assert.deepEqual(piThinkingLevels(entry), []);
+  for (const level of ["high", "off"] as const) {
+    const params = await piRequestFor(agentDir, "acme-toggle", "t-1", level);
+    for (const key of THINKING_PARAMS) assert.equal(key in params, false, `${key} sent for ${level}`);
+  }
+
+  // The same for a model nothing is known about beyond "it reasons".
+  await saveLiteral(agentDir, "acme-unknown", "https://example.invalid/v1", { id: "ghost", reasoning: true });
+  assert.deepEqual(
+    writtenProviderModel(agentDir, "acme-unknown", "ghost").thinkingLevelMap,
+    entry.thinkingLevelMap,
+  );
+});
+
+test("'thinking only, no effort levels' gives on and off once a switch format is known", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-thinking-no-levels-"));
+  await saveLiteral(agentDir, "acme-switch", "https://example.invalid/v1", {
+    id: "ghost",
+    thinkingLevels: [],
+    compat: { thinkingFormat: "deepseek" },
+  });
+  const entry = writtenProviderModel(agentDir, "acme-switch", "ghost");
+  assert.equal(entry.compat?.supportsReasoningEffort, false);
+  assert.deepEqual(piThinkingLevels(entry), ["off", "high"]);
+  assert.deepEqual(
+    (await piRequestFor(agentDir, "acme-switch", "ghost", "high")).thinking,
+    { type: "enabled" },
+  );
+  assert.deepEqual(
+    (await piRequestFor(agentDir, "acme-switch", "ghost", "off")).thinking,
+    { type: "disabled" },
+  );
+
+  // Without a format there is nothing safe to send: the provider's default applies.
+  await saveLiteral(agentDir, "acme-quiet", "https://example.invalid/v1", { id: "ghost", thinkingLevels: [] });
+  const params = await piRequestFor(agentDir, "acme-quiet", "ghost", "high");
+  for (const key of THINKING_PARAMS) assert.equal(key in params, false, `${key} sent`);
+});
+
+test("a ticked off level never sends Pi's own `off` as an effort value", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-thinking-off-"));
+  await saveLiteral(agentDir, "acme-off", "https://example.invalid/v1", {
+    id: "ghost",
+    thinkingLevels: ["off", "high"],
+  });
+  const entry = writtenProviderModel(agentDir, "acme-off", "ghost");
+  assert.equal("off" in (entry.thinkingLevelMap ?? {}), false);
+  assert.deepEqual(piThinkingLevels(entry), ["off", "high"]);
+  assert.equal("reasoning_effort" in (await piRequestFor(agentDir, "acme-off", "ghost", "off")), false);
+  assert.equal(
+    (await piRequestFor(agentDir, "acme-off", "ghost", "high")).reasoning_effort,
+    "high",
+  );
+
+  // A catalog that names its off value keeps it: "none" is the provider's word.
+  writeFileSync(
+    join(agentDir, "models-dev-cache.json"),
+    JSON.stringify({
+      "acme-effort": {
+        api: "https://effort.example/v1",
+        models: {
+          "e-1": { reasoning: true, reasoning_options: [{ type: "effort", values: ["none", "low", "high"] }] },
+        },
+      },
+    }),
+  );
+  await saveLiteral(agentDir, "acme-effort", "https://effort.example/v1", { id: "e-1" });
+  assert.equal(writtenProviderModel(agentDir, "acme-effort", "e-1").thinkingLevelMap?.off, "none");
+  assert.equal(
+    (await piRequestFor(agentDir, "acme-effort", "e-1", "off")).reasoning_effort,
+    "none",
+  );
+});
+
+test("the user's level list beats Pi's shipped definition", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-thinking-user-wins-"));
+  await saveLiteral(agentDir, "xiaomi-mimo-token-plan-cn", "https://token-plan-cn.xiaomimimo.com/v1", {
+    id: "mimo-v2.6-pro",
+    thinkingLevels: ["low"],
+  });
+  assert.deepEqual(
+    writtenProviderModel(agentDir, "xiaomi-mimo-token-plan-cn", "mimo-v2.6-pro").thinkingLevelMap,
+    { off: null, minimal: null, low: "low", medium: null, high: null, xhigh: null, max: null },
+  );
 });

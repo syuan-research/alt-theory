@@ -44,6 +44,7 @@ import {
   catalogModelMetadata,
   catalogSdkFamily,
   catalogThinkingLevels,
+  normalizeUrl,
 } from "./models-dev-metadata.js";
 
 // ---------------------------------------------------------------------------
@@ -86,6 +87,7 @@ const API_TYPES = new Set<string>([
 
 export interface ModelCompat {
   thinkingFormat?: string;
+  supportsReasoningEffort?: boolean;
   requiresReasoningContentOnAssistantMessages?: boolean;
   maxTokensField?: string;
 }
@@ -432,10 +434,15 @@ export function listProviders(agentDir: string): ProviderView[] {
       );
       return {
         ...model,
-        availableThinkingLevels:
-          model.thinkingLevels ??
-          catalogThinkingLevels(agentDir, name, baseUrl, model.id) ??
-          piBuiltinThinkingLevels(builtin),
+        // An explicit level list decides what the composer offers; a saved level
+      // table otherwise says what Pi will really send (a switch model offers
+      // off and its on level).
+      availableThinkingLevels:
+        model.thinkingLevels?.length
+          ? model.thinkingLevels
+          : levelsFromLevelMap(model) ??
+            catalogThinkingLevels(agentDir, name, baseUrl, model.id) ??
+            piBuiltinThinkingLevels(builtin),
       };
     });
     const keyState = keyStateForProvider(agentDir, name, block);
@@ -514,6 +521,58 @@ function piBuiltinThinkingLevels(
     if (typeof map?.[level] === "string") levels.push(level);
   }
   return levels;
+}
+
+/** What a saved level table lets Pi offer, by Pi's own rule; undefined without a table. */
+function levelsFromLevelMap(model: ConfigModel): ThinkingLevel[] | undefined {
+  if (!model.thinkingLevelMap) return undefined;
+  return piBuiltinThinkingLevels({ ...model, reasoning: true });
+}
+
+/** The thinking part of a model Pi ships. */
+interface ShippedThinking {
+  baseUrl: string;
+  id: string;
+  thinkingLevelMap?: ConfigModel["thinkingLevelMap"];
+  compat?: {
+    thinkingFormat?: string;
+    supportsReasoningEffort?: boolean;
+    requiresReasoningContentOnAssistantMessages?: boolean;
+  };
+}
+
+/**
+ * Pi's shipped definition of this exact model: under the provider's own id,
+ * or under the one shipped provider with the same base URL (Alt's preset ids
+ * are not Pi's, so the URL carries those). Two shipped providers behind one
+ * URL answer only when they define thinking the same way.
+ */
+function piBuiltinModel(
+  providerName: string,
+  baseUrl: string | undefined,
+  modelId: string,
+): ShippedThinking | undefined {
+  const shippedBy = (name: string): ShippedThinking[] =>
+    builtinModelList(name) as ShippedThinking[];
+  const own = shippedBy(providerName).find((model) => model.id === modelId);
+  if (own) return own;
+  const url = normalizeUrl(baseUrl);
+  if (!url) return undefined;
+  const byUrl = getBuiltinProviders()
+    .flatMap((name) => shippedBy(name))
+    .filter(
+      (model) => model.id === modelId && normalizeUrl(model.baseUrl) === url,
+    );
+  const thinking = (model: ShippedThinking) =>
+    JSON.stringify([
+      model.thinkingLevelMap,
+      model.compat?.thinkingFormat,
+      model.compat?.supportsReasoningEffort,
+    ]);
+  return byUrl.length > 0 &&
+    byUrl.every((model) => thinking(model) === thinking(byUrl[0]))
+    ? byUrl[0]
+    : undefined;
 }
 
 function customProviderNeedsApiKey(
@@ -1212,17 +1271,50 @@ const THINKING_LEVEL_KEYS = [
   "max",
 ] as const;
 
+/** Pi's own spelling of "thinking on/off, no effort levels" (see its MiMo entries). */
+const SWITCH_LEVEL_MAP: NonNullable<ConfigModel["thinkingLevelMap"]> = {
+  off: "off",
+  minimal: null,
+  low: null,
+  medium: null,
+  high: "high",
+  xhigh: null,
+  max: null,
+};
+
+/**
+ * A level table for a Pi level list; a level the model lacks is `null`. Off
+ * carries the provider's own word when it is known; otherwise the key is
+ * left out, which is Pi's "off supported, send nothing for it". Pi's `off`
+ * is never a provider value.
+ */
 function thinkingLevelMapFromLevels(
   levels: readonly ThinkingLevel[],
+  offEffort?: string,
 ): NonNullable<ConfigModel["thinkingLevelMap"]> {
   const result: NonNullable<ConfigModel["thinkingLevelMap"]> = {};
   for (const level of THINKING_LEVEL_KEYS) {
+    if (level === "off") {
+      if (!levels.includes(level)) result.off = null;
+      else if (offEffort) result.off = offEffort;
+      continue;
+    }
     result[level] = levels.includes(level) ? level : null;
   }
   return result;
 }
 
-/** Pi reads `reasoning` + `thinkingLevelMap` from models.json; the picker does not. */
+/**
+ * Pi reads `reasoning`, `thinkingLevelMap` and `compat` from models.json.
+ * Thinking fields the user left blank are filled from Pi's shipped
+ * definition of the same model first (the one Pi's request code was built
+ * against), then from models.dev. What the user supplied stays: a level
+ * table, a level list, a format.
+ *
+ * `thinkingLevels: []` is the explicit "thinking, no effort levels" choice.
+ * A model with no levels gets on/off where its switch format is known, and
+ * otherwise sends no thinking parameter at all (the provider's default).
+ */
 function enrichPersistedModelFromCatalog(
   agentDir: string,
   providerName: string,
@@ -1235,12 +1327,41 @@ function enrichPersistedModelFromCatalog(
     baseUrl,
     model.id,
   );
+  const shipped = piBuiltinModel(providerName, baseUrl, model.id);
   const result: ConfigModel = { ...model };
+  const userLevels = result.thinkingLevels;
+  const catalogLevels = catalog?.availableThinkingLevels;
 
   if (result.thinkingLevelMap === undefined) {
-    const levels = result.thinkingLevels ?? catalog?.availableThinkingLevels;
-    if (levels !== undefined) {
-      result.thinkingLevelMap = thinkingLevelMapFromLevels(levels);
+    if (userLevels?.length) {
+      result.thinkingLevelMap = thinkingLevelMapFromLevels(userLevels);
+    } else if (shipped) {
+      if (userLevels === undefined) {
+        result.thinkingLevelMap = shipped.thinkingLevelMap;
+      }
+    } else if (catalogLevels?.length && userLevels === undefined) {
+      result.thinkingLevelMap = thinkingLevelMapFromLevels(
+        catalogLevels,
+        catalog?.offEffort,
+      );
+    }
+    if (result.thinkingLevelMap === undefined) {
+      // No levels to offer: the user said so, the catalog lists none, or
+      // nothing anywhere is known about a model marked as reasoning (Pi's
+      // own map-less models keep Pi's behaviour).
+      const noLevels =
+        userLevels !== undefined ||
+        catalogLevels?.length === 0 ||
+        (catalogLevels === undefined &&
+          !shipped &&
+          (result.reasoning === true || catalog?.reasoning === true));
+      const switchFormat =
+        result.compat?.thinkingFormat ?? shipped?.compat?.thinkingFormat;
+      if (noLevels) {
+        result.thinkingLevelMap = switchFormat
+          ? SWITCH_LEVEL_MAP
+          : thinkingLevelMapFromLevels([]);
+      }
     }
   }
 
@@ -1250,6 +1371,27 @@ function enrichPersistedModelFromCatalog(
     } else if (result.thinkingLevelMap !== undefined) {
       result.reasoning = true;
     }
+  }
+
+  // The switch format and the effort switch that go with Pi's definition.
+  const compat: ModelCompat = { ...result.compat };
+  if (compat.thinkingFormat === undefined && shipped?.compat?.thinkingFormat) {
+    compat.thinkingFormat = shipped.compat.thinkingFormat;
+  }
+  if (compat.supportsReasoningEffort === undefined) {
+    compat.supportsReasoningEffort =
+      shipped?.compat?.supportsReasoningEffort ??
+      (result.thinkingLevelMap === SWITCH_LEVEL_MAP ? false : undefined);
+  }
+  if (
+    compat.requiresReasoningContentOnAssistantMessages === undefined &&
+    shipped?.compat?.requiresReasoningContentOnAssistantMessages !== undefined
+  ) {
+    compat.requiresReasoningContentOnAssistantMessages =
+      shipped.compat.requiresReasoningContentOnAssistantMessages;
+  }
+  if (Object.keys(compat).some((key) => compat[key as keyof ModelCompat] !== undefined)) {
+    result.compat = compat;
   }
 
   return result;

@@ -549,6 +549,11 @@ surfaces remain designation-gated and absent for everyone else.
   metadata. Alt obtains them from the maintained models.dev catalog used
   upstream by OpenCode and Pi, with a short cache and explicit user correction
   as the override. `reasoning: true` alone never implies a universal level set.
+- A model may **think without having effort levels** (only on/off). Pi's
+  shipped definitions and models.dev say so automatically when they know the
+  model; the settings page's *No thinking effort levels* says so for
+  the rest. Such a model is sent on or off, never an effort; where not even the
+  switch format is known, nothing is sent and the provider's default applies.
 - A model's **recommended initial effort** is model metadata when a reliable
   upstream supplies it; it is not an app-wide user preference.
 - The **selected thinking effort** is conversation state. It is chosen in the

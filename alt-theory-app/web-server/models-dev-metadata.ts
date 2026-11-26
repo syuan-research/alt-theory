@@ -145,7 +145,8 @@ export async function refreshModelsDevMetadata(agentDir: string): Promise<void> 
   return refresh;
 }
 
-function normalizeUrl(value: string | undefined): string | null {
+/** Same URL with or without a trailing slash and `/v1`: how providers are matched. */
+export function normalizeUrl(value: string | undefined): string | null {
   if (!value) return null;
   try {
     const url = new URL(value);
@@ -192,6 +193,8 @@ export interface CatalogModelMetadata {
   name?: string;
   reasoning?: boolean;
   availableThinkingLevels?: CatalogThinkingLevel[];
+  /** The provider's own word for the off level, when it lists one (most effort APIs: "none"). */
+  offEffort?: string;
   input?: ("text" | "image")[];
   contextWindow?: number;
   maxTokens?: number;
@@ -228,6 +231,7 @@ export function catalogModelMetadata(
             thinkingLevelsFromModel(model) ?? [],
         }
       : {}),
+    ...(offEffortFromModel(model) ? { offEffort: offEffortFromModel(model) } : {}),
     ...(input.length ? { input } : {}),
     ...(Number.isInteger(contextWindow) && contextWindow > 0
       ? { contextWindow }
@@ -315,6 +319,15 @@ export function catalogThinkingLevels(
     (model) => Array.isArray(model.reasoning_options),
   );
   return hit ? (thinkingLevelsFromModel(hit.model) ?? []) : undefined;
+}
+
+function offEffortFromModel(model: ModelsDevModel): string | undefined {
+  const effort = model.reasoning_options?.find(
+    (option) => option?.type === "effort",
+  );
+  return Array.isArray(effort?.values) && effort.values.includes("none")
+    ? "none"
+    : undefined;
 }
 
 function thinkingLevelsFromModel(

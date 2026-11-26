@@ -1245,7 +1245,16 @@ export function ModelConfigPage({
                       </label>
                     </div>
                     <div className="model-effort-editor">
-                      <span>{t("Available thinking effort")}</span>
+                      <span>
+                        {t("Available thinking effort")}
+                        <i
+                          className="ph ph-info quick-setup-note"
+                          aria-hidden
+                          data-tip={t(
+                            "Levels are filled in automatically when known. Without reliable information, leaving them blank is recommended.\nLeft blank, the provider's default thinking effort usually applies and cannot be adjusted precisely; see the provider's API docs for the exact levels.",
+                          )}
+                        />
+                      </span>
                       <div className="model-effort-levels">
                         {THINKING_LEVEL_OPTIONS.map((level) => {
                           const effectiveLevels =
@@ -1289,6 +1298,33 @@ export function ModelConfigPage({
                           );
                         })}
                       </div>
+                      <label className="flex items-center gap-1.5 text-[length:var(--fs-secondary)] text-text-secondary">
+                        <input
+                          type="checkbox"
+                          checked={
+                            (row.thinkingLevels ?? row.availableThinkingLevels)
+                              .filter((level) => level !== "off").length <= 1
+                          }
+                          onChange={(event) =>
+                            setModelRows((previous) =>
+                              previous.map((item, itemIndex) =>
+                                itemIndex !== index
+                                  ? item
+                                  : {
+                                      ...item,
+                                      reasoning: event.target.checked
+                                        ? true
+                                        : item.reasoning,
+                                      thinkingLevels: event.target.checked
+                                        ? []
+                                        : undefined,
+                                    },
+                              ),
+                            )
+                          }
+                        />
+                        {t("No thinking effort levels")}
+                      </label>
                       <HintText>
                         {t("The composer offers only the checked levels.")}
                       </HintText>
