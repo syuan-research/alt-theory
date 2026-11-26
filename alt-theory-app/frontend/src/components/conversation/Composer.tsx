@@ -12,7 +12,7 @@ import { ContextRing } from "@/components/conversation/ContextRing";
 import { CtxPicker } from "@/components/conversation/CtxPicker";
 import { ComposerDeck } from "@/components/conversation/ComposerDeck";
 import { QueuedCards } from "@/components/conversation/QueuedCards";
-import { ContinueButton, hasRunNotes, NoticeLine, RunStatusSlot } from "@/components/conversation/RunNotes";
+import { hasRunNotes, NoticeLine, RunStatusSlot } from "@/components/conversation/RunNotes";
 import { SlashPalette, SkillDraftChip, useSlashCommands, useSlashPalette } from "@/components/conversation/SlashPalette";
 import { KB_OFF_VALUE } from "@/lib/constants";
 import { useComposerAttachments } from "./useComposerAttachments";
@@ -125,7 +125,14 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     return sent;
   };
 
+  // Nothing to send after a stopped or failed turn: the send button continues
+  // that turn from where it broke off (owner 2026-11-26), and so does Enter.
+  const canContinue = interactive && !canSend && !helpQuestionArmed && Boolean(conv.recovery?.canContinue) && !conv.isRunning;
   const handleSubmit = () => {
+    if (canContinue) {
+      conv.continueLatest();
+      return;
+    }
     // A help question carries no files: staged ones stay for the next message.
     const attachments = helpQuestionArmed ? [] : [...conv.stagedWorkspacePaths];
     const sent = helpQuestionArmed
@@ -211,14 +218,10 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
           />
         ) : null}
 
-        {hasRunNotes(conv) || conv.stoppedByUser || reviewerHint || needsModel ? (
+        {hasRunNotes(conv, true) || reviewerHint || needsModel ? (
           <div className="composer-notes">
             <RunStatusSlot tips />
             <NoticeLine />
-            {conv.stoppedByUser ? (
-              <span>{t("Editing after Stop won't branch. Use /branch if needed.")}</span>
-            ) : null}
-            <ContinueButton />
             {needsModel ? (
               <span className="danger">
                 {app.localConfig?.anyUsable
@@ -612,14 +615,25 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 </button>
               </>
             ) : (
-              <button
-                className="send"
-                disabled={!canSend}
-                onClick={handleSubmit}
-                data-tip={t("Send")}
-              >
-                <i className="ph ph-arrow-up" />
-              </button>
+              canContinue ? (
+                <button
+                  className="send continue"
+                  onClick={handleSubmit}
+                  data-tip={t("Continue the last answer from where it stopped")}
+                >
+                  <i className="ph ph-play" />
+                  <span>{t("Continue")}</span>
+                </button>
+              ) : (
+                <button
+                  className="send"
+                  disabled={!canSend}
+                  onClick={handleSubmit}
+                  data-tip={t("Send")}
+                >
+                  <i className="ph ph-arrow-up" />
+                </button>
+              )
             )}
           </div>
         </div>

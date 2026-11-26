@@ -76,9 +76,12 @@ export function RunStatusSlot({ tips = false }: { tips?: boolean }) {
 /**
  * The conversation's latest notice (run outcome, refusal, extension, UI) —
  * and, while it lasts, that its draft could not be saved on this device.
+ * After a Stop, the branch hint rides the same line (owner 2026-11-26: one
+ * line carries the notices).
  */
 export function NoticeLine() {
-  const { notice, draftSaveFailed, lastFailure, isRunning } = useConversationContext();
+  const { notice, draftSaveFailed, lastFailure, isRunning, stoppedByUser } = useConversationContext();
+  const stopHint = stoppedByUser && !isRunning ? t("Editing after Stop won't branch. Use /branch if needed.") : "";
   const unsaved = draftSaveFailed ? (
     <span className="run-tip">
       <i className="ph ph-warning" aria-hidden="true" />
@@ -88,7 +91,14 @@ export function NoticeLine() {
   const body = !isRunning && lastFailure
     ? { kind: "run-failed" as const, failure: lastFailure, interrupted: false }
     : notice?.body;
-  if (!body) return unsaved;
+  if (!body) {
+    return (
+      <>
+        {unsaved}
+        {stopHint ? <span className="run-tip">{stopHint}</span> : null}
+      </>
+    );
+  }
   const icon = body.kind === "text" ? body.icon : noticeWarns(body) ? "warning" : undefined;
   return (
     <>
@@ -102,7 +112,7 @@ export function NoticeLine() {
           aria-hidden="true"
         />
       ) : null}
-      {noticeText(body)}
+      <span>{noticeText(body)}{stopHint ? <span className="run-tip-more"> · {stopHint}</span> : null}</span>
     </span>
     </>
   );
@@ -120,8 +130,9 @@ export function ContinueButton() {
   );
 }
 
-/** Whether any of the rows above has something to show. */
-export function hasRunNotes(conversation: ReturnType<typeof useConversationContext>): boolean {
+/** Whether any of the rows above has something to show. `continueInSend`: the
+ *  caller offers Continue on its send button, so that alone needs no row. */
+export function hasRunNotes(conversation: ReturnType<typeof useConversationContext>, continueInSend = false): boolean {
   const { phase } = conversation.runState;
   return Boolean(
     conversation.isRunning ||
@@ -130,6 +141,7 @@ export function hasRunNotes(conversation: ReturnType<typeof useConversationConte
       conversation.notice ||
       conversation.lastFailure ||
       conversation.draftSaveFailed ||
-      conversation.recovery?.canContinue,
+      (conversation.stoppedByUser && !conversation.isRunning) ||
+      (!continueInSend && conversation.recovery?.canContinue),
   );
 }

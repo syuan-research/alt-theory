@@ -1331,6 +1331,9 @@
      composers (light: near-black; dark: light ink). */
   .composer .row > .send.stop { background: var(--ink); color: var(--on-ink); border-radius: var(--r-md); }
   .send:disabled { opacity: 0.45; cursor: default; }
+  .send.continue { width: auto; gap: 6px; padding: 0 12px; font-size: var(--fs-secondary); font-weight: 500; white-space: nowrap; }
+  .composer .row > .send.continue { color: var(--ink); padding: 2px 8px; }
+  .composer-notes .run-tip-more { color: var(--text-3); }
 
   /* menus */
   .menu { display: none; position: absolute; bottom: 36px; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-md); box-shadow: var(--shadow-popup); padding: var(--space-tight); z-index: 50; min-width: 230px; max-height: 340px; overflow-y: auto; overscroll-behavior: contain; }

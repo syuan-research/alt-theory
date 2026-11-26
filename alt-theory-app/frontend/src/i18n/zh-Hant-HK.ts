@@ -281,6 +281,7 @@ const catalog: Record<string, string> = {
   "Choose a provider to see its configuration.": "選擇一個服務商以查看其配置。",
   "Put away": "收起",
   "Role and knowledge": "角色與知識",
+  "Continue the last answer from where it stopped": "從中斷處繼續上一個回答",
   "Choose buttons": "選擇按鈕",
   "Choose folder…": "選擇資料夾…",
   "Choose model": "選擇模型",
