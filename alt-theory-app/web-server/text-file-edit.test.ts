@@ -22,7 +22,9 @@ import {
   writeSessionTextFile,
 } from "./session-store.js";
 import {
+  createWorkingFolderTextFile,
   readWorkingFolderTextFile,
+  renameWorkingFolderFile,
   writeWorkingFolderTextFile,
 } from "./workspace-files.js";
 import {
@@ -183,6 +185,29 @@ test("session write restores CRLF on an existing CRLF file", () => {
   writeSessionTextFile(dataDir, "s1", "records", "crlf.md", "a\nb\nc\n");
   assert.equal(readFileSync(target, "utf-8"), "a\r\nb\r\nc\r\n");
   rmSync(dataDir, { recursive: true, force: true });
+});
+
+test("new note and rename: main folder, else conversation folder", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-new-note-"));
+  const dirs = createSession(dataDir, "n1");
+  // No project: the note lands in the conversation folder.
+  const first = createWorkingFolderTextFile(dataDir, "n1", "笔记");
+  assert.equal(first.path, "primary/笔记.md");
+  assert.equal(readFileSync(join(dirs.sessionCwd, "笔记.md"), "utf-8"), "");
+  assert.equal(createWorkingFolderTextFile(dataDir, "n1", "笔记.md").path, "primary/笔记 2.md");
+  assert.throws(() => createWorkingFolderTextFile(dataDir, "n1", "../x.md"), /Invalid file name/);
+  const moved = renameWorkingFolderFile(dataDir, "n1", "workspace", "笔记 2.md", "todo.txt");
+  assert.equal(moved.path, "todo.txt");
+  assert.throws(() => renameWorkingFolderFile(dataDir, "n1", "working", "primary/todo.txt", "笔记.md"), /already exists/);
+  assert.throws(() => renameWorkingFolderFile(dataDir, "n1", "workspace", "uploads/a.pdf", "b.pdf"), /keep their names/);
+  // With a project: the main folder.
+  const folder = mkdtempSync(join(tmpdir(), "alt-theory-note-folder-"));
+  setPrimaryDir(dirs.recordsDir, folder);
+  assert.equal(createWorkingFolderTextFile(dataDir, "n1", "plan").path, "primary/plan.md");
+  assert.equal(renameWorkingFolderFile(dataDir, "n1", "working", "primary/plan.md", "plan.txt").path, "primary/plan.txt");
+  assert.equal(readFileSync(join(folder, "plan.txt"), "utf-8"), "");
+  rmSync(dataDir, { recursive: true, force: true });
+  rmSync(folder, { recursive: true, force: true });
 });
 
 test("working write: round trip, escape refused, staleness, copy naming", () => {

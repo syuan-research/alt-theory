@@ -136,7 +136,7 @@ export interface PaneState {
 }
 
 export type PaneAction =
-  | { type: "open"; target: ViewTarget }
+  | { type: "open"; target: ViewTarget; view?: PreviewMode }
   /** Back: to where the user came from, else to the rail's list. */
   | { type: "back" }
   /** Show a rail's list, remembering where the user came from. */
@@ -152,7 +152,9 @@ export type PaneAction =
   | { type: "forget"; sessionIds: string[] }
   | { type: "closeFile"; key: string }
   | { type: "activateFile"; key: string }
-  | { type: "fileView"; key: string; view: PreviewMode };
+  | { type: "fileView"; key: string; view: PreviewMode }
+  /** The user renamed a file: an open copy follows it, in place. */
+  | { type: "renameFile"; from: FileTarget; to: FileTarget };
 
 export const INITIAL_PANE: PaneState = {
   rail: null,
@@ -186,7 +188,7 @@ function fileIdentity(target: FileTarget | ChangeTarget): string {
 }
 
 /** A file or a change becomes an open file on show; one already open is reused. */
-function openFile(state: PaneState, target: FileTarget | ChangeTarget): PaneState {
+function openFile(state: PaneState, target: FileTarget | ChangeTarget, view?: PreviewMode): PaneState {
   const key = fileIdentity(target);
   const at = state.openFiles.findIndex((open) => open.key === key);
   const previous = at >= 0 ? state.openFiles[at] : null;
@@ -199,7 +201,7 @@ function openFile(state: PaneState, target: FileTarget | ChangeTarget): PaneStat
     change: target.kind === "change" ? target : null,
     opened: (previous?.opened ?? 0) + 1,
     revision: (previous?.revision ?? 0) + (onShow && media ? 1 : 0),
-    view: target.kind === "change" ? "diff" : "rendered",
+    view: view ?? (target.kind === "change" ? "diff" : "rendered"),
   };
   const openFiles = previous ? state.openFiles.map((item) => (item.key === key ? open : item)) : [...state.openFiles, open];
   return { ...place(state, "open", null, null), openFiles, activeFile: key };
@@ -210,7 +212,7 @@ export function navigate(state: PaneState, action: PaneAction): PaneState {
   switch (action.type) {
     case "open": {
       if (action.target.kind === "file" || action.target.kind === "change") {
-        return openFile(state, action.target);
+        return openFile(state, action.target, action.view);
       }
       const rail = railOf(action.target);
       if (state.rail === rail && state.target && targetKey(state.target) === targetKey(action.target)) {
@@ -276,6 +278,15 @@ export function navigate(state: PaneState, action: PaneAction): PaneState {
       return state.openFiles.some((open) => open.key === action.key)
         ? { ...place(state, "open", null, null), activeFile: action.key }
         : state;
+    case "renameFile": {
+      const from = fileIdentity(action.from);
+      const key = fileIdentity(action.to);
+      return {
+        ...state,
+        openFiles: state.openFiles.map((open) => (open.key === from ? { ...open, key, file: action.to } : open)),
+        activeFile: state.activeFile === from ? key : state.activeFile,
+      };
+    }
     case "fileView":
       return {
         ...state,

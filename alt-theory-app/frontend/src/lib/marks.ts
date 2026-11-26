@@ -2,8 +2,8 @@ import { fetchMarks, saveMarks, type TextMark } from "@/api/sessions";
 import { collectText } from "@/lib/find";
 
 /**
- * Reader marks on conversation text (owner 2026-10-13): four highlight
- * colors plus underline and strikethrough, painted with the CSS Custom
+ * Reader marks on conversation text (owner 2026-10-13): five highlight
+ * colors (red added 2026-11-26) plus underline and strikethrough, painted with the CSS Custom
  * Highlight API like Ctrl+F (no DOM wrapping); Ctrl+F paints above them.
  * Any conversation pane can host marks: rows carry `data-mark-row`, the
  * pane registers itself with its session id. Stored per session beside the
@@ -12,7 +12,7 @@ import { collectText } from "@/lib/find";
 
 export type { TextMark };
 export type MarkKind = TextMark["kind"];
-export const COLOR_KINDS = ["hl-1", "hl-2", "hl-3", "hl-4"] as const;
+export const COLOR_KINDS = ["hl-1", "hl-2", "hl-3", "hl-4", "hl-5"] as const;
 const KINDS: MarkKind[] = [...COLOR_KINDS, "under", "strike"];
 export const isColorMark = (kind: MarkKind) => (COLOR_KINDS as readonly string[]).includes(kind);
 /** Colors replace each other; underline and strikethrough stack on them. */

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { pickDirectory } from "@/lib/native";
 import {
   fetchImportHarnesses,
   fetchImportSessions,
@@ -331,13 +332,11 @@ export function SessionImportDialog({
               variant="secondary"
               className="mt-2"
               disabled={busy}
-              onClick={() => {
-                const path = window.prompt(
-                  t("Full path of the replacement main folder:"),
-                  workspaceOverride,
-                );
-                if (!path?.trim()) return;
-                setWorkspaceOverride(path.trim());
+              onClick={async () => {
+                // The desktop's folder dialog; a path prompt in a browser.
+                const path = await pickDirectory(t("Full path of the replacement main folder:"));
+                if (!path) return;
+                setWorkspaceOverride(path);
                 setResult(null);
                 setProjectOverride("");
               }}

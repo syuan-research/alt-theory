@@ -85,6 +85,23 @@ export async function putSessionFileContent(
   );
 }
 
+/** A new empty note in the main folder (else the conversation folder). */
+export function createNoteFile(owner: FileOwner, name: string): Promise<SessionTextFileContent & { folderPath: string }> {
+  return fetchJson(readFilesUrl(owner, new URLSearchParams(), "/new"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function renameFile(owner: FileOwner, root: "working" | "workspace", path: string, name: string): Promise<{ root: "working" | "workspace"; path: string; absolutePath: string }> {
+  return fetchJson(readFilesUrl(owner, new URLSearchParams(), "/rename"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ root, path, name }),
+  });
+}
+
 export async function deleteSessionFileContent(
   sessionId: string,
   root: string,

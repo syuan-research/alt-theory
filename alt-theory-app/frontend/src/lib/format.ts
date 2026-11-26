@@ -122,3 +122,12 @@ export function collapsePath(path: string): string {
   const tail = path.slice(-24);
   return `${head}…${tail}`;
 }
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** A date for a file name (owner 2026-11-26): 2026年11月26日 in Chinese; in
+ *  English the month as a word, so day and month never swap between readers. */
+export function fileNameDate(date: Date, lang: string): string {
+  const [y, m, d] = [date.getFullYear(), date.getMonth() + 1, date.getDate()];
+  return lang.startsWith("zh") ? `${y}年${m}月${d}日` : `${d} ${MONTHS[m - 1]} ${y}`;
+}

@@ -11,7 +11,7 @@ import {
 import { syncTitlebarTheme } from "@/lib/native";
 import { useVersions } from "@/lib/versions";
 import { paneMemory } from "@/lib/paneMemory";
-import { INITIAL_PANE, navigate, type OpenFile, type RailKey, type ViewTarget } from "@/lib/viewTarget";
+import { INITIAL_PANE, navigate, type FileTarget, type OpenFile, type RailKey, type ViewTarget } from "@/lib/viewTarget";
 import { usePaneLayout } from "@/lib/usePaneLayout";
 import type { PreviewMode } from "@/lib/fileContent";
 
@@ -53,7 +53,9 @@ export interface ShellContextValue {
   target: ViewTarget | null;
   /** Open a target on its rail; the pane keeps its width. A file or a change
    *  becomes an open file. */
-  openTarget: (target: ViewTarget) => void;
+  openTarget: (target: ViewTarget, view?: PreviewMode) => void;
+  /** The user renamed a file: an open copy follows it. */
+  renameFile: (from: FileTarget, to: FileTarget) => void;
   /** Back: to where the user came from, else to the rail's list. */
   closeTarget: () => void;
   /** The open files (owner 2026-11-25), oldest first, and the key of the one on show. */
@@ -199,7 +201,8 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   }, []);
   const clearWorkspaceRevealPath = useCallback(() => setWorkspaceRevealPath(null), []);
 
-  const openTarget = useCallback((target: ViewTarget) => dispatchPane({ type: "open", target }), []);
+  const openTarget = useCallback((target: ViewTarget, view?: PreviewMode) => dispatchPane({ type: "open", target, view }), []);
+  const renameFile = useCallback((from: FileTarget, to: FileTarget) => dispatchPane({ type: "renameFile", from, to }), []);
   const closeFile = useCallback((key: string) => dispatchPane({ type: "closeFile", key }), []);
   const activateFile = useCallback((key: string) => dispatchPane({ type: "activateFile", key }), []);
   const setFileView = useCallback((key: string, view: PreviewMode) => dispatchPane({ type: "fileView", key, view }), []);
@@ -238,6 +241,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       closeRight,
       target: pane.target,
       openTarget,
+      renameFile,
       closeTarget,
       openedFiles: pane.openFiles,
       activeFile: pane.activeFile,
@@ -283,6 +287,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       openRail,
       closeRight,
       openTarget,
+      renameFile,
       closeTarget,
       closeFile,
       activateFile,

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { t } from "@/i18n";
-import { relativeTimeLabel } from "./format";
+import { fileNameDate, relativeTimeLabel } from "./format";
 
 const NOW = new Date("2026-09-25T12:00:00").getTime();
 const ago = (iso: string | null) => relativeTimeLabel(iso, NOW);
@@ -42,4 +42,11 @@ test("future or invalid values degrade, empty stays null", () => {
   assert.equal(ago("not-a-date"), null);
   // Clock skew: a few seconds ahead reads as just now, never negative.
   assert.equal(ago("2026-09-25T12:00:20"), t("Just now"));
+});
+
+test("file-name dates: Chinese year-month-day, English month as a word", () => {
+  const day = new Date(2026, 10, 26);
+  assert.equal(fileNameDate(day, "zh-Hans"), "2026年11月26日");
+  assert.equal(fileNameDate(day, "zh-Hant-HK"), "2026年11月26日");
+  assert.equal(fileNameDate(day, "en"), "26 Nov 2026");
 });

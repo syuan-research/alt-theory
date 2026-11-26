@@ -29,7 +29,7 @@ import { WorkspaceTree } from "@/components/inspector/WorkspaceTree";
 import { ChangesPanel } from "@/components/inspector/ChangesPanel";
 import { LocalPage } from "@/components/inspector/LocalPage";
 import { OpenFilesPanel } from "@/components/inspector/OpenFilesPanel";
-import { MenuButton } from "@/components/inspector/FolderList";
+import { MenuButton, NameForm } from "@/components/inspector/FolderList";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 import { TabStrip } from "@/components/shell/TabStrip";
 import { fetchSessionDetail, promoteToMainline } from "@/api/sessions";
@@ -278,6 +278,8 @@ function RelatedConversations({ list }: { list: ReturnType<typeof useRelatedList
     if (activeChildId) main.markSessionRead(activeChildId);
   }, [activeChildId, main.sessionAlerts, main.markSessionRead]);
   const [controlsOpen, setControlsOpen] = useState(false);
+  // Renamed in place: the desktop app has no window.prompt.
+  const [renaming, setRenaming] = useState<{ sessionId: string; name: string } | null>(null);
 
   // Filter state outlives the pane (proto E; pane memory per conversation).
   const memoryKey = `${conv.sessionId}:related`;
@@ -390,10 +392,10 @@ function RelatedConversations({ list }: { list: ReturnType<typeof useRelatedList
           .then(() => app.refreshSessions())
           .catch((error) => window.alert(error instanceof Error ? error.message : String(error))),
       }] : []),
-      { label: t("Rename"), icon: "ph-pencil-simple", onSelect: () => {
-        const next = window.prompt(t("Conversation name"), app.sessionDisplayNames[child.sessionId]?.alias || title);
-        if (next !== null) void main.renameSession(child.sessionId, next);
-      } },
+      { label: t("Rename"), icon: "ph-pencil-simple", onSelect: () => setRenaming({
+        sessionId: child.sessionId,
+        name: app.sessionDisplayNames[child.sessionId]?.alias || title,
+      }) },
       { label: t("Duplicate"), icon: "ph-copy", onSelect: () => main.duplicateSession(child.sessionId) },
       { label: t("Delete"), icon: "ph-trash", danger: true, onSelect: remove },
       { label: t("Delete entire family"), icon: "ph-tree-structure", danger: true, onSelect: removeFamily },
@@ -532,6 +534,18 @@ function RelatedConversations({ list }: { list: ReturnType<typeof useRelatedList
       }}
     >
       {switcher}
+      {renaming ? (
+        <NameForm
+          key={renaming.sessionId}
+          label={t("Conversation name")}
+          initial={renaming.name}
+          onSubmit={(name) => main.renameSession(renaming.sessionId, name).then((saved) => {
+            if (saved) setRenaming(null);
+            return saved;
+          })}
+          onCancel={() => setRenaming(null)}
+        />
+      ) : null}
       {!activeChildId || controlsOpen ? <>
       <div className="frow" ref={filterRowRef}>
         <MenuButton

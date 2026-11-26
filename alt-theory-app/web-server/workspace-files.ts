@@ -12,7 +12,7 @@ import {
   type Stats,
 } from "fs";
 import { readdir, stat } from "fs/promises";
-import { basename, extname, isAbsolute, join, relative, resolve } from "path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "path";
 import { fileQueryScore, parseFileQuery } from "../shared/quick-find.js";
 import { resolveSessionRoot, resolveSessionsRoot } from "../core/data-dir.js";
 import { samePath, verdict } from "../core/path-verdict.js";
@@ -694,6 +694,92 @@ export function writeWorkingFolderTextFile(
     owner,
     `${folderId}/${relative(folder.path, finalPath).replace(/\\/g, "/")}`
   );
+}
+
+/** A file name the user typed: one segment, no path. */
+function checkFileName(name: unknown): string {
+  const trimmed = typeof name === "string" ? name.trim() : "";
+  if (!trimmed || trimmed === "." || trimmed === ".." || /[\\/\x00-\x1f]/.test(trimmed) || trimmed.length > 200) {
+    throw new Error("Invalid file name");
+  }
+  return trimmed;
+}
+
+/** A folder of this owner and a path inside it that the user may write. */
+function writableInFolder(folder: WorkingFolderDescriptor, target: string): void {
+  if (relative(folder.path, target) === "" || !folder.available) {
+    throw new Error("File path must stay inside the selected folder");
+  }
+  const check = verdict(target, "write", { writable: [workingFolderRoot(folder)] });
+  if (check.outcome === "sensitive") throw new Error(`Access to credential path denied: ${check.sensitiveRoot}`);
+  if (check.outcome !== "inside") throw new Error("File path must stay inside the selected folder");
+}
+
+/**
+ * The user's new note (owner 2026-11-26): an empty file at the top of the
+ * main folder, which is the conversation folder when there is no project.
+ * No extension means Markdown; a taken name gets " 2", " 3"… before it.
+ */
+export function createWorkingFolderTextFile(dataDir: string, owner: WorkingFileOwner, name: unknown) {
+  const folder = describeWorkingFolders(dataDir, owner).find((item) => item.id === "primary");
+  if (!folder) throw new Error("This conversation has no folder");
+  let wanted = checkFileName(name);
+  if (!extname(wanted)) wanted += ".md";
+  const ext = extname(wanted);
+  const stem = wanted.slice(0, -ext.length);
+  for (let n = 1; n < 1000; n++) {
+    const fileName = n === 1 ? wanted : `${stem} ${n}${ext}`;
+    const target = resolve(folder.path, fileName);
+    writableInFolder(folder, target);
+    try {
+      writeFileSync(target, "", { flag: "wx" });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") continue;
+      throw error;
+    }
+    return readWorkingFolderTextFile(dataDir, owner, `primary/${fileName}`);
+  }
+  throw new Error("Too many files with this name");
+}
+
+/**
+ * The user's rename of one file in place (owner 2026-11-26). `working`
+ * paths are "<folderId>/<path>"; `workspace` paths are in the conversation
+ * folder, whose attachments keep their names (messages point at them).
+ */
+export function renameWorkingFolderFile(
+  dataDir: string,
+  owner: WorkingFileOwner,
+  root: unknown,
+  requestedPath: unknown,
+  name: unknown,
+): { root: "working" | "workspace"; path: string; absolutePath: string } {
+  if ((root !== "working" && root !== "workspace") || typeof requestedPath !== "string") throw new Error("Invalid folder path");
+  const normalized = requestedPath.replace(/\\/g, "/");
+  const folders = describeWorkingFolders(dataDir, owner);
+  let folder: WorkingFolderDescriptor | undefined;
+  let relPath: string;
+  if (root === "workspace") {
+    if (/^(uploads|extracted)\//.test(normalized)) throw new Error("Attachments keep their names");
+    folder = folders.find((item) => item.managed);
+    relPath = normalized;
+  } else {
+    const [folderId, ...parts] = normalized.split("/");
+    folder = folders.find((item) => item.id === folderId);
+    relPath = parts.join("/");
+  }
+  if (!folder || !relPath || isAbsolute(relPath)) throw new Error("Invalid folder path");
+  const from = resolve(folder.path, relPath);
+  writableInFolder(folder, from);
+  if (!statSync(from, { throwIfNoEntry: false })?.isFile()) throw new Error("File not found in this folder");
+  const to = join(dirname(from), checkFileName(name));
+  writableInFolder(folder, to);
+  if (to === from) return { root, path: normalized, absolutePath: from };
+  // Only a different spelling of the same name may land on an existing file.
+  if (existsSync(to) && !samePath(to, from)) throw new Error("A file with this name already exists");
+  renameSync(from, to);
+  const rel = relative(folder.path, to).replace(/\\/g, "/");
+  return { root, path: root === "working" ? `${folder.id}/${rel}` : rel, absolutePath: to };
 }
 
 export function isWorkspaceDownloadAllowed(path: string): boolean {

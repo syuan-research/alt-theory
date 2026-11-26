@@ -1,4 +1,4 @@
-import type { ReactNode, RefObject } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { t } from "@/i18n";
 import { revealPath } from "@/lib/native";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
@@ -25,6 +25,7 @@ export function ListTools({
   endControls,
   toolsOpen,
   onToggleTools,
+  rowActions,
 }: {
   filterRef: RefObject<HTMLDivElement | null>;
   query: string;
@@ -40,6 +41,8 @@ export function ListTools({
   endControls?: ReactNode;
   toolsOpen?: boolean;
   onToggleTools?: () => void;
+  /** Buttons beside the filter, shown whether the tools are open or not. */
+  rowActions?: ReactNode;
 }) {
   return (
     <>
@@ -63,6 +66,7 @@ export function ListTools({
           {onBack ? <button type="button" className="files-search-action" aria-label={t("Back to search results")} data-tip={t("Back to search results")} onClick={onBack}><i className="ph ph-arrow-left" aria-hidden="true" /></button> : null}
           {query ? <button type="button" className="files-search-action" aria-label={t("Clear")} data-tip={t("Clear")} onClick={() => onClear ? onClear() : onQuery("")}><i className="ph ph-x" aria-hidden="true" /></button> : null}
         </div>
+        {rowActions}
         {onToggleTools ? (
           <button
             type="button"
@@ -203,5 +207,49 @@ export function MenuButton({ icon, label, tip, active = false, choices }: {
       </button>
       {menu.element}
     </>
+  );
+}
+
+/** One name to type in place: a file's (its stem starts selected) or, with
+ *  `label`, a conversation's (all of it selected). */
+export function NameForm({ initial, onSubmit, onCancel, label }: {
+  initial: string;
+  label?: string;
+  /** Resolves true when the name was taken; the form then closes. */
+  onSubmit: (name: string) => Promise<boolean>;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState(initial);
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const input = inputRef.current;
+    const dot = initial.lastIndexOf(".");
+    input?.focus();
+    input?.setSelectionRange(0, dot > 0 && !label ? dot : initial.length);
+  }, [initial, label]);
+  return (
+    <form
+      className="session-rename-inline file-name-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (value.trim()) void onSubmit(value.trim());
+      }}
+    >
+      <input
+        ref={inputRef}
+        aria-label={label ?? t("File name")}
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && !event.nativeEvent.isComposing) { event.stopPropagation(); onCancel(); }
+        }}
+      />
+      <button type="button" data-tip={t("Cancel")} aria-label={t("Cancel")} onClick={onCancel}>
+        <i className="ph ph-x" />
+      </button>
+      <button type="submit" data-tip={t("Save")} aria-label={t("Save")}>
+        <i className="ph ph-check" />
+      </button>
+    </form>
   );
 }

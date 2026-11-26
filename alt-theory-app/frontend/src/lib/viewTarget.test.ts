@@ -90,3 +90,12 @@ test("reopening the collapsed pane opens the rail open last, with its target", (
   assert.equal(navigate(reopened, { type: "reopen" }), reopened, "an open pane stays as it is");
   assert.equal(INITIAL_PANE.lastRail, "workspace");
 });
+
+test("a new note opens in Edit; a rename moves the open file in place", () => {
+  const opened = play([{ type: "open", target: file, view: "edit" }]);
+  assert.equal(opened.openFiles[0].view, "edit");
+  const to = { ...file, path: "todo.txt", absolutePath: "/p/todo.txt" } as Extract<ViewTarget, { kind: "file" }>;
+  const renamed = navigate(opened, { type: "renameFile", from: file as typeof to, to });
+  assert.deepEqual([renamed.openFiles[0].key, renamed.activeFile, renamed.openFiles[0].file?.path, renamed.openFiles[0].view],
+    ["path:/p/todo.txt", "path:/p/todo.txt", "todo.txt", "edit"]);
+});

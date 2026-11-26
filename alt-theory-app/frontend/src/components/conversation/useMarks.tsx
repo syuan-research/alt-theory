@@ -3,7 +3,6 @@ import { t } from "@/i18n";
 import { copyText } from "@/lib/clipboard";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 import {
-  COLOR_KINDS,
   addMark,
   isColorMark,
   marksAt,
@@ -15,15 +14,18 @@ import {
   type TextMark,
 } from "@/lib/marks";
 
-const COLOR_NAMES = ["Yellow", "Green", "Orange", "Blue"];
+/** Menu order is the spectrum; the kind ids are storage and stay as they were. */
+const SWATCHES: Array<[MarkKind, string]> = [
+  ["hl-5", "Red"], ["hl-3", "Orange"], ["hl-1", "Yellow"], ["hl-2", "Green"], ["hl-4", "Blue"],
+];
 
 function swatches(onPick: (kind: MarkKind) => void, current?: MarkKind): ContextMenuItem {
   return {
     label: t("Highlight"),
     onSelect: () => undefined,
-    swatches: COLOR_KINDS.map((kind, index) => ({
+    swatches: SWATCHES.map(([kind, name]) => ({
       color: `var(--${kind})`,
-      label: t(COLOR_NAMES[index]),
+      label: t(name),
       current: kind === current,
       onSelect: () => onPick(kind),
     })),

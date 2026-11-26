@@ -324,7 +324,16 @@ surfaces remain designation-gated and absent for everyone else.
     tries the project folder, then the conversation workspace. In the desktop
     app, a supported file opens in the shared file preview. If a file cannot
     be previewed, the preview offers a system open action. The file tree lists
-    files independently of their preview format. HTTP/HTTPS loopback links open a `page` target on the Files rail with
+    files independently of their preview format. New note (Owner
+    2026-11-26), beside the Files filter, takes a name (default
+    "Untitled" plus the date — `2026年11月26日` in Chinese, `26 Nov 2026` in
+    English so day and month never swap; no extension means `.md`, a taken name gets " 2") and
+    creates an empty file at the top of the main folder — the conversation
+    folder when there is no project — opened in Edit. A file in a working
+    folder or the conversation folder renames from its tree row or open-file
+    tab menu (`workspace-files.ts` `createWorkingFolderTextFile` /
+    `renameWorkingFolderFile`); attachments keep their names, and an open
+    copy follows the rename. HTTP/HTTPS loopback links open a `page` target on the Files rail with
     an interactive iframe and a default-app action; Back restores what it
     replaced. Other web links open externally. Link selections copy their
     destinations as Markdown in plain text and keep HTML links in rich text.

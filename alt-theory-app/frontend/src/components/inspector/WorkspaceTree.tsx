@@ -7,20 +7,23 @@ import {
 import { useTree } from "@headless-tree/react";
 import type { WorkingFolderDescriptor, WorkingTreeEntry, WorkspaceFileEntry } from "@/api/types";
 import {
+  createNoteFile,
   listWorkingDirectory,
   listRecentWorkingFiles,
   listWorkingFolders,
   listWorkspaceFiles,
+  renameFile,
   searchWorkingDirectory,
   type FileOwner,
 } from "@/api/session-files";
-import { t } from "@/i18n";
+import { currentLang, t } from "@/i18n";
 import { useConversationContext } from "@/context/ConversationContext";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { WORKSPACE_PATH_MIME } from "@/lib/workspace";
-import { FolderHead, ListTools, MenuButton } from "@/components/inspector/FolderList";
-import { fmtTime } from "@/lib/format";
+import { FolderHead, ListTools, MenuButton, NameForm } from "@/components/inspector/FolderList";
+import type { FileTarget } from "@/lib/viewTarget";
+import { fileNameDate, fmtTime } from "@/lib/format";
 import { buildFileTreeModel, getFileTreeNode, withFolderEntries, type FileTreeNode } from "@/lib/fileTree";
 import { usePaneMemory } from "@/lib/paneMemory";
 import { useFindTarget } from "@/lib/find";
@@ -52,7 +55,11 @@ export function WorkspaceTree() {
   });
 
   const sessionId = conv.sessionId;
-  const runCount = conv.runSettledCount;
+  // A run or the user's own new note / rename re-reads the lists.
+  const [ownChanges, setOwnChanges] = useState(0);
+  const runCount = conv.runSettledCount + ownChanges;
+  // The name being typed: a new note's (from null) or a rename's.
+  const [naming, setNaming] = useState<{ from: FileTarget | null; name: string } | null>(null);
   const primaryDir = conv.workspacePrimaryDir;
   const fileOwner = useMemo<FileOwner>(() => sessionId ?? { primaryDir }, [sessionId, primaryDir]);
   const scopeKey = sessionId ?? `draft:${primaryDir}`;
@@ -161,20 +168,47 @@ export function WorkspaceTree() {
   };
   const clearSearch = () => { setQuery(""); setBrowsing(null); };
 
-  const openFile = (entry: ManagedTreeEntry) => {
-    if ("isDirectory" in entry && entry.isDirectory) return;
-    if (!sessionId || !("kind" in entry)) return;
+  const workspaceTarget = (entry: ManagedTreeEntry): FileTarget | null => {
+    if (("isDirectory" in entry && entry.isDirectory) || !sessionId || !("kind" in entry)) return null;
     const absolutePath = managedFolderPath ? `${managedFolderPath}/${entry.path}` : undefined;
-    shell.openTarget({ kind: "file", sessionId, root: "workspace", path: entry.path, absolutePath });
+    return { kind: "file", sessionId, root: "workspace", path: entry.path, absolutePath };
   };
-
-  const openWorkingFile = (entry: WorkingTreeEntry) => {
-    const path = `${entry.folderId}/${entry.path}`;
+  const workingTarget = (path: string, absolutePath?: string): FileTarget => sessionId
+    ? { kind: "file", sessionId, root: "working", path, absolutePath }
+    : { kind: "file", sessionId: null, draftPrimaryDir: primaryDir, root: "working", path, absolutePath };
+  const workingEntryTarget = (entry: WorkingTreeEntry): FileTarget => {
     const folder = workingFolders.find(item => item.id === entry.folderId);
-    const absolutePath = folder ? `${folder.path}/${entry.path}` : undefined;
-    shell.openTarget(sessionId
-      ? { kind: "file", sessionId, root: "working", path, absolutePath }
-      : { kind: "file", sessionId: null, draftPrimaryDir: primaryDir, root: "working", path, absolutePath });
+    return workingTarget(`${entry.folderId}/${entry.path}`, folder ? `${folder.path}/${entry.path}` : undefined);
+  };
+  const openFile = (entry: ManagedTreeEntry) => {
+    const target = workspaceTarget(entry);
+    if (target) shell.openTarget(target);
+  };
+  const openWorkingFile = (entry: WorkingTreeEntry) => shell.openTarget(workingEntryTarget(entry));
+  const startRename = (target: FileTarget | null) => {
+    if (target) setNaming({ from: target, name: target.path.split("/").at(-1) ?? target.path });
+  };
+  // Notes land in the main folder, which is the conversation folder without a project.
+  const noteFolder = workingFolders.find((folder) => folder.role === "primary" && folder.available);
+  const submitName = async (name: string): Promise<boolean> => {
+    try {
+      const from = naming?.from;
+      if (!from) {
+        const note = await createNoteFile(fileOwner, name);
+        const rel = note.path.slice(note.path.indexOf("/") + 1);
+        // A new note opens ready to write.
+        shell.openTarget(workingTarget(note.path, `${note.folderPath}/${rel}`), "edit");
+      } else if (from.root === "working" || from.root === "workspace") {
+        const moved = await renameFile(fileOwner, from.root, from.path, name);
+        shell.renameFile(from, { ...from, path: moved.path, absolutePath: moved.absolutePath });
+      }
+      setOwnChanges((value) => value + 1);
+      setNaming(null);
+      return true;
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : String(error));
+      return false;
+    }
   };
 
   return (
@@ -195,6 +229,17 @@ export function WorkspaceTree() {
         controls={orderControl}
         toolsOpen={toolsOpen}
         onToggleTools={() => setToolsOpen((open) => !open)}
+        rowActions={noteFolder ? (
+          <button
+            type="button"
+            className="files-tools-toggle"
+            aria-label={t("New note")}
+            data-tip={t("New note")}
+            onClick={() => setNaming({ from: null, name: `${t("Untitled {date}", { date: fileNameDate(new Date(), currentLang()) })}.md` })}
+          >
+            <i className="ph ph-note-pencil" aria-hidden="true" />
+          </button>
+        ) : null}
         {...(!recent && (workingFolders.some((folder) => folder.available && !folder.managed) || (entries?.length ?? 0) > 0)
           ? {
               onExpandAll: () => {
@@ -208,6 +253,14 @@ export function WorkspaceTree() {
             }
           : {})}
       />
+      {naming ? (
+        <NameForm
+          key={naming.from ? `${naming.from.root}:${naming.from.path}` : "new"}
+          initial={naming.name}
+          onSubmit={submitName}
+          onCancel={() => setNaming(null)}
+        />
+      ) : null}
       {folders.length > 0 ? (
         <div className="working-folders">
           {folders.filter(folder => !folder.managed || folder.role === "primary").map((folder) => (
@@ -254,6 +307,7 @@ export function WorkspaceTree() {
                   browseMode={browsing !== null}
                   browsePath={browsing?.folderId === folder.id ? browsing.path : undefined}
                   onOpenFolder={(path) => openFolderResult(folder.id, path)}
+                  onRename={(entry) => startRename(workingEntryTarget(entry))}
                   memoryKey={`${scopeKey}:files:${folder.id}`}
                 />
                 </div>
@@ -310,6 +364,7 @@ export function WorkspaceTree() {
                   label={t("Conversation folder")}
                   filterActive={Boolean(normalizedQuery)}
                   onOpenFolder={(entry) => openFolderResult("conversation", entry.path)}
+                  onRename={(entry) => startRename(workspaceTarget(entry))}
                   revealPath={browsing?.folderId === "conversation" ? browsing.path : undefined}
                   memoryKey={`${sessionId}:files:conversation`}
                 />
@@ -389,6 +444,7 @@ function WorkingTree({
   browseMode,
   browsePath,
   onOpenFolder,
+  onRename,
   memoryKey,
 }: {
   owner: FileOwner;
@@ -402,6 +458,7 @@ function WorkingTree({
   browseMode: boolean;
   browsePath?: string;
   onOpenFolder: (path: string) => void;
+  onRename?: (entry: WorkingTreeEntry) => void;
   memoryKey: string;
 }) {
   const [childrenByPath, setChildrenByPath] = useState(
@@ -561,6 +618,7 @@ function WorkingTree({
         label={basePath}
         filterActive={searching}
         onOpenFolder={(entry) => onOpenFolder(entry.path)}
+        onRename={onRename}
         revealPath={browsePath}
         memoryKey={memoryKey}
       />
@@ -585,6 +643,7 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
   filterActive = false,
   revealPath,
   memoryKey,
+  onRename,
 }: {
   entries: T[];
   onOpenFile: (entry: T) => void;
@@ -602,6 +661,8 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
   revealPath?: string;
   /** Pane-memory key: which folders were open survives a remount. */
   memoryKey: string;
+  /** Offered on a file's menu where the user may rename it. */
+  onRename?: (entry: T) => void;
 }) {
   const menu = useContextMenu();
   const model = useMemo(() => buildFileTreeModel(entries, basePath, filterActive), [basePath, entries, filterActive]);
@@ -714,7 +775,11 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
         const canOpenItem = node.isFolder || !node.entry || canOpen(node.entry);
         const pathWasCopied = copiedPath === node.fullPath;
         const copyLabel = t(pathWasCopied ? "Path copied" : "Copy path");
-        const contextItems: ContextMenuItem[] = fileMenuItems(node.fullPath);
+        const entry = node.entry;
+        const contextItems: ContextMenuItem[] = [
+          ...fileMenuItems(node.fullPath),
+          ...(onRename && entry && !node.isFolder ? [{ label: t("Rename"), icon: "ph-pencil-simple", onSelect: () => onRename(entry) }] : []),
+        ];
         return (
           <div
             {...item.getProps()}

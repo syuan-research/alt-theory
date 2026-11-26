@@ -56,10 +56,11 @@
   --shadow-popup: 0 6px 22px rgba(0, 0, 0, 0.5);
   --selection: #2e3d52;
   --focus-ring: #86a9d3;
-  --hl-1: #6a5520;
+  --hl-1: #6b5d18;
   --hl-2: #4a4e24;
-  --hl-3: #6b3e1e;
+  --hl-3: #704617;
   --hl-4: #2c4d4a;
+  --hl-5: #6e2a2d;
 
   color-scheme: dark;
 }
@@ -102,16 +103,19 @@
 }
 
 /* Text selection, and the reader-mark colors (owner 2026-10-13: yellow,
-   green, orange, blue; light stays low-saturation, dark goes one step
+   green, orange, blue, red — 2026-11-26: red added, yellow and orange
+   moved toward yellow so orange stays apart from red; the menu shows
+   them in spectrum order red, orange, yellow, green, blue; light stays low-saturation, dark goes one step
    stronger so the marks still read on the dark canvas). The selection
    becomes a light step of the brand color once there is one. */
 :root {
   --selection: #dce8f7;
   --focus-ring: #6b8db5;
-  --hl-1: #ebd9a8;
+  --hl-1: #f1e29a;
   --hl-2: #d3ddc0;
-  --hl-3: #edcdbb;
+  --hl-3: #f1cfa0;
   --hl-4: #ccd7de;
+  --hl-5: #e9b9b9;
 }
 ::selection { background: var(--selection); }
 :focus-visible { outline-color: var(--focus-ring); }
@@ -1373,6 +1377,7 @@
   ::highlight(hl-2) { background-color: var(--hl-2); }
   ::highlight(hl-3) { background-color: var(--hl-3); }
   ::highlight(hl-4) { background-color: var(--hl-4); }
+  ::highlight(hl-5) { background-color: var(--hl-5); }
   ::highlight(under) { text-decoration: underline 1.5px var(--text-2); text-underline-offset: 3px; }
   ::highlight(strike) { text-decoration: line-through var(--text-2); color: var(--text-3); }
   .fsearch input, .inline-search input { width: 100%; min-width: 0; border: 0; border-bottom: 1px solid transparent; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: var(--fs-primary); padding: var(--space-hair) var(--space-hair); }

@@ -1,6 +1,7 @@
-import { useEffect, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { ChangeGroup, FileChange } from "@/api/types";
-import { fetchSessionChanges } from "@/api/session-files";
+import { fetchSessionChanges, renameFile } from "@/api/session-files";
+import { NameForm } from "@/components/inspector/FolderList";
 import { t } from "@/i18n";
 import { useConversationContext } from "@/context/ConversationContext";
 import { useShell } from "@/context/ShellContext";
@@ -53,6 +54,20 @@ export function OpenFilesPanel() {
   const menu = useContextMenu();
   const files = shell.openedFiles;
   const activeKey = shell.activeFile;
+  const [renaming, setRenaming] = useState<FileTarget | null>(null);
+  const rename = async (name: string): Promise<boolean> => {
+    if (!renaming || renaming.root === "local") return false;
+    try {
+      const owner = renaming.sessionId ?? { primaryDir: renaming.draftPrimaryDir ?? null };
+      const moved = await renameFile(owner, renaming.root, renaming.path, name);
+      shell.renameFile(renaming, { ...renaming, path: moved.path, absolutePath: moved.absolutePath });
+      setRenaming(null);
+      return true;
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : String(error));
+      return false;
+    }
+  };
   return (
     <div className="open-files">
       <TabStrip
@@ -63,9 +78,17 @@ export function OpenFilesPanel() {
         onFocusKey={shell.activateFile}
       >
         {files.map((file) => (
-          <OpenFileTab key={file.key} file={file} active={file.key === activeKey} menu={menu} />
+          <OpenFileTab key={file.key} file={file} active={file.key === activeKey} menu={menu} onRename={setRenaming} />
         ))}
       </TabStrip>
+      {renaming ? (
+        <NameForm
+          key={`${renaming.root}:${renaming.path}`}
+          initial={renaming.path.split("/").at(-1) ?? renaming.path}
+          onSubmit={rename}
+          onCancel={() => setRenaming(null)}
+        />
+      ) : null}
       {files.map((file) => (
         <OpenFileReader key={file.key} file={file} active={file.key === activeKey} />
       ))}
@@ -77,7 +100,7 @@ export function OpenFilesPanel() {
 
 /** One tab: the Related chip, with room for a file name and a close over its
  *  right end. It opens the panel's one context menu. */
-function OpenFileTab({ file, active, menu }: { file: OpenFile; active: boolean; menu: ReturnType<typeof useContextMenu> }) {
+function OpenFileTab({ file, active, menu, onRename }: { file: OpenFile; active: boolean; menu: ReturnType<typeof useContextMenu>; onRename: (target: FileTarget) => void }) {
   const shell = useShell();
   const name = displayPath(file).split(/[\\/]/).at(-1) ?? displayPath(file);
   // The stem ellipsizes when the tab is narrow; its extension never does.
@@ -87,7 +110,13 @@ function OpenFileTab({ file, active, menu }: { file: OpenFile; active: boolean; 
   // The same file menu the file tree and Changes offer. A file outside every
   // root, or one the desktop opened from anywhere, is in no tree.
   const inTree = file.file ? file.file.root !== "local" : Boolean(change && changeFileInTree(change.sessionId, change.path));
-  const items = (): ContextMenuItem[] => fileMenuItems(address, inTree ? () => shell.revealWorkspacePath(address) : undefined);
+  // The user's own files rename here; attachments keep the names messages point at.
+  const renamable = file.file && file.file.root !== "local" && !(file.file.root === "workspace" && /^(uploads|extracted)\//.test(file.file.path))
+    ? file.file : null;
+  const items = (): ContextMenuItem[] => [
+    ...fileMenuItems(address, inTree ? () => shell.revealWorkspacePath(address) : undefined),
+    ...(renamable ? [{ label: t("Rename"), icon: "ph-pencil-simple", onSelect: () => onRename(renamable) }] : []),
+  ];
   const openMenuFromKey = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
     if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
     event.preventDefault();

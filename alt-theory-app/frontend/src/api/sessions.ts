@@ -263,7 +263,7 @@ export async function retractQueuedText(
 /** Reader marks (highlight / underline / strikethrough) on a conversation's text. */
 export interface TextMark {
   row: string;
-  kind: "hl-1" | "hl-2" | "hl-3" | "hl-4" | "under" | "strike";
+  kind: "hl-1" | "hl-2" | "hl-3" | "hl-4" | "hl-5" | "under" | "strike";
   quote: string;
   prefix: string;
   suffix: string;

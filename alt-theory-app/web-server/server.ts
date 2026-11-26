@@ -82,6 +82,8 @@ import {
   missingAttachmentPaths,
   retryWorkspaceExtraction,
   uploadWorkspaceFile,
+  createWorkingFolderTextFile,
+  renameWorkingFolderFile,
   writeWorkingFolderTextFile,
 } from "./workspace-files.js";
 import { FileConflictError, readTextPreview, type WriteTextFileOptions } from "./text-file-policy.js";
@@ -2125,6 +2127,27 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   app.put("/api/sessions/:sessionId/files/content", (req, res) => {
     const sessionId = req.params.sessionId;
     if (requireSessionRestContentAccess(req, res, sessionId)) writeFileContent(req, res, sessionId);
+  });
+  // The user's new note and rename, in their own folders (owner 2026-11-26).
+  app.post("/api/draft/files/new", (req, res) => {
+    try { res.json(createWorkingFolderTextFile(dataDir, draftFileOwner(req), req.body?.name)); }
+    catch (error) { sendFileApiError(res, error); }
+  });
+  app.post("/api/sessions/:sessionId/files/new", (req, res) => {
+    const sessionId = req.params.sessionId;
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    try { res.json(createWorkingFolderTextFile(dataDir, sessionId, req.body?.name)); }
+    catch (error) { sendFileApiError(res, error); }
+  });
+  app.post("/api/draft/files/rename", (req, res) => {
+    try { res.json(renameWorkingFolderFile(dataDir, draftFileOwner(req), req.body?.root, req.body?.path, req.body?.name)); }
+    catch (error) { sendFileApiError(res, error); }
+  });
+  app.post("/api/sessions/:sessionId/files/rename", (req, res) => {
+    const sessionId = req.params.sessionId;
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    try { res.json(renameWorkingFolderFile(dataDir, sessionId, req.body?.root, req.body?.path, req.body?.name)); }
+    catch (error) { sendFileApiError(res, error); }
   });
   app.get("/api/sessions/:sessionId/files/download", (req, res) => {
     const sessionId = req.params.sessionId;

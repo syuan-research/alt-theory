@@ -13,7 +13,7 @@ import { copyFileSync, existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { writeJsonAtomic } from "../core/data-dir.js";
 
-export const MARK_KINDS = ["hl-1", "hl-2", "hl-3", "hl-4", "under", "strike"] as const;
+export const MARK_KINDS = ["hl-1", "hl-2", "hl-3", "hl-4", "hl-5", "under", "strike"] as const;
 export type MarkKind = (typeof MARK_KINDS)[number];
 
 export interface TextMark {
