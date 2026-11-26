@@ -35,6 +35,46 @@ function harnessLabel(harness: string): string {
   }
 }
 
+const importDetailMessages: Array<[string | RegExp, string]> = [
+  ["Source compaction detected:", "Earlier messages remain visible. The imported conversation continues from after the original compaction."],
+  ["Current history is selected with OpenCode compaction semantics.", "The original summary and retained messages provide the context for continuing."],
+  ["Claude Code plaintext compact summaries", "The original summary is used when continuing. Earlier messages remain visible."],
+  ["Current Grok compaction metadata", "Earlier compaction records are saved separately."],
+  ["Child agent sessions are indexed", "Subagent records are saved separately from the main conversation."],
+  ["Claude Code subagent JSONL", "Subagent records are saved separately from the main conversation."],
+  ["Codex inter-agent messages", "Messages between agents outside the main conversation are saved separately."],
+  ["Only the current root conversation lineage", "The current branch is imported. Other branches are saved separately."],
+  ["Current chat_history.jsonl", "The current branch is imported. Other branches are saved separately."],
+  ["Some source content could not be replayed", "Some content appears as placeholders. The original records are saved separately."],
+  ["Non-image attached files", "Non-image attachments appear as placeholders."],
+  ["Tool-result attachments are replayed", "Embedded images in tool results are imported. Other attachments appear as placeholders."],
+  ["The exact Grok tool_result image schema", "Some images from tool results appear as placeholders."],
+  ["Compacted tool output uses", "Tool output cleared in the original conversation appears as a placeholder."],
+  ["Provider-side backend tool calls", "Some tool activity is shown without its original results."],
+  [/^\d+ Codex turn\(s\) were removed/, "Turns undone in the original conversation are saved separately."],
+];
+
+function ImportDetails({ items }: { items: string[] }) {
+  const details = items.flatMap((item) => {
+    const match = importDetailMessages.find(([pattern]) =>
+      typeof pattern === "string" ? item.startsWith(pattern) : pattern.test(item)
+    );
+    return match ? [t(match[1])] : [];
+  });
+  const unique = [...new Set(details)];
+  if (!unique.length) return null;
+  return (
+    <details className="mt-2 text-text-secondary">
+      <summary className="cursor-pointer">
+        {t("Import details ({count})", { count: unique.length })}
+      </summary>
+      <ul className="mt-2 list-disc space-y-1 pl-5">
+        {unique.map((item) => <li key={item}>{item}</li>)}
+      </ul>
+    </details>
+  );
+}
+
 export function SessionImportDialog({
   open,
   onClose,
@@ -180,10 +220,6 @@ export function SessionImportDialog({
         <h2 id="session-import-title" className="text-[length:var(--fs-title)] font-semibold text-ink">
           {t("Import a conversation")}
         </h2>
-        <p className="mt-1 text-sm text-text-secondary">
-          {t("Alt Theory checks the whole selected conversation before writing anything.")}
-        </p>
-
         <label className="mt-4 block text-sm font-medium text-ink">
           {t("Source")}
           <span className="mt-1 block">
@@ -258,13 +294,28 @@ export function SessionImportDialog({
         {selected ? (
           <div className="mt-2 space-y-1 text-xs text-text-muted">
             <p>
-              {t("Updated {date}", { date: new Date(selected.updatedAt).toLocaleString() })} · {" "}
-              {selected.repeat}
+              {t("Updated {date}", { date: new Date(selected.updatedAt).toLocaleString() })}
             </p>
             <p className="break-all" data-tip={selected.cwd}>
               {t("Main folder: {cwd}", { cwd: selected.cwd || t("not recorded") })}
             </p>
           </div>
+        ) : null}
+
+        {selected?.repeat === "changed" ? (
+          <p className="mt-2 text-sm text-ink">
+            {t("This conversation has new activity. Import it as a separate copy.")}
+          </p>
+        ) : null}
+        {selected?.repeat === "unchanged" ? (
+          <p className="mt-2 text-sm text-ink">
+            {t("This version has already been imported. You can import another copy.")}
+          </p>
+        ) : null}
+        {selected && !result ? (
+          <p className="mt-2 text-sm text-ink">
+            {t("Use Import check to see whether this conversation can be imported and what will be kept.")}
+          </p>
         ) : null}
 
         {selected && !selected.cwdAvailable ? (
@@ -295,23 +346,17 @@ export function SessionImportDialog({
           </div>
         ) : null}
 
-        {selected?.repeat === "changed" ? (
-          <p className="mt-3 rounded-md border border-warning/30 bg-warning/5 p-3 text-sm text-text-secondary">
-            {t("The source conversation has new activity. Importing it creates a new conversation; it does not overwrite or merge your earlier Alt Theory continuation.")}
-          </p>
-        ) : null}
-        {selected?.repeat === "unchanged" ? (
-
-        <p className="mt-3 rounded-md border border-hairline bg-canvas p-3 text-sm text-text-secondary">
-            {t("This source version was imported before. You can import another copy without changing the existing conversation.")}
-          </p>
-        ) : null}
-
-
         {result?.status === "ready" ? (
-          <div className="mt-4 rounded-md border border-hairline bg-canvas p-3 text-sm">
+          <div className="mt-4 text-sm">
+            <p className="font-semibold text-ink">{t("Can be imported")}</p>
+            {result.transformations?.length ? (
+              <p className="mt-1 text-ink">
+                {t("Some source records cannot be added directly to the context. You can ask the agent to look them up and read them.")}
+              </p>
+            ) : null}
+            <ImportDetails items={result.transformations ?? []} />
             {(result.projectCandidates?.length ?? 0) > 1 ? (
-              <label className="mb-3 block">
+              <label className="mt-3 block">
                 {t("Destination project")}
                 <MenuSelect
                   ariaLabel={t("Destination project")}
@@ -325,23 +370,9 @@ export function SessionImportDialog({
                 />
               </label>
             ) : result.workspacePrimaryDir ? (
-              <p className="mb-3 text-text-secondary" data-tip={result.workspacePrimaryDir}>
+              <p className="mt-3 text-text-secondary" data-tip={result.workspacePrimaryDir}>
                 {t("Project: {name}", { name: result.projectCandidates?.[0]?.name || folderLabel(result.workspacePrimaryDir) })}
               </p>
-            ) : null}
-            <p className="font-medium text-ink">{t("Ready to continue this conversation.")}</p>
-            <p className="mt-1 text-text-secondary">
-              {t("The main conversation becomes active history. Preserved supporting records remain available when the agent needs to search them.")}
-            </p>
-            {(result.transformations?.length ?? 0) > 0 ? (
-              <details className="mt-2 text-text-secondary">
-                <summary className="cursor-pointer">
-                  {t("Import details ({count})", { count: result.transformations?.length ?? 0 })}
-                </summary>
-                <ul className="mt-2 list-disc space-y-1 pl-5">
-                  {result.transformations?.map((item) => ( <li key={item}>{item}</li>))}
-                </ul>
-              </details>
             ) : null}
           </div>
         ) : null}
@@ -391,7 +422,7 @@ export function SessionImportDialog({
               }
               onClick={() => void run(true)}
             >
-              {busy ? t("Checking…") : t("Check full conversation")}
+              {busy ? t("Checking…") : t("Import check")}
             </Button>
           )}
         </div>

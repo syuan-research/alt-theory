@@ -25,6 +25,7 @@ import { relatedDisplayMarker } from "@/lib/sessionList";
 import { isListMember } from "@/lib/listMember";
 import { locateInList, showInList } from "@/lib/listLocate";
 import { draggableSession } from "@/lib/sessionDrag";
+import { isVisibleSessionWarning } from "@/lib/manifest";
 import { copyText } from "@/lib/clipboard";
 import { useMainView } from "@/context/MainView";
 import { t } from "@/i18n";
@@ -147,7 +148,7 @@ export function MessageList() {
           {t("Soul not loaded — this conversation runs without Alt's persona.")}
         </SysLine>
       ) : null}
-      {conv.sessionWarnings.map((warning) =>
+      {conv.sessionWarnings.filter(isVisibleSessionWarning).map((warning) =>
         // ponytail: the dead-folder notice is matched by its distinctive phrase
         // (backend session-service pushes it verbatim). Keep the strings in sync.
         /main folder .* no longer exists/.test(warning) ? (

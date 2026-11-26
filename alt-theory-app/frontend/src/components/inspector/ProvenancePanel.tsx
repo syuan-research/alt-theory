@@ -4,7 +4,7 @@ import type { DiscoveryLists, SessionDetailResponse } from "@/api/types";
 import { t } from "@/i18n";
 import { Button } from "@/components/ui/Button";
 import { HintText, MonoText, SectionTitle } from "@/components/ui/Typography";
-import { displayKb } from "@/lib/manifest";
+import { displayKb, isVisibleSessionWarning } from "@/lib/manifest";
 
 interface ProvenancePanelProps {
   sessionId: string | null;
@@ -63,7 +63,9 @@ export function ProvenancePanel({
   const warnings = [
     ...(detail?.session?.warnings || []),
     ...(detail?.warnings || []),
-  ].filter((value, index, array) => value && array.indexOf(value) === index);
+  ].filter((value, index, array) =>
+    value && isVisibleSessionWarning(value) && array.indexOf(value) === index
+  );
 
   const summaryItems: Array<[string, string]> = detail
     ? [
@@ -71,9 +73,9 @@ export function ProvenancePanel({
         ["Soul", effective?.soulSlug || "none"],
         ["KB", displayKb(effective?.kbDomain || "all", discovery)],
         ["Instruction", effective?.customInstruction?.ref || "none"],
-        ["Warnings", warnings.length ? warnings.join(" | ") : "none"],
       ]
     : [];
+  if (warnings.length) summaryItems.push([t("Warnings"), warnings.join(" | ")]);
 
   const runs = Array.isArray(detail?.runs)
     ? detail.runs.slice(-8).reverse()

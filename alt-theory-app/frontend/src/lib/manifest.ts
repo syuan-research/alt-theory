@@ -47,3 +47,7 @@ export function manifestPathEntries(
     )
     .map((entry) => ({ label: entry.label, path: entry.path }));
 }
+export function isVisibleSessionWarning(warning: string): boolean {
+  return warning !== "original assembly manifest is missing" &&
+    !/^(?:provider|model|role preset|KB domain|app context hash|custom instruction hash|soul hash|role preset hash) differs from original session$/.test(warning);
+}
