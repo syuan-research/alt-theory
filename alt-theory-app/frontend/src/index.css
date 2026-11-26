@@ -677,8 +677,10 @@
   .marks-source { width: 100%; }
   .marks-source .marks-source-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .marks-here { flex: none; font-size: var(--fs-secondary); font-weight: 400; color: var(--text-3); }
-  .mk-item { margin: var(--space-tight) var(--space-hair); padding: var(--space-tight) var(--space-control); border-radius: var(--r-sm); cursor: pointer; }
-  .mk-item:hover { background: var(--hover); }
+  /* Cards divided by a hairline (owner 2026-11-26); hover is the Changes rows' shade, --hover is lighter than the panel. */
+  .mk-item { padding: var(--space-control); border-bottom: 1px solid var(--hairline); cursor: pointer; }
+  .mk-item:last-child { border-bottom: none; }
+  .mk-item:hover { background: var(--row-active); }
   .mk-item.gone { cursor: default; opacity: 0.65; }
   .mk-meta { display: flex; align-items: center; gap: var(--space-tight); min-width: 0; font-size: var(--fs-secondary); color: var(--text-3); }
   .mk-swatch { flex: none; width: 10px; height: 10px; border-radius: 2px; }
@@ -1768,8 +1770,10 @@
   .set-card { background: var(--surface); border: none; border-radius: var(--r-md); padding: var(--space-control); margin-bottom: var(--space-control); }
   .set-card h4 { margin: 0 0 var(--space-hair); font-size: var(--fs-primary); }
   .set-card p { margin: 0; font-size: var(--fs-primary); color: var(--text-2); }
-  .asset-list { margin: var(--space-tight) 0 0; padding-left: var(--space-block); font-size: var(--fs-primary); color: var(--text-2); }
-  .asset-list li { margin: var(--space-hair) 0; }
+  /* Settings list rows share the app's list row (padding --row-pad-2, line --row-lh-2), as the providers list and Changes do. */
+  .asset-list { list-style: none; margin: var(--space-tight) 0 0; padding: 0; font-size: var(--fs-primary); color: var(--text-2); }
+  .asset-list li { display: flex; align-items: center; gap: var(--space-tight); padding: var(--row-pad-2) 0; line-height: var(--row-lh-2); }
+  .asset-list li i { color: var(--text-3); }
   .asset-list em { color: var(--text-3); font-style: normal; }
   .asset-list code { font-size: var(--fs-secondary); }
   .set-card .row2 { display: flex; align-items: center; justify-content: space-between; gap: var(--space-control); }
@@ -1802,7 +1806,7 @@
   .proj { margin-top: var(--space-control); padding-top: var(--space-control); border-top: 1px solid var(--hairline); }
   .proj-head { display: flex; align-items: center; gap: var(--space-tight); font-size: var(--fs-primary); font-weight: 500; }
   .proj-head .sp { flex: 1; }
-  .sf { display: flex; align-items: center; gap: var(--space-tight); padding: var(--space-tight) 0 var(--space-tight) 22px; font-size: var(--fs-primary); color: var(--text-2); }
+  .sf { display: flex; align-items: center; gap: var(--space-tight); min-height: calc(2 * var(--row-pad-2) + var(--row-lh-2) * 1em); padding-left: 22px; font-size: var(--fs-primary); color: var(--text-2); }
   .sf .lbl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: var(--fs-secondary); }
   .sf .lbl.quiet { color: var(--text-3); font-family: inherit; font-size: var(--fs-secondary); }
   .sf .role { flex: 0 0 auto; font-size: var(--fs-micro); color: var(--text-3); }
@@ -1818,7 +1822,6 @@
   .agents-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-block); margin-bottom: var(--space-column); }
   .agents-heading .sub { margin-bottom: 0; }
   .agent-default-card select { border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--surface); color: var(--ink); padding: var(--space-tight) var(--space-control); font: inherit; }
-  .agent-section { margin-top: var(--space-column); }
   .agent-preset-list { border: 1px solid var(--hairline); border-radius: var(--r-md); overflow: hidden; background: var(--surface); }
   .agent-preset-list:empty { display: none; }
   /* The section cards (.set-card) own the card chrome; the agent list itself

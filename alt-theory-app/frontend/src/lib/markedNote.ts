@@ -13,12 +13,12 @@ import { t } from "@/i18n";
 
 const COLOR_SIGN: Record<string, string> = { "hl-1": "🟨", "hl-2": "🟩", "hl-3": "🟧", "hl-4": "🟦", "hl-5": "🟥" };
 
-/** A conversation as a heading: its name, or its opening words marked as a fragment when it has none. */
-export function conversationLabel(name: string | null, opening: string): string {
+/** A conversation as a heading: its name, or when it has none its opening words quoted and its id after them. */
+export function conversationLabel(name: string | null, opening: string, sessionId: string): string {
   if (name?.trim()) return name.trim();
   const words = opening.replace(/\s+/g, " ").trim();
-  const cut = words.length > 40 ? `${words.slice(0, 40).trimEnd()}…` : words;
-  return t("“{opening}”", { opening: cut || t("Untitled") });
+  const cut = words.length > 24 ? `${words.slice(0, 24).trimEnd()}…` : words;
+  return `${t("“{opening}”", { opening: cut || t("Untitled") })} · ${sessionId.slice(0, 8)}`;
 }
 
 const SCOPE_LABEL = (scope: MarkedScope) =>

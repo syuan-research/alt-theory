@@ -35,6 +35,6 @@ test("a mixed stream names each entry's conversation; an unnamed conversation re
   const note = markedNote([{ sessionId: null, items: [bookmark, mark] }], { date: "d", scope: "all", arrangement: "time", labelOf: (id) => labels[id] });
   assert.ok(!note.includes("## Conversation"));
   assert.match(note, /🟥 \*\*You · “Hi — I want to…”\*\*: “alone” \[↗\]\(conversation:s2#r2:0\)/);
-  assert.equal(conversationLabel("  ", "I'm writing the intro for our community garden paper. Can you"), "“I'm writing the intro for our community…”");
-  assert.equal(conversationLabel("Named", "x"), "Named");
+  assert.equal(conversationLabel("  ", "I'm writing the intro for our community garden paper. Can you", "a1b2c3d4e5f6a7b8"), "“I'm writing the intro fo…” · a1b2c3d4");
+  assert.equal(conversationLabel("Named", "x", "a1b2c3d4e5f6a7b8"), "Named");
 });

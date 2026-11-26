@@ -77,7 +77,7 @@ export function MarksPanel() {
       const date = fileNameDate(new Date(), currentLang());
       const labelOf = (id: string) => {
         const names = app.sessionDisplayNames[id];
-        return conversationLabel(names?.alias ?? null, names?.snippet ?? titleOf(id));
+        return conversationLabel(names?.alias ?? null, names?.snippet ?? titleOf(id), id);
       };
       const content = markedNote(groups, { date, scope, arrangement, labelOf });
       const note = await createNoteFile(sessionId, `${t("Bookmarks {date}", { date })}.md`);

@@ -734,7 +734,7 @@ function AgentsPanel() {
         <div className="set-card">
           <div className="agent-section-heading">
             <h4>{t("Custom subagents")}</h4>
-            <button className="add-btn" onClick={addCustom}><i className="ph ph-plus" />{t("New")}</button>
+            <button className="flat" onClick={addCustom}><i className="ph ph-plus" aria-hidden="true" /> {t("New")}</button>
           </div>
           <div className="agent-preset-list">{config.agents.map((agent, index) => !BUILTIN_AGENT_IDS.has(agent.id) ? renderAgent(agent, index, false) : null)}</div>
           {path ? <p className="agent-config-path">{path}</p> : null}
@@ -1908,60 +1908,55 @@ function RoleKbPanel() {
           <div>
             <h4>{t("Roles")}</h4>
             {dirs ? <p className="fine"><code>{dirs.userRolePresetsDir}</code></p> : null}
-            <ul className="asset-list">
-              {roles.map((role) => (
-                <li key={role.slug}>
-                  <i className="ph ph-user-circle" aria-hidden="true" />{" "}
-                  {role.displayName}
-                  {role.source === "added" ? <em> {t("· added by you")}</em> : null}
-                </li>
-              ))}
-              {roles.length === 0 ? <li>{t("No roles found.")}</li> : null}
-            </ul>
           </div>
           <button className="flat" onClick={addRoleFile}>
             <i className="ph ph-plus" aria-hidden="true" /> {t("Add role file")}
           </button>
         </div>
+        <ul className="asset-list">
+          {roles.map((role) => (
+            <li key={role.slug}>
+              <i className="ph ph-user-circle" aria-hidden="true" />
+              {role.displayName}
+              {role.source === "added" ? <em>{t("· added by you")}</em> : null}
+            </li>
+          ))}
+          {roles.length === 0 ? <li>{t("No roles found.")}</li> : null}
+        </ul>
       </div>
       <div className="set-card">
         <div className="row2">
           <div>
             <h4>{t("Knowledge sets")}</h4>
-            <p>
-              {t("Knowledge sets supplement domain knowledge. Alt consults them first.")}
-            </p>
-            <ul className="asset-list">
-              {kbDomains.map((domain) => (
-                <li key={domain.slug}>
-                  <i className="ph ph-book-open" aria-hidden="true" />{" "}
-                  {domain.displayName}
-                  {domain.source === "added" ? <em> {t("· added by you")}</em> : null}
-                </li>
-              ))}
-            </ul>
-            {dirs && dirs.extraKbDirs.length > 0 ? (
-              <ul className="asset-list">
-                {dirs.extraKbDirs.map((dir) => (
-                  <li className="folder-row" key={dir}>
-                    <i className="ph ph-folder" aria-hidden="true" />
-                    <div className="grow"><div className="nm">{folderLabel(dir)}</div><div className="path">{dir}</div></div>
-                    <button
-                      className="flat"
-                      data-tip={t("Stop scanning this folder (the folder itself is not deleted)")}
-                      onClick={() => removeKbDir(dir)}
-                    >
-                      {t("Remove")}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
+            <p>{t("Knowledge sets supplement domain knowledge. Alt consults them first.")}</p>
           </div>
           <button className="flat" onClick={addKbDir}>
             <i className="ph ph-plus" aria-hidden="true" /> {t("Add knowledge folder")}
           </button>
         </div>
+        <ul className="asset-list">
+          {kbDomains.map((domain) => (
+            <li key={domain.slug}>
+              <i className="ph ph-book-open" aria-hidden="true" />
+              {domain.displayName}
+              {domain.source === "added" ? <em>{t("· added by you")}</em> : null}
+            </li>
+          ))}
+        </ul>
+        {dirs?.extraKbDirs.map((dir) => (
+          <div className="folder-row" key={dir}>
+            <i className="ph ph-folder" aria-hidden="true" />
+            <div className="grow"><div className="nm">{folderLabel(dir)}</div><div className="path">{dir}</div></div>
+            <button
+              className="icon-x"
+              data-tip={t("Stop scanning this folder (the folder itself is not deleted)")}
+              aria-label={t("Stop scanning this folder (the folder itself is not deleted)")}
+              onClick={() => removeKbDir(dir)}
+            >
+              <i className="ph ph-x" aria-hidden="true" />
+            </button>
+          </div>
+        ))}
       </div>
     </div>
   );
