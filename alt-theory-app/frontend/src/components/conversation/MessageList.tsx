@@ -1,4 +1,6 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { isAgentTool, type AgentReference } from "../../../../shared/agent-tool-inspection";
+import { describeAgentToolInput, describeAgentToolResult } from "@/lib/agentToolCopy";
 import type {
   ActiveToolState,
   StreamPart,
@@ -441,30 +443,82 @@ function RunElapsed({ since }: { since: number }) {
   return <>{Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}</>;
 }
 
+function AgentReferenceLink({ agent }: { agent: AgentReference }) {
+  const shell = useShell();
+  const [unavailable, setUnavailable] = useState(false);
+  const open = async () => {
+    setUnavailable(false);
+    if (agent.sessionId) {
+      try {
+        const response = await fetch(`/api/sessions/${encodeURIComponent(agent.sessionId)}`, { method: "HEAD", cache: "no-store" });
+        if (response.ok) {
+          shell.openTarget({ kind: "conversation", sessionId: agent.sessionId });
+          return;
+        }
+      } catch { /* Leave the current pane in place. */ }
+    }
+    setUnavailable(true);
+  };
+  return <>
+    <button type="button" className="agent-reference" onClick={(event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      void open();
+    }}>{agent.label}</button>
+    {unavailable && <span role="status">{" · "}{t("Conversation unavailable")}</span>}
+  </>;
+}
+
+const AGENT_LABEL_SLOT = "\uE000";
+
+function linkInAgentLabel(text: string, agent: AgentReference) {
+  const [before, after] = text.split(AGENT_LABEL_SLOT);
+  return after === undefined ? text : <>{before}<AgentReferenceLink agent={agent} />{after}</>;
+}
+
+function toolLabelWithAgents(toolName: string, agents: AgentReference[] | undefined, label: (name?: string) => string) {
+  if (!agents?.length) return label();
+  if (agents.length === 1 && ["send_to_agent", "check_agent", "interrupt_agent", "message_parent"].includes(toolName)) {
+    return linkInAgentLabel(label(AGENT_LABEL_SLOT), agents[0]);
+  }
+  return <>{label()}{" · "}{agents.map((agent, i) => (
+    <Fragment key={agent.sessionId ?? `${agent.label}:${i}`}>
+      {i > 0 ? ", " : null}<AgentReferenceLink agent={agent} />
+    </Fragment>
+  ))}</>;
+}
+
+function agentDisplay(app: ReturnType<typeof useApp>, agent: { sessionId?: string; label?: string }) {
+  const child = agent.sessionId ? app.sessions.find((session) => session.sessionId === agent.sessionId) : undefined;
+  const alias = (agent.sessionId && app.sessionDisplayNames[agent.sessionId]?.alias) || child?.alias || agent.label;
+  return { child, alias };
+}
+
 function SubagentActionLabel({ agent }: { agent: NonNullable<TranscriptMessage["subagentAction"]> }) {
   const app = useApp();
   const { sessionReady } = useConversationContext();
-  const child = app.sessions.find((session) => session.sessionId === agent.sessionId);
-  const alias = app.sessionDisplayNames[agent.sessionId]?.alias || child?.alias || agent.label;
+  const { child, alias } = agentDisplay(app, agent);
   const marker = child && relatedDisplayMarker(child, app.sessions);
   const name = (marker && alias && !alias.startsWith(`${marker} · `) ? `${marker} · ${alias}` : alias || marker)
     || agent.sessionId;
   const active = app.subagentDispatches[agent.sessionId];
   const dispatch = sessionReady && active?.id === agent.dispatchId ? active : undefined;
   const since = dispatch?.startedAt;
+  const outcome = (agent.dispatchId && app.subagentOutcomes[agent.dispatchId]) || agent.outcome;
+  const label = agent.kind === "spawn" ? t("Created subagent {name}", { name: AGENT_LABEL_SLOT })
+    : agent.kind === "resume" ? t("Resumed {name}", { name: AGENT_LABEL_SLOT })
+    : t("Sent a message to {name}", { name: AGENT_LABEL_SLOT });
   return (
     <>
-      <i className={TOOL_ICON[dispatch ? "running" : "finished"]} />
-      {agent.kind === "spawn" ? t("Created {name}", { name })
-        : agent.kind === "resume" ? t("Resumed {name}", { name })
-        : t("Sent a message to {name}", { name })}
-      {dispatch && (
+      <i className={TOOL_ICON[dispatch ? "running" : outcome === "failed" ? "failed" : "finished"]} />
+      {linkInAgentLabel(label, { sessionId: agent.sessionId, label: name })}
+      {dispatch ? (
         <>
           {" · "}{since == null ? t("Queued")
             : child?.runStatus === "awaiting-approval" ? t("Waiting for your approval…") : t("Running")}
           {since != null && <>{" "}<RunElapsed since={since} /></>}
         </>
-      )}
+      ) : outcome ? <>{" · "}{t(outcome === "failed" ? "Failed" : outcome === "stopped" ? "Stopped" : "Completed")}</> : null}
     </>
   );
 }
@@ -474,14 +528,17 @@ function ToolLine({ tool }: { tool: ActiveToolState }) {
   const preparing = tool.status === "preparing";
   const outcome = toolOutcome({ running: preparing || tool.status === "running", success: tool.success });
   return (
-    <SysLine tool filePath={toolFilePath(tool.toolName, tool.path)} detail={outcome === "running" ? null : tool.detail} tone={TOOL_TONE[outcome]}>
+    <SysLine tool toolName={tool.toolName} filePath={toolFilePath(tool.toolName, tool.path)}
+      detail={outcome === "running" ? null : tool.detail} tone={TOOL_TONE[outcome]}
+      input={tool.input ? { text: tool.input, agent: tool.subagentAction ?? tool.agentRefs?.[0] } : undefined}
+      result={tool.result ? { text: tool.result, truncated: false } : undefined}>
       {tool.subagentAction ? <SubagentActionLabel agent={tool.subagentAction} /> : (
         <>
           <i className={TOOL_ICON[outcome]} />
           {preparing
             ? tool.toolName === "write" ? t("Preparing to write…") : t("Preparing to edit…")
-            : toolLabel(tool.toolName, tool.path, tool.detail, outcome,
-              discovery?.skills.find((skill) => skill.name === tool.detail?.skillName)?.displayName)}
+            : toolLabelWithAgents(tool.toolName, tool.agentRefs, (target) => toolLabel(tool.toolName, tool.path, tool.detail, outcome,
+              discovery?.skills.find((skill) => skill.name === tool.detail?.skillName)?.displayName, target))}
         </>
       )}
       {tool.progressText ? ` — ${tool.progressText}` : ""}
@@ -671,10 +728,14 @@ export function TranscriptEntry({
     return (
       <SysLine
         tool
+        toolName={message.toolName}
         filePath={toolFilePath(message.toolName, message.toolPath)}
         tone={TOOL_TONE[outcome]}
         detail={message.toolDetail}
-        input={message.toolInput ? { text: message.toolInput, toolCallId: message.toolCallId, entryId: message.entryId } : undefined}
+        input={message.toolInput ? {
+          text: message.toolInput, toolCallId: message.toolCallId, entryId: message.entryId,
+          agent: message.subagentAction ?? message.agentRefs?.[0],
+        } : undefined}
         result={
           resultText
             ? { text: resultText, truncated: Boolean(message.truncated), toolCallId: message.toolCallId, entryId: message.entryId }
@@ -684,13 +745,14 @@ export function TranscriptEntry({
         {message.subagentAction ? <SubagentActionLabel agent={message.subagentAction} /> : (
           <>
             <i className={TOOL_ICON[outcome]} />
-            {toolLabel(
+            {toolLabelWithAgents(message.toolName ?? "", message.agentRefs, (target) => toolLabel(
               message.toolName || message.text || "tool",
               message.toolPath,
               message.toolDetail,
               outcome,
               discovery?.skills.find((skill) => skill.name === message.toolDetail?.skillName)?.displayName,
-            )}
+              target,
+            ))}
           </>
         )}
         <ApprovalMark approval={approval} />
@@ -724,10 +786,15 @@ export function TranscriptEntry({
       );
     }
     if (message.marker === "agent-team") {
+      const mail = message.mail;
+      const sender = mail && (mail.sessionId || mail.from !== "user") ? mail : null;
+      const suffix = sender && (message.text.startsWith(sender.from) ? message.text.slice(sender.from.length)
+        : message.text.slice(message.text.indexOf(":")));
       return (
         <SysLine>
           <i className="ph ph-users-three" />
-          {message.text}
+          {sender ? <><AgentReferenceLink agent={{ sessionId: sender.sessionId, label: sender.from === "lead" ? t("lead") : sender.from }} />{suffix}</>
+            : message.text}
         </SysLine>
       );
     }
@@ -958,6 +1025,13 @@ function toolFilePath(toolName: string | null | undefined, path: string | null |
   return toolName && ["read", "edit", "write"].includes(toolName) ? path ?? undefined : undefined;
 }
 
+type ToolInput = {
+  text: string;
+  toolCallId?: string;
+  entryId?: string | null;
+  agent?: { sessionId?: string; label?: string };
+};
+
 function SysLine({
   children,
   tone,
@@ -965,18 +1039,20 @@ function SysLine({
   input,
   result,
   tool = false,
+  toolName,
   filePath,
 }: {
   children: React.ReactNode;
   tone?: "danger" | "ok" | "running" | "pending";
   /** When present the line becomes expandable — see ToolDetailBody. */
   detail?: ToolDetail | null;
-  input?: { text: string; toolCallId?: string; entryId?: string | null };
+  input?: ToolInput;
   /** The call's result (B3): shown under the detail once expanded. */
   result?: { text: string; truncated: boolean; toolCallId?: string; entryId?: string | null };
   /** Tool rows are searchable with Ctrl+F; system lines (warnings,
    *  notices) are chrome and stay out (owner 2026-09-24). */
   tool?: boolean;
+  toolName?: string;
   filePath?: string;
 }) {
   const conv = useConversationContext();
@@ -992,8 +1068,9 @@ function SysLine({
     tone === "pending" && "sys-pending",
   );
   const shownDetail = detail && detail.kind !== "skill" ? detail : null;
-  const fallback = !shownDetail && !result ? input : undefined;
-  if (!shownDetail && !result && !fallback) {
+  const agentTool = toolName && isAgentTool(toolName) ? toolName : undefined;
+  const shownInput = agentTool || (!shownDetail && !result) ? input : undefined;
+  if (!shownDetail && !result && !shownInput) {
     return <div {...fileActions} tabIndex={path ? 0 : undefined} className={className} data-find-skip={tool ? undefined : ""}>{children}{menu.element}</div>;
   }
   return (
@@ -1003,9 +1080,10 @@ function SysLine({
         summary={children}
         summaryProps={fileActions}
         findSkip={!tool}
-        whenOpen={result
-          ? () => <ToolResultBody {...result} />
-          : fallback ? () => <ToolInputBody {...fallback} /> : undefined}
+        whenOpen={() => <>
+          {shownInput && <ToolInputBody {...shownInput} agentTool={agentTool} />}
+          {result && <ToolResultBody {...result} agentTool={agentTool} />}
+        </>}
       >
         {shownDetail ? <ToolDetailBody detail={shownDetail} /> : null}
       </CollapseAnywhereDetails>
@@ -1014,7 +1092,8 @@ function SysLine({
   );
 }
 
-function ToolInputBody({ text, toolCallId, entryId }: { text: string; toolCallId?: string; entryId?: string | null }) {
+function ToolInputBody({ text, toolCallId, entryId, agent, agentTool }: ToolInput & { agentTool?: string }) {
+  const app = useApp();
   const { sessionId } = useConversationContext();
   const [full, setFull] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -1027,9 +1106,24 @@ function ToolInputBody({ text, toolCallId, entryId }: { text: string; toolCallId
     );
     return () => controller.abort();
   }, [sessionId, toolCallId, entryId]);
+  const displayedName = agent && agentTool === "spawn_agent" ? agentDisplay(app, agent).alias : undefined;
+  const input = agentTool ? describeAgentToolInput(agentTool, full ?? text, displayedName) : null;
+  if (input) return (
+    <div className="tool-result agent-tool-input">
+      {input.message !== undefined && <><strong>{t("Original message")}</strong><div className="agent-tool-message">{input.message}</div></>}
+      {input.lines.length > 0 && <div className="tool-result agent-tool-message">
+        {input.lines.map((line) => <div key={line}>{line}</div>)}
+      </div>}
+      {input.fields.length > 0 && <dl className="agent-tool-fields">
+        {input.fields.map(([key, value]) => (
+          <div key={key}><dt>{t("{label}:", { label: key })}</dt><dd>{value}</dd></div>
+        ))}
+      </dl>}
+    </div>
+  );
   return (
     <div className="tool-result">
-      {full === null ? <div>{failed ? t("Could not load the full input") : t("Input preview")}</div> : null}
+      {full === null && entryId ? <div>{failed ? t("Could not load the full input") : t("Input preview")}</div> : null}
       <pre className="tool-detail cmd">{full ?? text}</pre>
     </div>
   );
@@ -1044,28 +1138,32 @@ function ToolResultBody({
   truncated,
   toolCallId,
   entryId,
+  agentTool,
 }: {
   text: string;
   truncated: boolean;
   toolCallId?: string;
   entryId?: string | null;
+  agentTool?: string;
 }) {
   const { sessionId } = useConversationContext();
   const [full, setFull] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const receipt = agentTool ? describeAgentToolResult(agentTool, full ?? text) : null;
+  const result = <>
+    <pre className="tool-detail cmd">{full ?? text}</pre>
+    {truncated && full === null && sessionId && toolCallId ? (
+      <button className="link-btn" onClick={() => void fetchToolResult(sessionId, toolCallId, entryId).then(setFull, () => setFailed(true))}>
+        {failed ? t("Could not load the full result") : t("View full result")}
+      </button>
+    ) : null}
+  </>;
   return (
     <div className="tool-result">
-      <pre className="tool-detail cmd">{full ?? text}</pre>
-      {truncated && full === null && sessionId && toolCallId ? (
-        <button
-          className="link-btn"
-          onClick={() =>
-            void fetchToolResult(sessionId, toolCallId, entryId).then(setFull, () => setFailed(true))
-          }
-        >
-          {failed ? t("Could not load the full result") : t("View full result")}
-        </button>
-      ) : null}
+      {receipt ? <>
+        <div className="agent-tool-message">{receipt}</div>
+        <details><summary>{t("Original tool result")}</summary>{result}</details>
+      </> : result}
     </div>
   );
 }

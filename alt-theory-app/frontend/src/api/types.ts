@@ -1,3 +1,5 @@
+import type { AgentReference } from "../../../shared/agent-tool-inspection";
+
 export type ViewMode = "user" | "researcher";
 
 /**
@@ -267,6 +269,7 @@ export interface TranscriptMessage {
   toolDetail?: ToolDetail;
   /** The call's arguments as JSON, cut to 200 characters (history readers). */
   toolInput?: string;
+  agentRefs?: AgentReference[];
   success?: boolean;
   /** Smart approval's verdict on this tool call (the reviewer model's). */
   approval?: import("../../../core/approval-ask").ApprovalRecord;
@@ -274,7 +277,7 @@ export interface TranscriptMessage {
   /** Non-message boundary markers rendered specially (e.g. context compaction). */
   marker?: "compaction" | "imported-context" | "agent-team";
   /** An agent-team row's sender label, event and body as delivered (`text` is the display line). */
-  mail?: { from: string; event: string | null; body: string };
+  mail?: { from: string; event: string | null; body: string; sessionId?: string };
   sourceRole?: "system" | "developer";
   /**
    * Pi's stop reason, on every visible row of a stopped or failed attempt
@@ -311,6 +314,13 @@ export interface SubagentAction {
   label?: string;
   kind: "spawn" | "resume" | "message";
   dispatchId?: string;
+  outcome?: SubagentDispatchOutcome;
+}
+
+export type SubagentDispatchOutcome = "completed" | "failed" | "stopped";
+export interface EndedSubagentDispatch {
+  id: string;
+  outcome: SubagentDispatchOutcome;
 }
 
 /** Only queued or in-progress dispatches appear in activity. */
@@ -826,9 +836,9 @@ export type ServerMessage =
         };
       };
     }
-  | { type: "tool_started"; payload: { toolName: string; callId: string; preparing?: true; path?: string | null; detail?: ToolDetail } }
+  | { type: "tool_started"; payload: { toolName: string; callId: string; preparing?: true; path?: string | null; detail?: ToolDetail; input?: string; agentRefs?: AgentReference[] } }
   | { type: "tool_updated"; payload: { callId: string; text?: string; progress?: number } }
-  | { type: "tool_finished"; payload: { callId: string; success: boolean; output?: unknown; approval?: TranscriptMessage["approval"]; subagentAction?: SubagentAction } }
+  | { type: "tool_finished"; payload: { callId: string; success: boolean; output?: unknown; approval?: TranscriptMessage["approval"]; subagentAction?: SubagentAction; agentRefs?: AgentReference[] } }
   /** The turn ended: the post-settle snapshot and the settled rows, applied together. */
   | { type: "run_completed"; payload: { snapshot: SessionSnapshot } & TurnRows }
   /** The run ended failed or stopped; the snapshot (read after settle) carries its recovery. */
@@ -855,7 +865,7 @@ export type ServerMessage =
   /** Every conversation the list may show that is not idle, on (re)connect. */
   | { type: "activity_snapshot"; payload: { activity: Record<string, ListActivity>; subagentDispatches?: Record<string, ActiveSubagentDispatch> } }
   /** One conversation's list activity moved, or the list itself changed. */
-  | { type: "session_activity"; payload: { sessionId: string; status: ListActivity; listChanged?: true; subagentDispatch?: ActiveSubagentDispatch | null } }
+  | { type: "session_activity"; payload: { sessionId: string; status: ListActivity; listChanged?: true; subagentDispatch?: ActiveSubagentDispatch | null; endedSubagentDispatch?: EndedSubagentDispatch } }
   | { type: "approval_requested"; payload: ApprovalRequestPayload }
   | {
       type: "approval_resolved";
@@ -885,6 +895,9 @@ export interface ActiveToolState {
   success?: boolean;
   approval?: TranscriptMessage["approval"];
   subagentAction?: SubagentAction;
+  agentRefs?: AgentReference[];
+  input?: string;
+  result?: string;
 }
 
 /** One chunk of the in-progress assistant turn, in arrival order. */

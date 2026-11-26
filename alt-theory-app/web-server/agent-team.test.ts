@@ -20,7 +20,7 @@ import {
 } from "./agent-team.js";
 import { DEFAULT_SUBAGENT_CONFIG } from "./subagent-config.js";
 import { readV4SessionHeader } from "./session-records.js";
-import { listSessionSummaries, readSessionDetail, softDeleteSession } from "./session-store.js";
+import { listSessionSummaries, readSessionDetail, readSubagentDispatchOutcomes, softDeleteSession } from "./session-store.js";
 import type { SessionServiceEvent } from "./session-service.js";
 import { describeFailure } from "../core/failure.js";
 
@@ -227,6 +227,7 @@ test("agent mail roundtrips, marks delivered, and parses fragments", () => {
     event: "completed",
     cause: null,
     peer: false,
+    fromSessionId: "child-1",
     body: "done: the answer",
   });
   assert.equal(parseAgentMailFrame("plain user text"), null);
@@ -1152,6 +1153,10 @@ for (const action of ["user-guidance", "user-retry"] as const) {
       assert.equal(notices()[1].body, "replacement result");
       assert.deepEqual(dispatchDuringReplacement, [dispatch]);
       await waitFor(() => !service.subagentDispatches().has(child.sessionId));
+      assert.deepEqual(
+        [...readSubagentDispatchOutcomes(childManaged.manifest.recordsDir)],
+        [[dispatch.id, "completed"]],
+      );
       const resumed = await service.sendToAgent(parent.sessionId, child.sessionId, "a new task");
       assert.ok(resumed.details?.dispatchId);
       assert.notEqual(resumed.details.dispatchId, dispatch.id);

@@ -416,7 +416,14 @@ sends the active dispatch and its first accepted timestamp through the same
 activity stream as the conversation list, including its reconnect snapshot.
 A queued dispatch has no start time yet. Steering, interrupt-and-send, retry,
 and approval waits keep the timestamp. Completion, failure, or Stop removes
-the active dispatch. The tool result still identifies who was sent the work.
+the active dispatch and records its outcome by dispatch ID in the child's
+session events. The activity stream carries that outcome live. Transcript
+windows and pages reattach it to the same tool result on reopen.
+
+Agent tool rows and incoming agent mail carry recorded conversation IDs for
+opening the people involved in the right rail. Expanded tool rows show the
+original message and requested parameters from Pi's tool call, including
+older input fetched through the existing full-input route.
 
 One frame carries every text an agent or the system delivers into a
 conversation (`core/agent-mail-frame.ts`): the lead's task — the spawn task

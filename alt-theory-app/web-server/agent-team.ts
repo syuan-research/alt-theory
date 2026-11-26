@@ -16,6 +16,7 @@ import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { AltMode } from "../core/alt-theory-core.js";
 import type { SubagentAction } from "../frontend/src/api/types.js";
+import { agentReferencesInStatus, isAgentTool, type AgentReference } from "../shared/agent-tool-inspection.js";
 
 // ---------------------------------------------------------------------------
 // Bridge — implemented by SessionService
@@ -33,6 +34,7 @@ export interface SpawnSubagentOptions {
 }
 
 export interface AgentTeamBridge {
+  agentToolReferences?(sessionId: string, tool: string, args: unknown): AgentReference[];
   listModels(sessionId: string, query?: string): string;
   spawnSubagent(
     parentSessionId: string,
@@ -126,6 +128,15 @@ export function subagentActionFromResult(tool: string, details: unknown, report:
   };
 }
 
+export function agentReferencesFromResult(tool: string, details: unknown, report: string): AgentReference[] {
+  if (!isAgentTool(tool)) return [];
+  const refs = (details as { agentRefs?: AgentReference[] } | undefined)?.agentRefs;
+  return Array.isArray(refs)
+    ? refs.filter((ref) => ref && typeof ref.label === "string" &&
+      (ref.sessionId === undefined || typeof ref.sessionId === "string"))
+    : agentReferencesInStatus(tool, report);
+}
+
 // ---------------------------------------------------------------------------
 // System-prompt sections
 // ---------------------------------------------------------------------------
@@ -217,6 +228,14 @@ export function createAgentTeamTools(
   availableRoles: string[] = [],
 ): ToolDefinition<any, any>[] {
   const parameters = spawnSchema(availableRoles);
+  const agentResult = (tool: string, args: unknown, report: string) => ({
+    ...text(report),
+    details: {
+      agentRefs: tool === "check_agent" || tool === "wait_for_agents" || tool === "list_agents"
+        ? agentReferencesInStatus(tool, report)
+        : bridge.agentToolReferences?.(sessionId, tool, args) ?? [],
+    },
+  });
   const modelQuery = Type.Object({ query: Type.Optional(Type.String()) });
   const listModels: ToolDefinition<typeof modelQuery, undefined> = {
     name: "list_models",
@@ -282,14 +301,14 @@ export function createAgentTeamTools(
       }),
     ),
   });
-  const checkAgent: ToolDefinition<typeof checkSchema, undefined> = {
+  const checkAgent: ToolDefinition<typeof checkSchema, { agentRefs: AgentReference[] }> = {
     name: "check_agent",
     label: "Check agent",
     description:
       "Check a subagent or a peer you can message or have exchanged mail with. Returns status; subagents also include their last output.",
     parameters: checkSchema,
     async execute(_id, params) {
-      return text(
+      return agentResult("check_agent", params,
         await bridge.checkAgent(sessionId, params.agent, params.verbose ?? false),
       );
     },
@@ -305,7 +324,7 @@ export function createAgentTeamTools(
       Type.Number({ description: "Max seconds to wait (default 60, max 600)" }),
     ),
   });
-  const waitForAgents: ToolDefinition<typeof waitSchema, undefined> = {
+  const waitForAgents: ToolDefinition<typeof waitSchema, { agentRefs: AgentReference[] }> = {
     name: "wait_for_agents",
     label: "Wait for agents",
     description:
@@ -313,7 +332,7 @@ export function createAgentTeamTools(
     parameters: waitSchema,
     async execute(_id, params, signal) {
       const timeout = Math.min(Math.max(params.timeout_s ?? 60, 1), 600);
-      return text(
+      return agentResult("wait_for_agents", params,
         await bridge.waitForAgents(
           sessionId,
           params.agents ?? null,
@@ -325,25 +344,25 @@ export function createAgentTeamTools(
   };
 
   const interruptSchema = Type.Object({ agent: agentRef });
-  const interruptAgent: ToolDefinition<typeof interruptSchema, undefined> = {
+  const interruptAgent: ToolDefinition<typeof interruptSchema, { agentRefs: AgentReference[] }> = {
     name: "interrupt_agent",
     label: "Interrupt subagent",
     description:
       "Stop a subagent's current turn, retaining its context for further instructions through send_to_agent.",
     parameters: interruptSchema,
     async execute(_id, params) {
-      return text(await bridge.interruptSubagent(sessionId, params.agent));
+      return agentResult("interrupt_agent", params, await bridge.interruptSubagent(sessionId, params.agent));
     },
   };
 
   const listSchema = Type.Object({});
-  const listAgents: ToolDefinition<typeof listSchema, undefined> = {
+  const listAgents: ToolDefinition<typeof listSchema, { agentRefs: AgentReference[] }> = {
     name: "list_agents",
     label: "List subagents",
     description: "List this conversation's subagents with their status.",
     parameters: listSchema,
     async execute() {
-      return text(await bridge.listSubagents(sessionId));
+      return agentResult("list_agents", undefined, await bridge.listSubagents(sessionId));
     },
   };
 
@@ -356,14 +375,14 @@ export function createAgentTeamTools(
       }),
     ),
   });
-  const messageParent: ToolDefinition<typeof messageParentSchema, undefined> = {
+  const messageParent: ToolDefinition<typeof messageParentSchema, { agentRefs: AgentReference[] }> = {
     name: "message_parent",
     label: "Message parent conversation",
     description:
       "Send a message to the conversation that spawned this agent. Use kind=blocker when you cannot continue without input.",
     parameters: messageParentSchema,
     async execute(_id, params) {
-      return text(
+      return agentResult("message_parent", params,
         await bridge.messageParent(
           sessionId,
           params.message,
