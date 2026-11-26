@@ -1,11 +1,11 @@
 import {
   Children,
-  useEffect,
   useLayoutEffect,
   useRef,
   type HTMLAttributes,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
+import { useWheelScrollX } from "@/lib/useWheelScrollX";
 
 /** How much of the neighbouring chip stays visible at an edge when there is more. */
 const PEEK = 28;
@@ -59,27 +59,7 @@ export function TabStrip({ activeKey, onFocusKey, onKeyDown, children, ...rest }
   focusKey.current = onFocusKey;
   const count = Children.count(children);
 
-  // Wheel → horizontal: trackpads and mice emit vertical deltas, and a strip
-  // without a scrollbar offers no thumb to drag.
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const onWheel = (event: WheelEvent) => {
-      if (el.scrollWidth <= el.clientWidth + 1) return;
-      const dominantY = Math.abs(event.deltaY) >= Math.abs(event.deltaX);
-      if (!dominantY && event.deltaX === 0) return;
-      const dx = dominantY ? event.deltaY : event.deltaX;
-      if (dx === 0) return;
-      const next = el.scrollLeft + dx;
-      const max = el.scrollWidth - el.clientWidth;
-      if (next <= 0 && el.scrollLeft <= 0) return;
-      if (next >= max && el.scrollLeft >= max) return;
-      event.preventDefault();
-      el.scrollLeft = Math.max(0, Math.min(max, next));
-    };
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, []);
+  useWheelScrollX(ref);
 
   useLayoutEffect(() => {
     const strip = ref.current;

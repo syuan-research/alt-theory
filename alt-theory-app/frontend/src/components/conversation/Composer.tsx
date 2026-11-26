@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useWheelScrollX } from "@/lib/useWheelScrollX";
 import { PRESET_TURNS, useApp } from "@/context/AppProvider";
 import { useConversationContext } from "@/context/ConversationContext";
 import { useShell } from "@/context/ShellContext";
@@ -47,6 +48,8 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     window.localStorage.setItem("alt-preset-open", next ? "1" : "0");
   };
   const rowRef = useRef<HTMLDivElement>(null);
+  const steerChipsRef = useRef<HTMLDivElement>(null);
+  useWheelScrollX(steerChipsRef, presetOpen);
   const rowClassName = useComposerRow(rowRef);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -385,7 +388,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                       <span className="steer-lead" data-tip={t("Steer — ask Alt to work a certain way for the next few turns")}>
                         <i className="ph ph-lightning" aria-hidden="true" />
                       </span>
-                      <div className="steer-chips">
+                      <div className="steer-chips" ref={steerChipsRef}>
                         {app.presetButtons.map((name) => {
                           const active =
                             app.presetState && app.presetState.sessionId === conv.sessionId && app.presetState.name === name
