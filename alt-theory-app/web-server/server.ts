@@ -158,6 +158,8 @@ import {
   PERMISSIONS,
   type Permission,
   writeAppSettings,
+  AUTO_WORKSPACE,
+  type AutoWorkspace,
   SKILL_PRECEDENCE_VALUES,
   type AppSettings,
   type ProjectFolderSettings,
@@ -725,6 +727,27 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     };
     writeAppSettings(dataDir, settings);
     res.json({ ok: true, ...settings.sessionListSort });
+  });
+  // Left-list pins and when a click opens another workspace (owner 2026-11-26).
+  app.get("/api/settings/navigation", (_req, res) => {
+    const settings = readAppSettings(dataDir);
+    res.json({ pinnedSessions: settings.pinnedSessions ?? [], autoWorkspace: settings.autoWorkspace ?? "project" });
+  });
+  app.put("/api/settings/navigation", (req, res) => {
+    const body = req.body as { pinnedSessions?: unknown; autoWorkspace?: unknown };
+    const pins = body.pinnedSessions;
+    if (
+      (pins !== undefined && (!Array.isArray(pins) || pins.some((id) => typeof id !== "string" || !id))) ||
+      (body.autoWorkspace !== undefined && !(AUTO_WORKSPACE as readonly unknown[]).includes(body.autoWorkspace))
+    ) {
+      res.status(400).json({ error: "Invalid navigation settings" });
+      return;
+    }
+    const settings = readAppSettings(dataDir);
+    if (pins !== undefined) settings.pinnedSessions = [...new Set(pins as string[])];
+    if (body.autoWorkspace !== undefined) settings.autoWorkspace = body.autoWorkspace as AutoWorkspace;
+    writeAppSettings(dataDir, settings);
+    res.json({ pinnedSessions: settings.pinnedSessions ?? [], autoWorkspace: settings.autoWorkspace ?? "project" });
   });
   app.get("/api/settings/default-permission", (_req, res) => {
     res.json({ permission: readAppSettings(dataDir).defaultPermission ?? "smart" });

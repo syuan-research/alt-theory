@@ -1,4 +1,4 @@
-import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { isAgentTool, type AgentReference } from "../../../../shared/agent-tool-inspection";
 import { describeAgentToolInput, describeAgentToolResult } from "@/lib/agentToolCopy";
 import type {
@@ -37,7 +37,8 @@ import { fileMenuItems } from "@/lib/fileMenu";
 import { useFindTarget } from "@/lib/find";
 import { useMarks } from "@/components/conversation/useMarks";
 import { BookmarkAction } from "./BookmarkAction";
-import { loadBookmarks } from "@/lib/bookmarks";
+import { loadBookmarks, useBookmarks } from "@/lib/bookmarks";
+import { marksOf, railMarksOf, subscribeMarks } from "@/lib/marks";
 
 export function MessageList() {
   const conv = useConversationContext();
@@ -63,6 +64,8 @@ export function MessageList() {
   const [scrubbing, setScrubbing] = useState(false);
   /** The user row under the pointer while dragging the rail: its preview shows at `y`. */
   const [scrubTip, setScrubTip] = useState<{ rowId: string; preview: string; y: number } | null>(null);
+  /** The tick under the pointer (owner 2026-11-26): it darkens and shows its preview. */
+  const [hoverTick, setHoverTick] = useState(-1);
   /** A released rail jump to a row not loaded yet: loads down to it, then scrolls. */
   const [jumpTo, setJumpTo] = useState<string | null>(null);
 
@@ -81,6 +84,13 @@ export function MessageList() {
 
   // Every user row of the conversation, loaded or not (WP 2.2 ii).
   const userRows = conv.userRows;
+  // The rail shows each turn's bookmark (a dot) and mark colors (along the tick).
+  const bookmarks = useBookmarks(conv.sessionId);
+  const textMarks = useSyncExternalStore(subscribeMarks, () => marksOf(conv.sessionId));
+  const railMarks = useMemo(
+    () => railMarksOf(userRows, bookmarks.map((bookmark) => bookmark.row), textMarks),
+    [userRows, bookmarks, textMarks],
+  );
   const scrollToRow = (rowId: string) => {
     const container = containerRef.current;
     const target = container?.querySelector(`[data-row="${CSS.escape(rowId)}"]`);
@@ -90,26 +100,42 @@ export function MessageList() {
     return true;
   };
 
+  // The tick nearest the pointer; -1 below the last one (= the latest).
+  // Few ticks sit together mid-rail, many spread to its ends (owner 2026-11-25).
+  const tickAt = (clientY: number): number => {
+    const slots = railRef.current?.querySelectorAll<HTMLElement>(".tick-slot") ?? [];
+    let best = -1;
+    let distance = Infinity;
+    slots.forEach((slot, index) => {
+      const rect = slot.getBoundingClientRect();
+      const gap = Math.abs(rect.top + rect.height / 2 - clientY);
+      if (gap < distance) { distance = gap; best = index; }
+    });
+    const last = slots[slots.length - 1]?.getBoundingClientRect();
+    return last && clientY > last.bottom + 8 ? -1 : best;
+  };
+  const tipAt = (index: number, clientY: number) => {
+    const rail = railRef.current;
+    const row = userRows[index];
+    return rail && row ? { ...row, y: clientY - rail.getBoundingClientRect().top + rail.offsetTop } : null;
+  };
+
   // Map a pointer position on the rail to a user message: a loaded one
   // scrolls into view while dragging; one not loaded yet shows only its
   // preview, and loads (everything down to it) on release.
   const scrubTo = (clientY: number, release = false) => {
-    const rail = railRef.current;
     const container = containerRef.current;
-    if (!rail || !container || userRows.length === 0) return;
-    const rect = rail.getBoundingClientRect();
-    const ratio = Math.min(
-      1,
-      Math.max(0, (clientY - rect.top) / Math.max(1, rect.height)),
-    );
-    if (ratio >= 0.9) {
+    if (!container || userRows.length === 0) return;
+    const index = tickAt(clientY);
+    setHoverTick(index);
+    if (index < 0) {
       setScrubTip(null);
       stickToBottomRef.current = true;
       container.scrollTop = container.scrollHeight;
       return;
     }
-    const row = userRows[Math.round(ratio * (userRows.length - 1))];
-    setScrubTip(release ? null : { ...row, y: clientY - rect.top + rail.offsetTop });
+    const row = userRows[index];
+    setScrubTip(release ? null : tipAt(index, clientY));
     if (scrollToRow(row.rowId)) return;
     if (release) {
       setJumpTo(row.rowId);
@@ -182,7 +208,15 @@ export function MessageList() {
           scrubTo(event.clientY);
         }}
         onPointerMove={(event) => {
-          if (scrubbing) scrubTo(event.clientY);
+          if (scrubbing) { scrubTo(event.clientY); return; }
+          const index = tickAt(event.clientY);
+          setHoverTick(index);
+          setScrubTip(index < 0 ? null : tipAt(index, event.clientY));
+        }}
+        onPointerLeave={() => {
+          if (scrubbing) return;
+          setHoverTick(-1);
+          setScrubTip(null);
         }}
         onPointerUp={(event) => {
           setScrubbing(false);
@@ -191,14 +225,25 @@ export function MessageList() {
         onPointerCancel={() => {
           setScrubbing(false);
           setScrubTip(null);
+          setHoverTick(-1);
         }}
       >
-        {userRows.map((row) => (
-          <span key={row.rowId} className="tick" />
-        ))}
+        {userRows.map((row, index) => {
+          const mark = railMarks.get(row.rowId);
+          const colors = mark?.colors ?? [];
+          return (
+            <span key={row.rowId} className={cn("tick-slot", index === hoverTick && "hover")}>
+              {mark?.bookmark ? <span className="tick-dot" /> : null}
+              <span
+                className={cn("tick", colors.length > 0 && "marked")}
+                style={colors.length ? { background: colors.length === 1 ? colors[0] : `linear-gradient(90deg, ${colors.map((color, i) => `${color} ${(i * 100) / colors.length}% ${((i + 1) * 100) / colors.length}%`).join(", ")})` } : undefined}
+              />
+            </span>
+          );
+        })}
       </div>
     ) : null}
-    {scrubbing && scrubTip?.preview ? (
+    {scrubTip?.preview ? (
       <div className="scrub-tip" style={{ top: scrubTip.y }}>
         {scrubTip.preview}
       </div>

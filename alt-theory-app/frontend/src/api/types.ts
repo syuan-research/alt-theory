@@ -291,6 +291,8 @@ export interface TranscriptMessage {
 export interface TranscriptUserRow {
   rowId: string;
   preview: string;
+  /** The turn's other rows (the answer and its tools), for what the rail marks. */
+  replies?: string[];
 }
 
 /** A conversation's opening rows: its tail, whether older rows exist, every user row. */

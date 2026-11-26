@@ -414,3 +414,21 @@ export async function testConnectionFromDraft(input: {
     body: JSON.stringify(input),
   });
 }
+
+/** Left-list pins and when a click opens another workspace (owner 2026-11-26). */
+export interface NavigationSettings {
+  pinnedSessions: string[];
+  autoWorkspace: "always" | "family" | "project" | "never";
+}
+
+export function getNavigationSettings(): Promise<NavigationSettings> {
+  return fetchJson("/api/settings/navigation");
+}
+
+export function saveNavigationSettings(value: Partial<NavigationSettings>): Promise<NavigationSettings> {
+  return fetchJson("/api/settings/navigation", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(value),
+  });
+}

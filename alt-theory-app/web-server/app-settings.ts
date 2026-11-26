@@ -29,6 +29,9 @@ export const SKILL_PRECEDENCE_VALUES: SkillPrecedence[] = [
   "ask",
 ];
 
+export const AUTO_WORKSPACE = ["always", "family", "project", "never"] as const;
+export type AutoWorkspace = (typeof AUTO_WORKSPACE)[number];
+
 export interface AppSettings {
   schemaVersion: 1;
   /** Absent = "prefer-bundled". */
@@ -55,6 +58,10 @@ export interface AppSettings {
     folders: "name" | "modified";
     conversations: "name" | "modified";
   };
+  /** Conversations pinned above the list, in pin order (owner 2026-11-26). */
+  pinnedSessions?: string[];
+  /** When a list click opens another workspace (owner 2026-11-26). */
+  autoWorkspace?: AutoWorkspace;
   /**
    * Auto-naming of conversations (v1.2.1). Absent = enabled, using the session's
    * own model. A pinned `model` (recommended: a small one) overrides which model
@@ -245,6 +252,10 @@ export function readAppSettingsWithWarning(dataDir: string): {
         parsed.sessionListSort.conversations === "modified")
         ? { sessionListSort: parsed.sessionListSort }
         : {}),
+      ...(Array.isArray(parsed.pinnedSessions)
+        ? { pinnedSessions: parsed.pinnedSessions.filter((id: unknown): id is string => typeof id === "string" && Boolean(id)) }
+        : {}),
+      ...((AUTO_WORKSPACE as readonly unknown[]).includes(parsed.autoWorkspace) ? { autoWorkspace: parsed.autoWorkspace } : {}),
       // This normalizer whitelists fields, so anything not listed here is
       // silently dropped on read — autoTitle was, which made the auto-naming
       // settings write-only until alpha.3.

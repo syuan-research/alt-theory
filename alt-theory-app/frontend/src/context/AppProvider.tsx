@@ -10,8 +10,8 @@ import {
 } from "react";
 import { t } from "@/i18n";
 import { fetchDiscovery } from "@/api/discovery";
-import type { ProjectFolder } from "@/api/config";
-import { fetchAppInfo, getWorkingFolders } from "@/api/config";
+import type { NavigationSettings, ProjectFolder } from "@/api/config";
+import { fetchAppInfo, getNavigationSettings, getWorkingFolders, saveNavigationSettings } from "@/api/config";
 import { fetchSessionList } from "@/api/sessions";
 import type {
   DiscoveryLists,
@@ -110,6 +110,13 @@ export interface AppContextValue {
   repointSession: (sessionId: string, primaryDir: string | null) => Promise<void>;
   /** Change a project's main folder; every conversation of it moves. */
   repointProject: (projectId: string, primaryDir: string) => Promise<number>;
+
+  /** Conversations pinned above the list, in pin order (owner 2026-11-26). */
+  pinnedSessions: string[];
+  togglePin: (sessionId: string) => void;
+  /** When a list click opens another workspace. */
+  autoWorkspace: NavigationSettings["autoWorkspace"];
+  setAutoWorkspace: (mode: NavigationSettings["autoWorkspace"]) => void;
 
   /** Situational preset buttons (v1.4 round 1 experiment). */
   presetButtons: string[];
@@ -369,6 +376,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     void refreshWorkingFolders();
   }, [refreshWorkingFolders]);
 
+  // --- Pins and workspaces (owner 2026-11-26), kept in app settings ---
+  const [navigation, setNavigation] = useState<NavigationSettings>({ pinnedSessions: [], autoWorkspace: "project" });
+  useEffect(() => {
+    void getNavigationSettings().then(setNavigation).catch(() => undefined);
+  }, []);
+  const saveNavigation = useCallback((change: Partial<NavigationSettings>) => {
+    setNavigation((current) => ({ ...current, ...change }));
+    void saveNavigationSettings(change).then(setNavigation).catch((error) =>
+      window.alert(error instanceof Error ? error.message : String(error)));
+  }, []);
+  const togglePin = useCallback((sessionId: string) => {
+    const pins = navigation.pinnedSessions;
+    saveNavigation({ pinnedSessions: pins.includes(sessionId) ? pins.filter((id) => id !== sessionId) : [...pins, sessionId] });
+  }, [navigation.pinnedSessions, saveNavigation]);
+  const setAutoWorkspace = useCallback((autoWorkspace: NavigationSettings["autoWorkspace"]) => saveNavigation({ autoWorkspace }), [saveNavigation]);
+
   // --- Situational preset buttons (v1.4 round 1 experiment) ---
   // ponytail: config in localStorage, active state in memory only — promote
   // both to app settings / session records if the experiment graduates.
@@ -530,6 +553,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       removeKnownWorkspace,
       repointSession,
       repointProject,
+      pinnedSessions: navigation.pinnedSessions,
+      togglePin,
+      autoWorkspace: navigation.autoWorkspace,
+      setAutoWorkspace,
       presetButtons,
       setPresetButtons,
       presetState,
@@ -567,6 +594,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       removeKnownWorkspace,
       repointSession,
       repointProject,
+      navigation,
+      togglePin,
+      setAutoWorkspace,
       presetButtons,
       setPresetButtons,
       presetState,

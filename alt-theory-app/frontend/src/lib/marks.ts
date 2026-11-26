@@ -107,6 +107,17 @@ function rangeOf(row: RowText, start: number, end: number): Range | null {
 
 const cache = new Map<string, TextMark[]>();
 const loading = new Map<string, Promise<TextMark[]>>();
+const listeners = new Set<() => void>();
+const NO_MARKS: TextMark[] = [];
+
+/** For a reader of the marks list (the scrub rail): the session's marks as loaded. */
+export function marksOf(sessionId: string | null): TextMark[] {
+  return (sessionId && cache.get(sessionId)) || NO_MARKS;
+}
+export function subscribeMarks(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
 
 function load(sessionId: string): Promise<TextMark[]> {
   const cached = cache.get(sessionId);
@@ -117,6 +128,7 @@ function load(sessionId: string): Promise<TextMark[]> {
       .then((marks) => {
         cache.set(sessionId, marks);
         schedulePaint();
+        listeners.forEach((listener) => listener());
         return marks;
       })
       .finally(() => loading.delete(sessionId));
@@ -130,6 +142,7 @@ const saving = new Map<string, Promise<void>>();
 async function update(sessionId: string, change: (marks: TextMark[]) => TextMark[]): Promise<void> {
   cache.set(sessionId, change(await load(sessionId)));
   schedulePaint();
+  listeners.forEach((listener) => listener());
   // One save at a time per session, each sending the latest list, so a
   // slow earlier save can never land after a later one and drop a mark.
   const next = (saving.get(sessionId) ?? Promise.resolve())
@@ -260,3 +273,42 @@ export function recolorMark(sessionId: string, target: TextMark, kind: MarkKind)
   return update(sessionId, (marks) => marks.map((mark) => (mark === target ? { ...mark, kind } : mark)));
 }
 
+
+// ---- the scrub rail -------------------------------------------------------
+
+/** What the scrub rail shows for one turn (owner 2026-11-26): a dot when
+ *  something in it is bookmarked, and its marks' colors along the tick
+ *  (underline and strikethrough as one neutral color). */
+export interface RailMark {
+  bookmark: boolean;
+  colors: string[];
+}
+
+export function railMarksOf(
+  turns: readonly { rowId: string; replies?: string[] }[],
+  bookmarkRows: readonly string[],
+  marks: readonly TextMark[],
+): Map<string, RailMark> {
+  const turnOf = new Map<string, string>();
+  for (const turn of turns) {
+    turnOf.set(turn.rowId, turn.rowId);
+    for (const row of turn.replies ?? []) turnOf.set(row, turn.rowId);
+  }
+  const out = new Map<string, RailMark>();
+  const at = (row: string) => {
+    const turn = turnOf.get(row.replace(/#thinking$/, ""));
+    if (!turn) return null;
+    if (!out.has(turn)) out.set(turn, { bookmark: false, colors: [] });
+    return out.get(turn)!;
+  };
+  for (const row of bookmarkRows) {
+    const mark = at(row);
+    if (mark) mark.bookmark = true;
+  }
+  for (const mark of marks) {
+    const rail = at(mark.row);
+    const color = isColorMark(mark.kind) ? `var(--${mark.kind})` : "var(--text-3)";
+    if (rail && !rail.colors.includes(color)) rail.colors.push(color);
+  }
+  return out;
+}

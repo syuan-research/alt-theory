@@ -5,13 +5,14 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { syncTitlebarTheme } from "@/lib/native";
 import { useVersions } from "@/lib/versions";
 import { paneMemory } from "@/lib/paneMemory";
-import { INITIAL_PANE, navigate, type FileTarget, type OpenFile, type RailKey, type ViewTarget } from "@/lib/viewTarget";
+import { INITIAL_PANE, navigate, type FileTarget, type OpenFile, type PaneState, type RailKey, type ViewTarget } from "@/lib/viewTarget";
 import { usePaneLayout } from "@/lib/usePaneLayout";
 import type { PreviewMode } from "@/lib/fileContent";
 
@@ -56,6 +57,10 @@ export interface ShellContextValue {
   openTarget: (target: ViewTarget, view?: PreviewMode) => void;
   /** The user renamed a file: an open copy follows it. */
   renameFile: (from: FileTarget, to: FileTarget) => void;
+  /** The right pane as it is now, for a workspace that goes off show. */
+  paneSnapshot: () => PaneState;
+  /** A workspace comes on show with its right pane (null = a fresh one). */
+  restorePane: (pane: PaneState | null) => void;
   /** Back: to where the user came from, else to the rail's list. */
   closeTarget: () => void;
   /** The open files (owner 2026-11-25), oldest first, and the key of the one on show. */
@@ -203,6 +208,10 @@ export function ShellProvider({ children }: { children: ReactNode }) {
 
   const openTarget = useCallback((target: ViewTarget, view?: PreviewMode) => dispatchPane({ type: "open", target, view }), []);
   const renameFile = useCallback((from: FileTarget, to: FileTarget) => dispatchPane({ type: "renameFile", from, to }), []);
+  const paneRef = useRef(pane);
+  paneRef.current = pane;
+  const paneSnapshot = useCallback(() => paneRef.current, []);
+  const restorePane = useCallback((next: PaneState | null) => dispatchPane({ type: "restore", pane: next }), []);
   const closeFile = useCallback((key: string) => dispatchPane({ type: "closeFile", key }), []);
   const activateFile = useCallback((key: string) => dispatchPane({ type: "activateFile", key }), []);
   const setFileView = useCallback((key: string, view: PreviewMode) => dispatchPane({ type: "fileView", key, view }), []);
@@ -242,6 +251,8 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       target: pane.target,
       openTarget,
       renameFile,
+      paneSnapshot,
+      restorePane,
       closeTarget,
       openedFiles: pane.openFiles,
       activeFile: pane.activeFile,
@@ -288,6 +299,8 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       closeRight,
       openTarget,
       renameFile,
+      paneSnapshot,
+      restorePane,
       closeTarget,
       closeFile,
       activateFile,

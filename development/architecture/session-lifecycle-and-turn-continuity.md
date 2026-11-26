@@ -654,7 +654,11 @@ loaded above the view and keep the formerly first row in place when it lands
 (`hooks/useEarlierRows.ts`; the transcript has `overflow-anchor: none`).
 A jump asks for everything from a row down to the window at once
 (`transcript_page { before, from }`, `from = "start"` for all): the scrub rail
-draws a tick per user row from `userRows`, shows the row's preview while
+draws a tick per user row from `userRows` (few sit together mid-rail at a
+fixed pitch, many spread and shrink), marks a turn holding a bookmark with a
+dot and carries its mark colors along the tick (`railMarksOf`; each user row
+lists its turn's `replies` so a mark on an unloaded answer still lands),
+darkens the tick under the pointer and shows its preview while hovering or
 dragging, scrolls to a loaded row at once and loads down to an unloaded one on
 release. Ctrl+F finds in the loaded rows; while older rows exist its bar
 offers "Search whole conversation", which loads them all and searches the

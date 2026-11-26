@@ -19,9 +19,12 @@ export function userRowPreview(text: string): string {
 }
 
 export function userRowsOf(messages: readonly TranscriptMessage[]): TranscriptUserRow[] {
-  return messages.flatMap((message, index) =>
-    message.role === "user" ? [{ rowId: message.rowId ?? `row-${index}`, preview: userRowPreview(message.text) }] : [],
-  );
+  const rows: TranscriptUserRow[] = [];
+  messages.forEach((message, index) => {
+    if (message.role === "user") rows.push({ rowId: message.rowId ?? `row-${index}`, preview: userRowPreview(message.text), replies: [] });
+    else if (message.rowId && rows.length) rows[rows.length - 1].replies!.push(message.rowId);
+  });
+  return rows;
 }
 
 /**

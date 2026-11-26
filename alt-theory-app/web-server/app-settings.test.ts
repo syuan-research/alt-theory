@@ -287,3 +287,15 @@ test("app settings migrate in place: projects gain ids and names, legacy known f
   assert.equal(reread.workingFolders?.projects[0].id, climate.id);
   assert.equal((reread as { knownWorkspaces?: string[] }).knownWorkspaces, undefined);
 });
+
+test("navigation settings: pins and auto workspace survive a read; junk is dropped", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-settings-nav-"));
+  writeFileSync(join(dataDir, "app-settings.json"), JSON.stringify({
+    schemaVersion: 1, pinnedSessions: ["a", 3, "", "b"], autoWorkspace: "family",
+  }));
+  const settings = readAppSettings(dataDir);
+  assert.deepEqual(settings.pinnedSessions, ["a", "b"]);
+  assert.equal(settings.autoWorkspace, "family");
+  writeFileSync(join(dataDir, "app-settings.json"), JSON.stringify({ schemaVersion: 1, autoWorkspace: "sometimes" }));
+  assert.equal(readAppSettings(dataDir).autoWorkspace, undefined);
+});

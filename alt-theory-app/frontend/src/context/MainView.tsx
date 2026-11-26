@@ -24,6 +24,8 @@ import { useConversation, type Conversation } from "@/hooks/useConversation";
 import { t } from "@/i18n";
 import { notifyBackground } from "@/lib/notify";
 import { discardDraft, NEW_DRAFT, updateDraft } from "@/lib/draft";
+import { familyKeyOf } from "@/lib/sessionList";
+import { chooseSlot, type Place, type Slot } from "@/lib/workspaces";
 
 /**
  * The main view: which conversation the center shows, and what follows from
@@ -38,8 +40,14 @@ export interface MainViewValue {
   /** Conversations that changed state while you were looking elsewhere. */
   sessionAlerts: Record<string, SessionAlert>;
   markSessionRead: (sessionId: string) => void;
-  /** False when nothing was sent (same session, cannot open, socket down). */
-  openCatalogSession: (sessionId: string) => boolean;
+  /** False when nothing was sent (same session, cannot open, socket down).
+   *  The auto-workspace setting decides which workspace it opens in;
+   *  `newWorkspace` (Cmd/Ctrl+click, menu) always opens a new one. */
+  openCatalogSession: (sessionId: string, options?: { newWorkspace?: boolean }) => boolean;
+  /** The workspaces (lib/workspaces.ts); the list shows them once there are two. */
+  workspaces: Array<{ id: number; sessionId: string | null; active: boolean }>;
+  switchWorkspace: (id: number) => void;
+  closeWorkspace: (id: number) => void;
   startNewSession: () => void;
   compactCurrentSession: () => void;
   forkCurrentSession: (purpose: "fork" | "side" | "ab-arm", seedPrompt?: string) => void;
@@ -178,11 +186,32 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
     if (sessionId) markSessionRead(sessionId);
   }, [sessionId]);
 
+  // Workspaces: only the one on show is live; the others keep their
+  // conversation and right pane until they come back on show.
+  const [slots, setSlots] = useState<Slot[]>([{ id: 1, sessionId: null, pane: null }]);
+  const [activeSlot, setActiveSlot] = useState(1);
+  const nextSlot = useRef(2);
+  const liveSessionId = conv.opening ?? sessionId;
+  const placeOf = useCallback((id: string): Place | null => {
+    const byId = new Map(app.sessions.map((item) => [item.sessionId, item]));
+    const summary = byId.get(id);
+    return summary ? { project: summary.workspacePrimaryDir ?? "", family: familyKeyOf(summary, byId) } : null;
+  }, [app.sessions]);
+  const leaveSlot = useCallback(() => {
+    const pane = shell.paneSnapshot();
+    setSlots((current) => current.map((slot) => slot.id === activeSlot ? { ...slot, sessionId: liveSessionId, pane } : slot));
+  }, [activeSlot, liveSessionId, shell.paneSnapshot]);
+  const showSlot = useCallback((slot: Slot, target: string | null): boolean => {
+    shell.restorePane(slot.pane);
+    setActiveSlot(slot.id);
+    if (target) return conv.open(target);
+    conv.startNew();
+    return true;
+  }, [conv, shell.restorePane]);
+
   const openCatalogSession = useCallback(
-    (target: string): boolean => {
+    (target: string, options?: { newWorkspace?: boolean }): boolean => {
       if (!target) return false;
-      // Re-clicking the open conversation still brings the center back.
-      if (target === sessionId) { shell.layout.showCenter(); return false; }
       const summary = app.sessions.find((item) => item.sessionId === target);
       // A conversation still in its first turn has no file yet but is live
       // on the server, so it opens; an idle one without a file does not.
@@ -190,9 +219,49 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
         conv.notify({ kind: "text", text: t("Conversation cannot be opened.") });
         return false;
       }
-      return conv.open(target);
+      const choice = chooseSlot(slots, activeSlot, liveSessionId, target, placeOf, app.autoWorkspace, Boolean(options?.newWorkspace));
+      if (choice.kind === "here") {
+        // Re-clicking the open conversation still brings the center back.
+        if (target === sessionId) { shell.layout.showCenter(); return false; }
+        return conv.open(target);
+      }
+      leaveSlot();
+      if (choice.kind === "switch") {
+        const slot = slots.find((item) => item.id === choice.id)!;
+        return showSlot(slot, target);
+      }
+      const slot: Slot = { id: nextSlot.current++, sessionId: target, pane: null };
+      setSlots((current) => [...current, slot]);
+      return showSlot(slot, target);
     },
-    [app.sessions, conv, sessionId, shell.layout.showCenter],
+    [app.sessions, app.autoWorkspace, conv, sessionId, liveSessionId, slots, activeSlot, placeOf, leaveSlot, showSlot, shell.layout.showCenter],
+  );
+
+  const switchWorkspace = useCallback((id: number) => {
+    if (id === activeSlot) { shell.layout.showCenter(); return; }
+    const slot = slots.find((item) => item.id === id);
+    if (!slot) return;
+    leaveSlot();
+    showSlot(slot, slot.sessionId);
+  }, [activeSlot, slots, leaveSlot, showSlot, shell.layout.showCenter]);
+
+  const closeWorkspace = useCallback((id: number) => {
+    if (slots.length < 2) return;
+    const at = slots.findIndex((item) => item.id === id);
+    if (id === activeSlot) {
+      const next = slots[at + 1] ?? slots[at - 1];
+      showSlot(next, next.sessionId);
+    }
+    setSlots((current) => current.filter((item) => item.id !== id));
+  }, [activeSlot, slots, showSlot]);
+
+  const workspaces = useMemo(
+    () => slots.map((slot) => ({
+      id: slot.id,
+      sessionId: slot.id === activeSlot ? liveSessionId : slot.sessionId,
+      active: slot.id === activeSlot,
+    })),
+    [slots, activeSlot, liveSessionId],
   );
 
   const startNewSession = useCallback(() => {
@@ -268,6 +337,8 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
         // A deleted conversation takes its draft with it.
         deletedIds.forEach(discardDraft);
         if (sessionId && deletedIds.includes(sessionId)) conv.startNew();
+        // A workspace off show whose conversation is gone goes with it.
+        setSlots((current) => current.filter((slot) => slot.id === activeSlot || !slot.sessionId || !deletedIds.includes(slot.sessionId)));
         // Nothing of a deleted conversation stays on show or comes back.
         shell.forgetConversations(deletedIds);
         await app.refreshSessions();
@@ -279,7 +350,7 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
         });
       }
     },
-    [app, conv, sessionId, shell.forgetConversations],
+    [app, conv, sessionId, activeSlot, shell.forgetConversations],
   );
 
   const value = useMemo<MainViewValue>(
@@ -289,6 +360,9 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
       sessionAlerts,
       markSessionRead,
       openCatalogSession,
+      workspaces,
+      switchWorkspace,
+      closeWorkspace,
       startNewSession,
       compactCurrentSession,
       forkCurrentSession,
@@ -308,6 +382,9 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
       sessionAlerts,
       markSessionRead,
       openCatalogSession,
+      workspaces,
+      switchWorkspace,
+      closeWorkspace,
       startNewSession,
       compactCurrentSession,
       forkCurrentSession,

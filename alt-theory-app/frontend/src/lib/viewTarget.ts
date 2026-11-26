@@ -154,7 +154,9 @@ export type PaneAction =
   | { type: "activateFile"; key: string }
   | { type: "fileView"; key: string; view: PreviewMode }
   /** The user renamed a file: an open copy follows it, in place. */
-  | { type: "renameFile"; from: FileTarget; to: FileTarget };
+  | { type: "renameFile"; from: FileTarget; to: FileTarget }
+  /** Another workspace comes on show: its pane, or a fresh one on the rail open now. */
+  | { type: "restore"; pane: PaneState | null };
 
 export const INITIAL_PANE: PaneState = {
   rail: null,
@@ -278,6 +280,8 @@ export function navigate(state: PaneState, action: PaneAction): PaneState {
       return state.openFiles.some((open) => open.key === action.key)
         ? { ...place(state, "open", null, null), activeFile: action.key }
         : state;
+    case "restore":
+      return action.pane ?? { ...INITIAL_PANE, rail: state.rail, lastRail: state.lastRail };
     case "renameFile": {
       const from = fileIdentity(action.from);
       const key = fileIdentity(action.to);

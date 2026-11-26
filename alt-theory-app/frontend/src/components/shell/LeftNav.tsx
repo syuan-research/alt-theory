@@ -429,7 +429,8 @@ function SessionRootList({
   onToggleExpanded: () => void;
   foldedFamilies: Set<string>;
   onToggleFamily: (id: string) => void;
-  onOpen: (id: string) => void;
+  /** `newWorkspace`: Cmd/Ctrl+click or the menu's Open in new workspace. */
+  onOpen: (id: string, newWorkspace?: boolean) => void;
   draggable: boolean;
   cap?: number;
   emptyLabel?: string;
@@ -667,9 +668,10 @@ function UserNav({ onImport }: { onImport: () => void }) {
       return next;
     });
 
-  const openSession = (id: string) => {
+  // A plain click follows the auto-workspace setting; newWorkspace always opens one.
+  const openSession = (id: string, newWorkspace = false) => {
     shell.openApp();
-    main.openCatalogSession(id);
+    main.openCatalogSession(id, { newWorkspace });
   };
 
   const openContentHit = (session: SessionSummary) => {
@@ -989,6 +991,64 @@ function UserNav({ onImport }: { onImport: () => void }) {
           <div className="rp-empty">{app.sessionsError}</div>
         ) : (
           <>
+            {/* Workspaces once there are two, then pins once there is one
+                (owner 2026-11-26); neither shows while the list is filtered. */}
+            {visibleIds === null && main.workspaces.length > 1 ? (
+              <div>
+                <div className="workspace-list-head"><span className="workspace-list-title"><i className="ph ph-squares-four section-icon" aria-hidden="true" /><span className="lbl">{t("Workspaces")}</span></span></div>
+                {main.workspaces.map((workspace) => {
+                  const summary = workspace.sessionId ? sessionsById.get(workspace.sessionId) : undefined;
+                  const title = summary ? sessionTitle(summary, app.sessionDisplayNames, app.sessions) : t("New conversation");
+                  const dir = summary?.workspacePrimaryDir;
+                  const place = dir ? projectByDir.get(dir)?.name ?? folderLabel(dir) : t("Standalone");
+                  return (
+                    <div className="session-row workspace-row" key={workspace.id}>
+                      <button
+                        type="button"
+                        className={`sess${workspace.active ? " active" : ""}`}
+                        data-tip={`${title} · ${place}`}
+                        onClick={() => { shell.openApp(); main.switchWorkspace(workspace.id); }}
+                      >
+                        <span className="s-title">{title}</span>
+                        <span className="workspace-place">{place}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="workspace-close"
+                        aria-label={t("Close workspace")}
+                        data-tip={t("Close workspace")}
+                        onClick={() => main.closeWorkspace(workspace.id)}
+                      >
+                        <i className="ph ph-x" aria-hidden="true" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+            {(() => {
+              if (visibleIds !== null) return null;
+              const pins = app.pinnedSessions
+                .map((id) => sessionsById.get(id))
+                .filter((item): item is SessionSummary => Boolean(item && !item.deletedAt));
+              if (!pins.length) return null;
+              return (
+                <div>
+                  <div className="workspace-list-head"><span className="workspace-list-title"><i className="ph ph-push-pin section-icon" aria-hidden="true" /><span className="lbl">{t("Pinned")}</span></span></div>
+                  {pins.map((pin) => (
+                    <SessionNode
+                      key={pin.sessionId}
+                      session={pin}
+                      childrenByParent={NO_CHILDREN}
+                      indent={0}
+                      onOpen={openSession}
+                      foldedFamilies={foldedFamilies}
+                      onToggleFamily={toggleFamily}
+                    />
+                  ))}
+                </div>
+              );
+            })()}
             {(() => {
               const looseLabel = t("Standalone conversations");
               const folderHit = searchScope === "names" && visibleIds !== null &&
@@ -1326,6 +1386,8 @@ function UserNav({ onImport }: { onImport: () => void }) {
   );
 }
 
+const NO_CHILDREN = new Map<string, SessionSummary[]>();
+
 function SessionNode({
   session,
   childrenByParent,
@@ -1340,7 +1402,8 @@ function SessionNode({
   session: SessionSummary;
   childrenByParent: Map<string, SessionSummary[]>;
   indent: number;
-  onOpen: (id: string) => void;
+  /** `newWorkspace`: Cmd/Ctrl+click or the menu's Open in new workspace. */
+  onOpen: (id: string, newWorkspace?: boolean) => void;
   /** Rail filter result; null shows everything. */
   visibleIds?: Set<string> | null;
   previewIds?: Set<string>;
@@ -1415,7 +1478,10 @@ function SessionNode({
     confirmLabel: t("Delete entire family"),
     onConfirm: () => main.deleteSessionFamily(session.sessionId),
   });
+  const pinned = app.pinnedSessions.includes(session.sessionId);
   const contextItems = (): ContextMenuItem[] => [
+    { label: t("Open in new workspace"), icon: "ph-squares-four", onSelect: () => onOpen(session.sessionId, true) },
+    { label: pinned ? t("Unpin") : t("Pin"), icon: pinned ? "ph-push-pin-slash" : "ph-push-pin", onSelect: () => app.togglePin(session.sessionId) },
     ...(session.forkedFrom && session.forkedFrom.purpose !== "fork" && isListMember(session) ? [{
       label: t("Hide from conversation list"), icon: "ph-list-minus", onSelect: () => void main.setRelatedSessionListed(session.sessionId, false),
     }] : []),
@@ -1479,7 +1545,7 @@ function SessionNode({
             data-session-id={session.sessionId}
             data-find-attention="center"
             style={{ paddingLeft: 28 + indent * 16 }}
-            onClick={() => onOpen(session.sessionId)}
+            onClick={(event) => onOpen(session.sessionId, event.metaKey || event.ctrlKey)}
             onContextMenu={(event) => menu.open(event, contextItems())}
             onKeyDown={(event) => {
               if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
@@ -1533,66 +1599,16 @@ function SessionNode({
             <i className="ph ph-dots-three" />
           </summary>
           <div className="list-menu">
-            {canTakeMainline(session, app.sessions) ? (
-              <button
-                onClick={(e) => {
-                  closeMenu(e);
-                  promote();
-                }}
-                data-tip={t("This conversation takes the list spot; the current one stays available from its Related rail.")}
-              >
-                <i className="ph ph-crown-simple" />
-                {t("Make this the main conversation")}
-              </button>
-            ) : null}
-            <button
-              onClick={(e) => {
-                closeMenu(e);
-                rename();
-              }}
-            >
-              <i className="ph ph-pencil-simple" />
-              {t("Rename")}
-            </button>
-            <button
-              onClick={(e) => {
-                closeMenu(e);
-                main.duplicateSession(session.sessionId);
-              }}
-            >
-              <i className="ph ph-copy" />
-              {t("Duplicate")}
-            </button>
-            <button onClick={(event) => { closeMenu(event); remove(); }}>
-              <i className="ph ph-trash" />
-              {t("Delete")}
-            </button>
-            <button onClick={(event) => { closeMenu(event); removeFamily(); }}>
-              <i className="ph ph-tree-structure" />
-              {t("Delete entire family")}
-            </button>
-            <div className="sep" />
-            <button
-              onClick={(e) => {
-                closeMenu(e);
-                void exportMarkdown();
-              }}
-            >
-              <i className="ph ph-download-simple" />
-              {t("Export Markdown")}
-            </button>
-            <button onClick={(event) => { closeMenu(event); void copyText(session.sessionId); }}>
-              <i className="ph ph-identification-card" />
-              {t("Copy Session ID")}
-            </button>
-            <button onClick={(event) => { closeMenu(event); copySessionFolder(); }}>
-              <i className="ph ph-copy" />
-              {t("Copy session folder path")}
-            </button>
-            <button onClick={(event) => { closeMenu(event); openSessionFolder(); }}>
-              <i className="ph ph-folder-open" />
-              {t("Open session folder")}
-            </button>
+            {/* The same items as the right-click menu: one list, two ways in. */}
+            {contextItems().map((item) => (
+              <Fragment key={item.label}>
+                {item.separator ? <div className="sep" /> : null}
+                <button onClick={(event) => { closeMenu(event); item.onSelect(); }}>
+                  {item.icon ? <i className={`ph ${item.icon}`} /> : null}
+                  {item.label}
+                </button>
+              </Fragment>
+            ))}
           </div>
         </details>
         ) : null}

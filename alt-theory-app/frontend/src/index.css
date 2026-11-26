@@ -667,6 +667,11 @@
   .group-label .group-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* 左栏项目名试等宽（owner 2026-09-08）：仅左栏（.ws），组行角色其他两处不随 */
   .group-label.ws .group-name { font-family: var(--mono); }
+  /* Workspaces section (owner 2026-11-26): where the row's conversation lives, and a close on hover. */
+  .workspace-row .workspace-place { margin-left: auto; flex: 0 1 auto; max-width: 40%; overflow: hidden; text-overflow: ellipsis; padding-left: var(--space-tight); font-size: var(--fs-secondary); font-weight: 400; color: var(--text-3); }
+  .workspace-close { flex: 0 0 auto; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: var(--r-sm); background: transparent; color: var(--text-3); cursor: pointer; opacity: 0; }
+  .workspace-row:hover .workspace-close, .workspace-close:focus-visible { opacity: 1; }
+  .workspace-close:hover { background: var(--hover); color: var(--ink); }
   .session-row {
     display: flex;
     align-items: center;
@@ -791,9 +796,18 @@
   .msgs { flex: 1; overflow-y: auto; padding: var(--space-page) 0 var(--space-page); overflow-anchor: none; }
 
   /* user-message scrubber: tick rail, faint at rest, full on hover (M4) */
-  .scrub-rail { position: absolute; right: 18px; top: 36px; bottom: 36px; width: 16px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; opacity: 0.3; transition: opacity 0.15s; cursor: pointer; z-index: 30; touch-action: none; }
-  .scrub-rail:hover, .scrub-rail.dragging { opacity: 1; }
-  .scrub-rail .tick { width: 9px; height: 1px; border-radius: 1px; background: var(--text-3); pointer-events: none; }
+  /* Few ticks sit together mid-rail at a fixed pitch, more spread toward the
+     ends, too many shrink (owner 2026-11-25). A dot = something in the turn
+     is bookmarked; the tick carries the turn's mark colors; the tick under
+     the pointer darkens (owner 2026-11-26). Plain ticks stay faint at rest. */
+  .scrub-rail { position: absolute; right: 14px; top: 36px; bottom: 36px; width: 22px; box-sizing: border-box; padding-bottom: 16px; display: flex; flex-direction: column; justify-content: center; cursor: pointer; z-index: 30; touch-action: none; }
+  .scrub-rail .tick-slot { flex: 0 1 12px; min-height: 2px; display: flex; align-items: center; justify-content: flex-end; gap: 3px; pointer-events: none; }
+  .scrub-rail .tick { width: 9px; height: 1px; border-radius: 1px; background: var(--text-3); opacity: 0.3; transition: opacity 0.15s; }
+  .scrub-rail .tick.marked { height: 3px; opacity: 1; }
+  .scrub-rail .tick-dot { width: 4px; height: 4px; flex: 0 0 4px; border-radius: 50%; background: #4676ad; }
+  .scrub-rail:hover .tick, .scrub-rail.dragging .tick { opacity: 1; }
+  .scrub-rail .tick-slot.hover .tick { width: 13px; height: 2px; background: var(--ink); }
+  .scrub-rail .tick-slot.hover .tick.marked { height: 4px; box-shadow: 0 0 0 1px var(--ink); }
   /* the user message under the pointer while dragging the rail (WP 2.2 ii) */
   .scrub-tip { position: absolute; right: 44px; max-width: 320px; transform: translateY(-50%); padding: var(--space-tight) var(--space-control); background: var(--card-2); border: 1px solid var(--hairline); border-radius: var(--r-md); font-size: var(--fs-secondary); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; z-index: 31; }
   .tool-result { margin-top: var(--space-tight); }

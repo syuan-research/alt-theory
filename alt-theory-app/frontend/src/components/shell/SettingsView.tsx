@@ -1228,12 +1228,39 @@ function GeneralPanel() {
           />
         </div>
       </div>
+      <AutoWorkspaceCard />
       <DefaultPermissionCard />
       <ApprovalReviewerCard />
       <CommandAllowlistCard />
       <AutoTitleCard />
       <NativePiSkillsCard />
       <RuntimeCard />
+    </div>
+  );
+}
+
+/** When a list click opens another workspace (owner 2026-11-26). */
+function AutoWorkspaceCard() {
+  const app = useApp();
+  return (
+    <div className="set-card">
+      <div className="row2">
+        <div>
+          <h4>{t("New workspace")}</h4>
+          <p>{t("Cmd/Ctrl+click always opens one.")}</p>
+        </div>
+        <MenuSelect
+          ariaLabel={t("New workspace")}
+          value={app.autoWorkspace}
+          options={[
+            { value: "project", label: t("Across projects") },
+            { value: "family", label: t("Across families") },
+            { value: "always", label: t("Every conversation") },
+            { value: "never", label: t("Never automatically") },
+          ]}
+          onChange={(value) => app.setAutoWorkspace(value as typeof app.autoWorkspace)}
+        />
+      </div>
     </div>
   );
 }
