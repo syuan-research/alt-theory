@@ -33,6 +33,7 @@ import { MarksPanel } from "@/components/inspector/MarksPanel";
 import { MenuButton, NameForm } from "@/components/inspector/FolderList";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 import { TabStrip } from "@/components/shell/TabStrip";
+import { SlideMark } from "@/components/ui/SlideMark";
 import { fetchSessionDetail, promoteToMainline } from "@/api/sessions";
 import { copyText } from "@/lib/clipboard";
 import { revealPath } from "@/lib/native";
@@ -64,6 +65,7 @@ export function InspectorPanel() {
   const advanced = app.viewMode === "researcher";
   const open = shell.rightPanel !== null;
   const active = shell.rightPanel;
+  const railRef = useRef<HTMLDivElement>(null);
 
   const attentionCount = related.visible.filter((row) => {
     const state = conversationState(row.runStatus, main.sessionAlerts[row.session.sessionId]);
@@ -210,6 +212,7 @@ export function InspectorPanel() {
       </div>
       <div
         className="rail"
+        ref={railRef}
         // Double-clicking the collapsed strip's empty space opens the pane.
         onDoubleClick={(event) => {
           if (!open && !(event.target as HTMLElement).closest("button")) shell.reopenRight();
@@ -242,6 +245,7 @@ export function InspectorPanel() {
               </button>
             ))
           : null}
+        <SlideMark within={railRef} at={active} />
       </div>
     </aside>
   );

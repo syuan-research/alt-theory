@@ -9,6 +9,7 @@ import { PermissionChip } from "@/components/conversation/PermissionChip";
 import { useComposerRow } from "@/components/conversation/useComposerRow";
 import { ContextRing } from "@/components/conversation/ContextRing";
 import { CtxPicker } from "@/components/conversation/CtxPicker";
+import { ComposerDeck } from "@/components/conversation/ComposerDeck";
 import { QueuedCards } from "@/components/conversation/QueuedCards";
 import { ContinueButton, hasRunNotes, NoticeLine, RunStatusSlot } from "@/components/conversation/RunNotes";
 import { SlashPalette, SkillDraftChip, useSlashCommands, useSlashPalette } from "@/components/conversation/SlashPalette";
@@ -304,194 +305,168 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
 
         <QueuedCards onEdit={() => window.setTimeout(() => textareaRef.current?.focus(), 0)} />
 
-        <div className="ctx-line">
-          {/* Owner design: the Steer bar REPLACES the role/KB controls while
-              open — they rarely change mid-conversation, and stacking rows
-              is the thing to avoid. The toggle stays visible to bring them
-              back. */}
-          {presetOpen && variant === "live" ? (
-            <div className="preset-bar">
-              {app.presetButtons.map((name) => {
-                const active =
-                  app.presetState &&
-                  app.presetState.sessionId === conv.sessionId &&
-                  app.presetState.name === name
-                    ? app.presetState
-                    : null;
-                // Tooltip = this skill's own job (owner 2026-08-05); what
-                // "steer" means lives on the Steer toggle, not on every chip.
-                const skill = (app.discovery?.skills ?? []).find(
-                  (skill) => skill.name === name,
-                );
-                const label = skill?.displayName ?? name;
-                const description = skill?.description;
-                const skillLine = description
-                  ? `${label} — ${description}`
-                  : label;
-                return (
-                  <button
-                    key={name}
-                    className={`preset-btn${active ? (active.locked ? " locked" : " on") : ""}`}
-                    style={
-                      active && !active.locked
-                        ? {
-                            opacity:
-                              0.5 + 0.5 * (active.turnsLeft / PRESET_TURNS),
-                          }
-                        : undefined
-                    }
-                    disabled={!interactive}
-                    data-tip={
-                      active
-                        ? `${skillLine}\n${
-                            active.locked
-                              ? t("Locked — click to release on your next message")
-                              : t("Active for {count} more turns — click to lock", { count: active.turnsLeft })
-                          }`
-                        : skillLine
-                    }
-                    onClick={() => conv.sessionId && app.pressPreset(conv.sessionId, name)}
+        <ComposerDeck
+          front={presetOpen && variant === "live" ? "steer" : "set"}
+          onFront={(key) => { if ((key === "steer") !== presetOpen) togglePresetOpen(); }}
+          cards={[
+            {
+              key: "set",
+              name: t("Role and knowledge"),
+              icon: "ph-user-circle",
+              content: (
+                <>
+                  <CtxPicker
+                    className="role-picker"
+                    icon="ph-user-circle"
+                    label={roleLabel}
+                    open={menu === "role"}
+                    onToggle={() => toggle("role")}
+                    disabled={altControlsDisabled}
+                    pending={conv.pendingChanges.rolePresetSlug !== undefined}
                   >
-                    <span className="preset-label">{label}</span>
-                    {active?.locked ? (
-                      <i className="ph ph-lock-simple" aria-hidden="true" />
-                    ) : null}
-                  </button>
-                );
-              })}
-              <CtxPicker
-                icon="ph-gear"
-                label={t("Choose buttons")}
-                open={menu === "presetcfg"}
-                onToggle={() => toggle("presetcfg")}
-              >
-                {(app.discovery?.skills ?? [])
-                  // Steer offers bundled skills only for now (owner 2026-08-05,
-                  // tentative): steer semantics are written for them; most
-                  // users don't author their own skills yet.
-                  .filter((skill) => skill.source === "alt-theory")
-                  .filter((skill) => skill.enabled !== false)
-                  .map((skill) => {
-                    const picked = app.presetButtons.includes(skill.name);
-                    return (
-                      <button
-                        type="button"
-                        key={skill.name}
-                        className={`mi${!picked && app.presetButtons.length >= 5 ? " disabled" : ""}`}
-                        onClick={() =>
-                          app.setPresetButtons(
-                            picked
-                              ? app.presetButtons.filter((n) => n !== skill.name)
-                              : app.presetButtons.length >= 5
-                                ? app.presetButtons
-                                : [...app.presetButtons, skill.name],
-                          )
-                        }
-                      >
-                        <span>{skill.displayName ?? skill.name}</span>
-                        {picked ? <i className="ph ph-check check" /> : null}
+                    {(app.discovery?.rolePresets ?? []).map((r) => (
+                      <button type="button" key={r.slug} className="mi" onClick={() => (conv.switchRolePreset(r.slug), setMenu(null))}>
+                        <span>{r.userLabel || r.displayName}</span>
+                        {roleSlug === r.slug ? <i className="ph ph-check check" /> : null}
                       </button>
-                    );
-                  })}
-              </CtxPicker>
-            </div>
-          ) : (
-          <>
-          <CtxPicker
-            className="role-picker"
-            icon="ph-user-circle"
-            label={roleLabel}
-            open={menu === "role"}
-            onToggle={() => toggle("role")}
-            disabled={altControlsDisabled}
-            pending={conv.pendingChanges.rolePresetSlug !== undefined}
-          >
-            {(app.discovery?.rolePresets ?? []).map((r) => (
-              <button
-                type="button"
-                key={r.slug}
-                className="mi"
-                onClick={() => (conv.switchRolePreset(r.slug), setMenu(null))}
-              >
-                <span>{r.userLabel || r.displayName}</span>
-                {roleSlug === r.slug ? (
-                  <i className="ph ph-check check" />
-                ) : null}
-              </button>
-            ))}
-            {app.discovery?.rolePresets.length ? <div className="sep" /> : null}
-            <button
-              type="button"
-              className="mi"
-              onClick={() => (conv.switchRolePreset(null), setMenu(null))}
-            >
-              <span>{t("No role")}</span>
-              {!roleSlug ? <i className="ph ph-check check" /> : null}
-            </button>
-          </CtxPicker>
-
-          <CtxPicker
-            icon="ph-book-open"
-            label={kbLabel}
-            open={menu === "kb"}
-            onToggle={() => toggle("kb")}
-            disabled={altControlsDisabled}
-            pending={conv.pendingChanges.kbDomain !== undefined}
-          >
-            {(app.discovery?.kbDomains ?? [])
-              .filter((k) => k.slug !== KB_OFF_VALUE)
-              .map((k) => (
-                <button
-                  type="button"
-                  key={k.slug}
-                  className="mi"
-                  onClick={() => (conv.switchKb(k.slug), setMenu(null))}
-                >
-                  <span>{t(k.displayName)}</span>
-                  {kbDomain === k.slug ? (
-                    <i className="ph ph-check check" />
+                    ))}
+                    {app.discovery?.rolePresets.length ? <div className="sep" /> : null}
+                    <button type="button" className="mi" onClick={() => (conv.switchRolePreset(null), setMenu(null))}>
+                      <span>{t("No role")}</span>
+                      {!roleSlug ? <i className="ph ph-check check" /> : null}
+                    </button>
+                  </CtxPicker>
+                  <CtxPicker
+                    className="kb-picker"
+                    icon="ph-book-open"
+                    label={kbLabel}
+                    open={menu === "kb"}
+                    onToggle={() => toggle("kb")}
+                    disabled={altControlsDisabled}
+                    pending={conv.pendingChanges.kbDomain !== undefined}
+                  >
+                    {(app.discovery?.kbDomains ?? [])
+                      .filter((k) => k.slug !== KB_OFF_VALUE)
+                      .map((k) => (
+                        <button type="button" key={k.slug} className="mi" onClick={() => (conv.switchKb(k.slug), setMenu(null))}>
+                          <span>{t(k.displayName)}</span>
+                          {kbDomain === k.slug ? <i className="ph ph-check check" /> : null}
+                        </button>
+                      ))}
+                    <div className="sep" />
+                    <button type="button" className="mi" onClick={() => (conv.switchKb(KB_OFF_VALUE), setMenu(null))}>
+                      <span>{t("No knowledge base")}</span>
+                      {kbOff ? <i className="ph ph-check check" /> : null}
+                    </button>
+                  </CtxPicker>
+                  {showVisibility ? (
+                    <button
+                      className="ctx-item"
+                      onClick={() => switchVisibility(withheld ? "exportable" : "no-export")}
+                      data-tip={t("A marker only: nothing here is hidden, sent anywhere, or deleted. It sets whether a future export includes this conversation.")}
+                    >
+                      <i className={withheld ? "ph ph-lock-simple" : "ph ph-share-network"} />
+                      {withheld ? t("Not for export") : t("Exportable")}
+                      <PendingMark when={conv.pendingChanges.visibility !== undefined} />
+                    </button>
                   ) : null}
-                </button>
-              ))}
-            <div className="sep" />
-            <button
-              type="button"
-              className="mi"
-              onClick={() => (conv.switchKb(KB_OFF_VALUE), setMenu(null))}
-            >
-              <span>{t("No knowledge base")}</span>
-              {kbOff ? <i className="ph ph-check check" /> : null}
-            </button>
-          </CtxPicker>
-
-          {showVisibility ? (
-            <button
-              className="ctx-item"
-              onClick={() =>
-                switchVisibility(withheld ? "exportable" : "no-export")
-              }
-              data-tip={t("A marker only: nothing here is hidden, sent anywhere, or deleted. It sets whether a future export includes this conversation.")}
-            >
-              <i
-                className={withheld ? "ph ph-lock-simple" : "ph ph-share-network"}
-              />
-              {withheld ? t("Not for export") : t("Exportable")}
-              <PendingMark when={conv.pendingChanges.visibility !== undefined} />
-            </button>
-          ) : null}
-          </>
-          )}
-          {variant === "live" ? (
-            <button
-              className={`ctx-item preset-toggle${presetOpen ? " on" : ""}`}
-              data-tip={t("Steer — ask Alt to work a certain way for the next few turns")}
-              onClick={togglePresetOpen}
-            >
-              <i className="ph ph-lightning" aria-hidden="true" />
-              {t("Steer")}
-            </button>
-          ) : null}
-        </div>
+                </>
+              ),
+            },
+            ...(variant === "live"
+              ? [{
+                  key: "steer",
+                  name: t("Steer"),
+                  icon: "ph-lightning",
+                  tone: "blue" as const,
+                  live: Boolean(app.presetState && app.presetState.sessionId === conv.sessionId),
+                  content: (
+                    <>
+                      <span className="steer-lead" data-tip={t("Steer — ask Alt to work a certain way for the next few turns")}>
+                        <i className="ph ph-lightning" aria-hidden="true" />
+                      </span>
+                      <div className="steer-chips">
+                        {app.presetButtons.map((name) => {
+                          const active =
+                            app.presetState && app.presetState.sessionId === conv.sessionId && app.presetState.name === name
+                              ? app.presetState
+                              : null;
+                          // Tooltip = this skill's own job (owner 2026-08-05); what
+                          // "steer" means lives on the card's lead icon.
+                          const skill = (app.discovery?.skills ?? []).find((item) => item.name === name);
+                          const label = skill?.displayName ?? name;
+                          const skillLine = skill?.description ? `${label} — ${skill.description}` : label;
+                          return (
+                            <button
+                              key={name}
+                              type="button"
+                              className={`steer-chip${active ? (active.locked ? " locked" : " on") : ""}`}
+                              disabled={!interactive}
+                              data-tip={
+                                active
+                                  ? `${skillLine}\n${active.locked
+                                    ? t("Locked — click to release on your next message")
+                                    : t("Active for {count} more turns — click to lock", { count: active.turnsLeft })}`
+                                  : skillLine
+                              }
+                              onClick={() => conv.sessionId && app.pressPreset(conv.sessionId, name)}
+                            >
+                              <span className="steer-label">{label}</span>
+                              {active?.locked ? (
+                                <i className="ph ph-lock-simple" aria-hidden="true" />
+                              ) : active ? (
+                                <span className="steer-meter" aria-hidden="true">
+                                  {Array.from({ length: PRESET_TURNS }, (_, index) => (
+                                    <i key={index} className={index < active.turnsLeft ? "f" : undefined} />
+                                  ))}
+                                </span>
+                              ) : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <CtxPicker
+                        className="steer-config"
+                        icon="ph-gear"
+                        label={t("Choose buttons")}
+                        open={menu === "presetcfg"}
+                        onToggle={() => toggle("presetcfg")}
+                      >
+                        {(app.discovery?.skills ?? [])
+                          // Steer offers bundled skills only for now (owner 2026-08-05,
+                          // tentative): steer semantics are written for them; most
+                          // users don't author their own skills yet.
+                          .filter((skill) => skill.source === "alt-theory")
+                          .filter((skill) => skill.enabled !== false)
+                          .map((skill) => {
+                            const picked = app.presetButtons.includes(skill.name);
+                            return (
+                              <button
+                                type="button"
+                                key={skill.name}
+                                className={`mi${!picked && app.presetButtons.length >= 5 ? " disabled" : ""}`}
+                                onClick={() =>
+                                  app.setPresetButtons(
+                                    picked
+                                      ? app.presetButtons.filter((n) => n !== skill.name)
+                                      : app.presetButtons.length >= 5
+                                        ? app.presetButtons
+                                        : [...app.presetButtons, skill.name],
+                                  )
+                                }
+                              >
+                                <span>{skill.displayName ?? skill.name}</span>
+                                {picked ? <i className="ph ph-check check" /> : null}
+                              </button>
+                            );
+                          })}
+                      </CtxPicker>
+                    </>
+                  ),
+                }]
+              : []),
+          ]}
+        />
 
         <SlashPalette palette={palette} />
 

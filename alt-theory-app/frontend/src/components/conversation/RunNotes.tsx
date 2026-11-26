@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { RunMark } from "@/components/ui/RunMark";
 import { useConversationContext } from "@/context/ConversationContext";
 import { t } from "@/i18n";
 import { GENERAL_TIPS, productTipText } from "@/config/productTips";
@@ -65,13 +66,8 @@ export function RunStatusSlot({ tips = false }: { tips?: boolean }) {
   return (
     <span className="run-phase-slot" data-tip={text || undefined}>
       <span className="run-phase">
-        <i className="ph ph-circle-notch run-spin" aria-hidden="true" />
-        {text ? (
-          <>
-            {detail ? null : <i className="ph ph-lightbulb" aria-hidden="true" />}
-            <span className="run-phase-text">{text}</span>
-          </>
-        ) : null}
+        <RunMark />
+        {text ? <span className="run-phase-text">{text}</span> : null}
       </span>
     </span>
   );

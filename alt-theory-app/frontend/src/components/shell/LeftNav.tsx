@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { SlideMark } from "@/components/ui/SlideMark";
 import type { SessionSummary } from "@/api/types";
 import { useConversationContext } from "@/context/ConversationContext";
 import { useMainView } from "@/context/MainView";
@@ -266,6 +267,7 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
 function SettingsRail({ hidden, runningCount }: { hidden?: boolean; runningCount: number }) {
   const shell = useShell();
 
+  const setRailRef = useRef<HTMLElement>(null);
   const items = [
     { key: "general", label: t("General"), icon: "ph-gear" },
     { key: "models", label: t("Models"), icon: "ph-cpu" },
@@ -296,7 +298,7 @@ function SettingsRail({ hidden, runningCount }: { hidden?: boolean; runningCount
               <BrandMark count={runningCount} />
             </button>
           </div>
-          <nav className="set-rail">
+          <nav className="set-rail" ref={setRailRef}>
             {items.map((item) => (
               <button
                 key={item.key}
@@ -308,6 +310,7 @@ function SettingsRail({ hidden, runningCount }: { hidden?: boolean; runningCount
                 <span className="lbl">{item.label}</span>
               </button>
             ))}
+            <SlideMark within={setRailRef} at={shell.settingsPanel} />
           </nav>
           <div className="left-foot">
             <button className="gear" data-tip={t("Back to app")} onClick={() => shell.openApp()}>
@@ -341,7 +344,7 @@ function SettingsRail({ hidden, runningCount }: { hidden?: boolean; runningCount
             </button>
           </div>
         </div>
-        <nav className="set-rail">
+        <nav className="set-rail" ref={setRailRef}>
           {items.map((item) => (
             <button
               key={item.key}
@@ -352,6 +355,7 @@ function SettingsRail({ hidden, runningCount }: { hidden?: boolean; runningCount
               <span className="lbl">{item.label}</span>
             </button>
           ))}
+          <SlideMark within={setRailRef} at={shell.settingsPanel} />
         </nav>
         <div className="left-foot">
           <button className="gear" onClick={() => shell.openApp()}>

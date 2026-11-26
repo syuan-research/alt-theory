@@ -122,6 +122,8 @@
   --blue-300: #aec3dd;
   --blue-500: #4676ad;
   --blue-700: #2c4b70;
+  /* The app's one motion curve: quick start, soft landing. */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 :root {
   --selection: #dce8f7;
@@ -263,6 +265,10 @@
     opacity: 1;
     transform: none;
   }
+  .app-tooltip.glide { transition: opacity 0.1s ease, left 0.2s var(--ease-out), top 0.2s var(--ease-out); }
+  .app-tooltip.glide .app-tooltip-body.swap { animation: tip-swap 0.18s var(--ease-out); }
+  @keyframes tip-swap { from { opacity: 0; transform: translateX(4px); } }
+  @media (prefers-reduced-motion: reduce) { .app-tooltip.glide { transition: none; } .app-tooltip.glide .app-tooltip-body.swap { animation: none; } }
   .app-tooltip-title {
     font-size: var(--fs-micro);
     font-weight: 600;
@@ -594,7 +600,7 @@
   .pane-resizer::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 5px; }
   .pane-resizer:focus-visible::before { outline: 2px solid var(--focus-ring); }
   body.resizing-pane { cursor: col-resize; user-select: none; }
-  body.resizing-pane :is(.rpanel, .right) { transition: none; }
+  body.resizing-pane :is(.rpanel, .right, .left) { transition: none; }
 
   /* A2 trial (20260907 bundle-chrome issue): the work area is one floating card
      on shared gray; column hairlines go away. Scoped to .cols.a2cols so other
@@ -641,7 +647,7 @@
   [data-mac-chrome] .left::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: var(--titlebar-h); -webkit-app-region: drag; }
 
   /* ------- left ------- */
-  .left { --rail-head-h: 46px; --rail-row-h: 36px; --rail-icon-size: 1rem; width: var(--left-width); flex-shrink: 0; background: var(--panel); display: flex; flex-direction: column; }
+  .left { --rail-head-h: 46px; --rail-row-h: 36px; --rail-icon-size: 1rem; width: var(--left-width); flex-shrink: 0; background: var(--panel); display: flex; flex-direction: column; transition: width 0.18s ease; }
   .app-root.leftCol .left .full { display: none !important; }
   .left .mini { display: none; flex-direction: column; align-items: stretch; flex: 1; padding-bottom: var(--space-tight); }
   .app-root.leftCol .left .mini { display: flex; }
@@ -1102,13 +1108,13 @@
     max-width: 100%;
   }
   .run-phase i { flex-shrink: 0; }
-  .run-phase .run-spin { animation: status-spin 0.9s linear infinite; }
   .run-phase-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  @keyframes status-spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
+  /* Running: a short stroke travels round the logo's triangle. */
+  .run-mark { width: 1em; height: 1em; flex: none; fill: none; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; overflow: visible; }
+  .run-mark-base { stroke: currentColor; opacity: 0.22; }
+  .run-mark-trace { stroke: var(--blue-500); stroke-dasharray: 28 72; animation: run-trace 1.6s linear infinite; }
+  @keyframes run-trace { to { stroke-dashoffset: -100; } }
+  @media (prefers-reduced-motion: reduce) { .run-mark-trace { animation: none; stroke-dasharray: none; opacity: 0.7; } }
   .list-menu { position: absolute; right: 0; top: 30px; z-index: 60; background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--r-md); box-shadow: var(--shadow-popup); padding: var(--space-hair); min-width: 200px; }
   .list-menu button { display: flex; align-items: center; gap: var(--space-tight); width: 100%; border: none; background: none; padding: var(--row-pad-2) var(--space-control); border-radius: var(--r-sm); font-size: var(--fs-primary); color: var(--ink-soft); cursor: pointer; text-align: left; line-height: var(--row-lh-2); }
   .list-menu button:hover { background: var(--hover); }
@@ -1141,31 +1147,72 @@
   .ctx-picker.kb-picker { max-width: min(45%, 14em); }
   .ctx-item { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; cursor: pointer; background: none; border: none; color: inherit; font: inherit; padding: 0; }
   .ctx-item > i { flex-shrink: 0; }
-  /* Steer bar (v1.4 round 1): tinted band + filled CTA buttons — the same
-     emphasis family as the approval dock, per owner direction. */
-  /* wrap, never clip: with 4-5 buttons the bar overflows the ctx-line and
-     an overflow-x scroll hid the tail buttons with no affordance. */
-  /* Own row above the ctx-line (opus B1: it must never displace the role/
-     KB/visibility controls). One row, no band, no wrap (owner 2026-08-04):
-     buttons shrink with label ellipsis instead of wrapping or clipping. */
-  .preset-bar { display: flex; align-items: center; flex-wrap: nowrap; gap: 6px; min-width: 0; flex: 1; }
-  /* Quiet ghost chip at rest; the app's ink CTA look when active. */
-  .preset-btn { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--hairline); border-radius: var(--r-sm); background: none; color: var(--ink-soft); font: inherit; font-size: var(--fs-secondary); padding: 4px 10px; cursor: pointer; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
-  .preset-btn:hover { background: var(--hover); }
-  /* A squeezed chip un-ellipsizes while hovered: it refuses to shrink and its
-     siblings absorb the squeeze — no extra height, no smaller font, still 4
-     buttons (owner 2026-08-05). */
-  .preset-bar .preset-btn:hover { flex-shrink: 0; }
-  .preset-btn:disabled { opacity: 0.45; cursor: default; }
-  .preset-btn.on, .preset-btn.locked { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
-  /* text-overflow needs a block child, not the flex button itself (opus B10) */
-  .preset-btn .preset-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  /* Inline icon-only picker at the row end — not a settings-style control,
-     never its own row. */
-  .preset-bar .ctx-picker { flex: 0 0 auto; margin-left: auto; }
-  .preset-bar .ctx-picker .ctx-label, .preset-bar .ctx-picker .caret { display: none; }
-  .preset-toggle { margin-left: auto; color: var(--ink-soft); flex-shrink: 0; white-space: nowrap; }
-  .preset-toggle.on, .preset-toggle:hover { color: var(--ink); }
+  /* The cards above the composer (owner 2026-11-26, prototype "Composer Card Deck"):
+     one card in front, the others' spines on the right (icon, name on hover), a
+     handle at the left end that puts the deck away to the right. Fills only, no strokes. */
+  .deck { --we: 30px; --pill: 84px; --deck-card: var(--panel); --deck-spine: color-mix(in srgb, var(--panel) 90%, var(--ink));
+    --deck-blue: color-mix(in srgb, var(--blue-100) 70%, var(--blue-25)); --deck-blue-spine: color-mix(in srgb, var(--blue-100) 72%, var(--blue-300));
+    position: relative; height: 44px; margin-bottom: var(--space-tight); font-size: var(--fs-secondary); color: var(--text-2); }
+  .deck:has(.deck-spine:hover) { --we: 74px; }
+  .deck-front { position: absolute; inset: 0 calc((var(--n) - 1) * var(--we)) 0 0; z-index: 20; display: flex; align-items: center; gap: var(--space-hair);
+    padding-right: var(--space-tight); border-radius: 14px; background: var(--deck-card);
+    transition: left 0.3s var(--ease-out), right 0.3s var(--ease-out), opacity 0.2s, background 0.2s; touch-action: none; }
+  .deck-front.blue { background: var(--deck-blue); }
+  .deck-front.dragging { transition: none; }
+  .deck.moving .deck-front { overflow: hidden; }
+  .deck-content { display: flex; align-items: center; gap: var(--space-control); min-width: 0; flex: 1; animation: deck-in 0.26s var(--ease-out); }
+  @keyframes deck-in { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
+  .deck-handle { flex: none; width: 22px; align-self: stretch; display: grid; place-items: center; cursor: grab; touch-action: none; border-radius: 14px 0 0 14px; }
+  .deck-handle::before { content: ""; width: 4px; height: 18px; border-radius: 2px; background: color-mix(in srgb, var(--text-3) 45%, transparent); transition: background 0.15s, height 0.15s; }
+  .deck-handle:hover::before, .deck-handle:focus-visible::before { background: var(--text-3); height: 22px; }
+  .deck-front.dragging .deck-handle { cursor: grabbing; }
+  .deck-spine { position: absolute; top: 0; bottom: 0; right: calc((var(--n) - 2 - var(--k)) * var(--we)); z-index: calc(10 - var(--k)); width: calc(var(--we) + 18px);
+    padding: 0; border: none; border-radius: 0 14px 14px 0; background: var(--deck-spine); color: var(--text-3); cursor: pointer;
+    transition: right 0.28s var(--ease-out), width 0.28s var(--ease-out), opacity 0.2s, background 0.2s; }
+  .deck-spine.blue { background: var(--deck-blue-spine); }
+  .deck-spine.live { color: var(--blue-500); }
+  .deck-spine:hover { color: var(--ink); }
+  .deck-spine.live:hover { color: var(--blue-700); }
+  .deck-spine-label { position: absolute; inset: 0 0 0 auto; width: var(--we); display: flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; overflow: hidden; transition: width 0.28s var(--ease-out); }
+  .deck-spine-name { max-width: 0; opacity: 0; overflow: hidden; transition: max-width 0.28s var(--ease-out), opacity 0.2s; }
+  .deck-spine:hover .deck-spine-name { max-width: 4em; opacity: 1; }
+  .deck-dot { position: absolute; top: 9px; right: 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--blue-500); transition: opacity 0.15s; }
+  .deck-spine:hover .deck-dot { opacity: 0; }
+  .deck.away .deck-front { left: calc(100% - var(--pill)); right: 0; opacity: 0; pointer-events: none; }
+  .deck.away .deck-spine { opacity: 0; pointer-events: none; }
+  .deck-tray { position: absolute; top: 0; bottom: 0; right: 0; width: var(--pill); z-index: 30; display: flex; align-items: center; justify-content: center; gap: 2px;
+    border-radius: 14px; background: var(--deck-card); opacity: 0; pointer-events: none; transform: scale(0.96);
+    transition: opacity 0.2s 0.1s, transform 0.2s 0.1s var(--ease-out); }
+  .deck.away .deck-tray { opacity: 1; pointer-events: auto; transform: none; }
+  .deck-tray button { position: relative; width: 34px; height: 32px; display: grid; place-items: center; border: none; border-radius: 10px; background: none; color: var(--text-2); cursor: pointer; font-size: 1rem; transition: background 0.15s, color 0.15s; }
+  .deck-tray button:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
+  .deck-tray button.live { color: var(--blue-500); }
+  .deck-tray .deck-dot { top: 5px; right: 6px; }
+  .deck .ctx-picker { position: relative; }
+  .deck .ctx-picker.role-picker, .deck .ctx-picker.kb-picker { max-width: min(40%, 16em); }
+  .deck .ctx-item { height: 30px; padding: 0 var(--space-tight); border-radius: 9px; color: var(--ink-soft); }
+  .deck .ctx-item:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); color: var(--ink); }
+  .deck .menu { left: 0; right: auto; top: auto; bottom: calc(100% + var(--space-tight)); }
+  .steer-lead { flex: none; width: 22px; display: grid; place-items: center; color: var(--blue-500); }
+  .steer-chips { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; overflow-x: auto; scrollbar-width: none; }
+  .steer-chips::-webkit-scrollbar { display: none; }
+  .steer-chips { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); padding-right: 24px; }
+  .steer-chip { display: inline-flex; align-items: center; gap: 7px; flex: none; height: 28px; padding: 0 12px; border: none; border-radius: 999px;
+    background: var(--surface); box-shadow: 0 1px 1px rgba(31, 30, 26, 0.05); color: var(--text-2); font: inherit; font-weight: 500; white-space: nowrap; cursor: pointer;
+    transition: background 0.18s, color 0.18s, transform 0.12s; }
+  .steer-chip:hover { color: var(--ink); }
+  .steer-chip:active { transform: scale(0.97); }
+  .steer-chip:disabled { opacity: 0.45; cursor: default; }
+  .steer-chip.on { color: var(--blue-700); }
+  .steer-chip.locked { background: var(--blue-500); color: var(--surface); box-shadow: none; }
+  .steer-label { max-width: 10em; overflow: hidden; text-overflow: ellipsis; }
+  .steer-meter { display: inline-flex; gap: 3px; }
+  .steer-meter i { width: 5px; height: 5px; border-radius: 50%; background: var(--blue-300); opacity: 0.45; }
+  .steer-meter i.f { background: var(--blue-500); opacity: 1; }
+  .steer-config { flex: none; }
+  .steer-config .ctx-label, .steer-config .caret { display: none; }
+  .deck .steer-config .menu { left: auto; right: 0; }
+  @media (prefers-reduced-motion: reduce) { .deck *, .deck { transition: none !important; animation: none !important; } }
   .ctx-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ctx-item:hover { color: var(--ink); }
   .ctx-item i.caret { font-size: 0.7rem; color: var(--text-3); }
@@ -1362,8 +1409,10 @@
   .right { flex: 0 0 calc(var(--right-width) + var(--right-rail-width)); transition: flex-basis 0.18s ease; min-width: 0; display: flex; background: var(--panel); border-left: 1px solid var(--hairline); }
   .rail { width: var(--right-rail-width); flex-shrink: 0; display: flex; flex-direction: column; align-items: center; padding-top: var(--space-control); padding-right: 4px; gap: var(--space-hair); }
   .rail button { width: 36px; height: 36px; border: none; background: transparent; border-radius: var(--r-sm); color: var(--text-2); cursor: pointer; position: relative; font-size: 1.1rem; display: inline-flex; align-items: center; justify-content: center; }
-  .rail button:hover { background: var(--hover); }
-  .rail button.on { background: var(--selected); color: var(--ink); }
+  .rail { position: relative; }
+  .rail button { z-index: 1; transition: background 0.15s, color 0.15s; }
+  .rail button:hover { background: color-mix(in srgb, var(--row-active) 55%, transparent); }
+  .rail button.on { background: transparent; color: var(--ink); }
   .rail .attention-count { position: absolute; top: 0; right: 0; min-width: 16px; padding: 0 3px; height: 16px; border-radius: 9px; background: var(--focus-ring); color: white; font-size: 10px; line-height: 16px; }
   .rpanel { width: 0; min-width: 0; flex-shrink: 0; overflow: hidden; transition: width 0.18s ease; display: flex; flex-direction: column; container-type: inline-size; }
   .right.open .rpanel { width: var(--right-width); }
@@ -1737,8 +1786,14 @@
      also the collapsed strip's row, so it follows --rail-row-h, not the
      list-row pitch. */
   .set-item { display: flex; flex: 0 0 var(--rail-row-h); align-items: center; gap: var(--space-control); height: var(--rail-row-h); padding: 0 calc(var(--space-tight) + 2px); border-radius: var(--r-sm); font-size: var(--fs-primary); color: var(--ink-soft); cursor: pointer; width: 100%; text-align: left; background: none; border: none; }
-  .set-item:hover { background: var(--hover); }
-  .set-item.on { background: var(--selected); font-weight: 500; }
+  .set-item { position: relative; z-index: 1; transition: background 0.15s, color 0.15s; }
+  .set-item:hover { background: color-mix(in srgb, var(--row-active) 55%, transparent); }
+  .set-item.on { background: transparent; font-weight: 500; }
+  .set-rail { position: relative; }
+  /* The selected item's background, one per list, sliding to the next selection (components/ui/SlideMark). */
+  .slide-mark { position: absolute; top: 0; left: 0; z-index: 0; border-radius: var(--r-sm); background: var(--row-active); pointer-events: none; }
+  .slide-mark.ready { transition: transform 0.26s var(--ease-out), width 0.26s var(--ease-out), height 0.26s var(--ease-out); }
+  @media (prefers-reduced-motion: reduce) { .slide-mark.ready { transition: none; } }
   .set-item i { color: var(--text-2); }
   .set-item.on i { color: var(--ink); }
   .set-panel .help-ask { margin: 0 0 var(--space-control); }

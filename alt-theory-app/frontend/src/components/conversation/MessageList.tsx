@@ -1,4 +1,5 @@
 import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { RunMark } from "@/components/ui/RunMark";
 import { isAgentTool, type AgentReference } from "../../../../shared/agent-tool-inspection";
 import { describeAgentToolInput, describeAgentToolResult } from "@/lib/agentToolCopy";
 import type {
@@ -623,7 +624,7 @@ function SubagentActionLabel({ agent }: { agent: NonNullable<TranscriptMessage["
     : t("Sent a message to {name}", { name: AGENT_LABEL_SLOT });
   return (
     <>
-      <i className={TOOL_ICON[dispatch ? "running" : outcome === "failed" ? "failed" : "finished"]} />
+      {dispatch ? <RunMark /> : <i className={TOOL_ICON[outcome === "failed" ? "failed" : "finished"]} />}
       {linkInAgentLabel(label, { sessionId: agent.sessionId, label: name })}
       {dispatch ? (
         <>
@@ -647,7 +648,7 @@ function ToolLine({ tool }: { tool: ActiveToolState }) {
       result={tool.result ? { text: tool.result, truncated: false } : undefined}>
       {tool.subagentAction ? <SubagentActionLabel agent={tool.subagentAction} /> : (
         <>
-          <i className={TOOL_ICON[outcome]} />
+          {outcome === "running" ? <RunMark /> : <i className={TOOL_ICON[outcome]} />}
           {preparing
             ? tool.toolName === "write" ? t("Preparing to write…") : t("Preparing to edit…")
             : toolLabelWithAgents(tool.toolName, tool.agentRefs, (target) => toolLabel(tool.toolName, tool.path, tool.detail, outcome,
@@ -857,7 +858,7 @@ export function TranscriptEntry({
       >
         {message.subagentAction ? <SubagentActionLabel agent={message.subagentAction} /> : (
           <>
-            <i className={TOOL_ICON[outcome]} />
+            {outcome === "running" ? <RunMark /> : <i className={TOOL_ICON[outcome]} />}
             {toolLabelWithAgents(message.toolName ?? "", message.agentRefs, (target) => toolLabel(
               message.toolName || message.text || "tool",
               message.toolPath,

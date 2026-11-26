@@ -280,6 +280,8 @@ const catalog: Record<string, string> = {
   "Choose a model for this conversation, or set a default in Settings.": "为此对话选择模型，或在设置中设定默认模型。",
   "Choose a provider below": "在下方选择服务商",
   "Choose a provider to see its configuration.": "选择一个服务商以查看其配置。",
+  "Put away": "收起",
+  "Role and knowledge": "角色与知识",
   "Choose buttons": "选择按钮",
   "Choose folder…": "选择文件夹…",
   "Choose model": "选择模型",

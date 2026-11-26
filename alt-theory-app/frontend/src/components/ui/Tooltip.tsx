@@ -55,11 +55,15 @@ export function TooltipRoot() {
     let timer: number | undefined;
     let raf = 0;
 
+    // Moving from one tip to the next while a bubble is up (or just went
+    // down) skips the delay: the bubble glides over and its text fades in.
+    let lastHidden = -Infinity;
     const hide = () => {
       window.clearTimeout(timer);
       cancelAnimationFrame(raf);
       active = null;
-      tip.classList.remove("show");
+      if (tip.classList.contains("show")) lastHidden = performance.now();
+      tip.classList.remove("show", "glide");
     };
 
     const render = (el: Element) => {
@@ -101,8 +105,17 @@ export function TooltipRoot() {
     };
 
     const schedule = (el: Element) => {
+      const warm = tip.classList.contains("show") || performance.now() - lastHidden < 300;
       hide();
       active = el;
+      if (warm) {
+        tip.classList.add("glide");
+        body.classList.remove("swap");
+        void body.offsetWidth;
+        body.classList.add("swap");
+        render(el);
+        return;
+      }
       timer = window.setTimeout(() => {
         if (active === el) render(el);
       }, SHOW_DELAY_MS);

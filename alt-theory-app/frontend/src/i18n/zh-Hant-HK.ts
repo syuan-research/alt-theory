@@ -279,6 +279,8 @@ const catalog: Record<string, string> = {
   "Choose a model for this conversation, or set a default in Settings.": "為此對話選擇模型，或在設定中設置預設模型。",
   "Choose a provider below": "在下方選擇服務商",
   "Choose a provider to see its configuration.": "選擇一個服務商以查看其配置。",
+  "Put away": "收起",
+  "Role and knowledge": "角色與知識",
   "Choose buttons": "選擇按鈕",
   "Choose folder…": "選擇資料夾…",
   "Choose model": "選擇模型",
