@@ -50,6 +50,7 @@ import { useFindTarget } from "@/lib/find";
 import { conversationState } from "@/lib/listActivity";
 import { ConversationState } from "@/components/conversation/ConversationState";
 import { usePaneMemory } from "@/lib/paneMemory";
+import { clearLocate, showInList, useListLocate } from "@/lib/listLocate";
 import { isPathQuery, quickFindScore, quickFindTerms } from "../../../../shared/quick-find";
 
 /** Hover text saying where a listed child came from (alpha.6). */
@@ -519,6 +520,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
   // Pane memory, not useState: Settings swaps this nav out (SettingsRail),
   // and the open search box (ShellContext) came back without its text.
   const [railQuery, setRailQuery] = usePaneMemory("rail:search:query", "");
+  const locate = useListLocate();
   const [searchScope, setSearchScope] = usePaneMemory<"names" | "content">("rail:search:scope", "names");
   const [contentResult, setContentResult] = useState<{ query: string; ids: string[] } | null>(null);
   const [contentSearchError, setContentSearchError] = useState("");
@@ -571,8 +573,9 @@ function UserNav({ onImport }: { onImport: () => void }) {
         listSort,
         app.sessionDisplayNames,
         searchScope === "names" ? railQuery.trim() : "",
+        locate?.id,
       ),
-    [app.sessions, app.knownWorkspaces, app.sessionDisplayNames, listSort, railQuery, searchScope],
+    [app.sessions, app.knownWorkspaces, app.sessionDisplayNames, listSort, railQuery, searchScope, locate],
   );
 
   // Projects (v1.5.1): the group's label is the project's name (defaults to
@@ -605,9 +608,26 @@ function UserNav({ onImport }: { onImport: () => void }) {
   const visibleIds = useMemo(() =>
     searchScope === "content" && railQuery.trim()
       ? contentRailMatchIds(app.sessions, contentIds ?? new Set())
-      : railMatchIds(app.sessions, railQuery, app.sessionDisplayNames),
-    [app.sessions, railQuery, app.sessionDisplayNames, searchScope, contentResult],
+      : railMatchIds(app.sessions, railQuery, app.sessionDisplayNames, locate?.id),
+    [app.sessions, railQuery, app.sessionDisplayNames, searchScope, contentResult, locate],
   );
+  // "Find in list" is the list's own search with one hit: the conversation and its family.
+  // Typing anything else ends it, as it ends any search.
+  const locateApplied = useRef({ nonce: 0, query: "" });
+  useEffect(() => {
+    if (!locate) return;
+    locateApplied.current = { nonce: locate.nonce, query: railQuery };
+    setSearchScope("names");
+    setRailQuery(locate.id);
+    const undo = showInList(locate.id);
+    const timer = undo ? window.setTimeout(() => undo(false), 2500) : undefined;
+    return () => { if (timer) window.clearTimeout(timer); };
+  }, [locate]);
+  useEffect(() => {
+    // The query is still the one from before the search was typed in, until it is.
+    const { nonce, query } = locateApplied.current;
+    if (locate && nonce === locate.nonce && railQuery !== locate.id && railQuery !== query) clearLocate();
+  }, [locate, railQuery]);
   const unlistedHits = contentIds
     ? app.sessions.filter((session) => contentIds.has(session.sessionId) && !isListMember(session) && !session.deletedAt)
     : [];

@@ -29,12 +29,16 @@ export function describeAgentToolInput(tool: string, json: string, displayedName
     const slash = modelId?.indexOf("/") ?? -1;
     const modelName = slash > 0 ? modelId?.slice(slash + 1) : modelId;
     used.add("model");
-    lines.push(t("{model} ({thinking})", {
+    if (modelId && slash > 0) {
+      // Named the way the approval line names its model: provider/model · thinking level.
+      lines.push(labeled(t("Model"), t("{model} · {thinking}", {
+        model: modelId, thinking: suffix ? t(suffix[1]) : t("Automatic"),
+      })));
+    } else lines.push(t("{model} ({thinking})", {
       model: labeled(t("Model"), modelName === "inherit" && slash < 0
         ? t("Inherit from the lead") : modelName ?? t("From the selected tier")),
       thinking: labeled(t("Thinking level"), suffix ? t(suffix[1]) : t("Automatic")),
     }));
-    if (modelId && slash > 0) lines.push(labeled(t("Provider"), modelId.slice(0, slash)));
     field("role", t("Role"), t("Inherit from the lead"));
     field("permission", t("Permission"), t("Automatic"));
     lines.push(fields.splice(0).map(([label, text]) => labeled(label, text)).join(t(", ")));

@@ -22,6 +22,10 @@ import { shouldToggleCollapseOnClick } from "@/lib/collapseAnywhere";
 import { replyStopLine, retryDroppedLine } from "@/lib/replyStop";
 import { toolOutcome, type ToolOutcome } from "@/lib/toolOutcome";
 import { relatedDisplayMarker } from "@/lib/sessionList";
+import { isListMember } from "@/lib/listMember";
+import { locateInList, showInList } from "@/lib/listLocate";
+import { copyText } from "@/lib/clipboard";
+import { useMainView } from "@/context/MainView";
 import { t } from "@/i18n";
 import { autosizeTextarea } from "@/lib/autosizeTextarea";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
@@ -445,7 +449,33 @@ function RunElapsed({ since }: { since: number }) {
 
 function AgentReferenceLink({ agent }: { agent: AgentReference }) {
   const shell = useShell();
+  const app = useApp();
+  const main = useMainView();
+  const menu = useContextMenu();
   const [unavailable, setUnavailable] = useState(false);
+  // Hovering shows where the agent is in the conversation list; leaving puts the list back.
+  const hover = useRef<{ timer?: number; undo?: (restoreScroll?: boolean) => void }>({});
+  const listed = agent.sessionId ? app.sessions.find((session) => session.sessionId === agent.sessionId) : undefined;
+  const items = (): ContextMenuItem[] => {
+    if (!agent.sessionId) return [];
+    return [
+      ...(listed && !isListMember(listed) ? [{
+        label: t("Show in conversation list"), icon: "ph-list-plus",
+        onSelect: () => void main.setRelatedSessionListed(agent.sessionId!, true),
+      }] : []),
+      { label: t("Find in list"), icon: "ph-magnifying-glass", onSelect: () => { shell.openApp(); locateInList(agent.sessionId!); } },
+      { label: t("Copy ID"), icon: "ph-identification-card", onSelect: () => void copyText(agent.sessionId!) },
+    ];
+  };
+  const familyOf = () => {
+    const byId = new Map(app.sessions.map((session) => [session.sessionId, session]));
+    let root = listed?.sessionId;
+    for (let node = listed; node?.forkedFrom?.sessionId;) {
+      node = byId.get(node.forkedFrom.sessionId);
+      if (node) root = node.sessionId;
+    }
+    return root;
+  };
   const open = async () => {
     setUnavailable(false);
     if (agent.sessionId) {
@@ -464,8 +494,23 @@ function AgentReferenceLink({ agent }: { agent: AgentReference }) {
       event.preventDefault();
       event.stopPropagation();
       void open();
-    }}>{agent.label}</button>
+    }}
+      onContextMenu={(event) => { if (agent.sessionId) menu.open(event, items()); }}
+      onMouseEnter={() => {
+        if (!agent.sessionId) return;
+        hover.current.timer = window.setTimeout(() => {
+          hover.current.undo = showInList(agent.sessionId!, familyOf()) ?? undefined;
+        }, 300);
+      }}
+      onMouseLeave={() => {
+        window.clearTimeout(hover.current.timer);
+        hover.current.timer = undefined;
+        hover.current.undo?.();
+        hover.current.undo = undefined;
+      }}
+    >{agent.label}</button>
     {unavailable && <span role="status">{" · "}{t("Conversation unavailable")}</span>}
+    {menu.element}
   </>;
 }
 
@@ -497,10 +542,10 @@ function agentDisplay(app: ReturnType<typeof useApp>, agent: { sessionId?: strin
 function SubagentActionLabel({ agent }: { agent: NonNullable<TranscriptMessage["subagentAction"]> }) {
   const app = useApp();
   const { sessionReady } = useConversationContext();
-  const { child, alias } = agentDisplay(app, agent);
+  const { child } = agentDisplay(app, agent);
   const marker = child && relatedDisplayMarker(child, app.sessions);
-  const name = (marker && alias && !alias.startsWith(`${marker} · `) ? `${marker} · ${alias}` : alias || marker)
-    || agent.sessionId;
+  // The name alone; the marker or the ID stands in when there is none.
+  const name = (agent.sessionId && app.sessionDisplayNames[agent.sessionId]?.alias) || agent.label || marker || agent.sessionId;
   const active = app.subagentDispatches[agent.sessionId];
   const dispatch = sessionReady && active?.id === agent.dispatchId ? active : undefined;
   const since = dispatch?.startedAt;

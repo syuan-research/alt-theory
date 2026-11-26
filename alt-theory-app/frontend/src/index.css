@@ -785,6 +785,9 @@
   .tool-result { margin-top: var(--space-tight); }
   .agent-reference { display: inline; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
   .agent-tool-message { white-space: pre-wrap; overflow-wrap: anywhere; }
+  /* "Find in list" and hovering an agent's name: the row, and the family it belongs to. */
+  .sessions .sess.list-flash { background: var(--selected); box-shadow: inset 0 0 0 2px var(--focus-ring); transition: none; }
+  .sessions .sess.list-flash-family { background: var(--row-active); }
   .agent-tool-fields { display: flex; flex-wrap: wrap; gap: var(--space-tight) var(--space-block); margin: var(--space-tight) 0; }
   .agent-tool-fields > div { display: flex; gap: var(--space-tight); overflow-wrap: anywhere; }
   .agent-tool-fields dt { color: var(--text-3); white-space: nowrap; }
@@ -1298,7 +1301,7 @@
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: var(--space-tight) var(--space-control) var(--space-control) var(--space-hair);
+    padding: var(--space-tight) var(--space-hair) var(--space-control) var(--space-hair);
   }
   /* When a related child is open, the outer body must not double-scroll. */
   .rpanel .body:has(.child-conv) {
@@ -1430,7 +1433,7 @@
   .working-folders { margin-bottom: var(--space-control); padding: 0; }
   .working-folder-group + .working-folder-group { border-top: 1px solid var(--hairline); padding-top: var(--space-tight); }
   .working-folder-missing { margin: 0 var(--space-hair) var(--space-tight) 28px; color: var(--danger); font-size: var(--fs-secondary); }
-  .working-tree { max-height: 46.5vh; overflow: auto; margin: 0 0 var(--space-tight) 20px; padding-left: var(--space-hair); }
+  .working-tree { max-height: 46.5vh; overflow: auto; margin: 0 0 var(--space-tight) 0; padding-left: var(--space-hair); }
   .working-tree .ti { display: flex; align-items: center; gap: var(--space-tight); width: 100%; border: none; background: transparent; color: var(--ink-soft); padding: var(--space-hair) var(--space-tight); text-align: left; font: inherit; font-size: var(--fs-primary); cursor: pointer; }
   .working-tree .ti span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .working-tree .ti:hover { background: var(--row-active); }

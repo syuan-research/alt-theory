@@ -400,14 +400,16 @@ export function railMatchIds(
   sessions: SessionSummary[],
   query: string,
   displayNames: DisplayNames,
+  /** One conversation that is in the view whatever the query or its list membership. */
+  always?: string,
 ): Set<string> | null {
   const q = query.trim();
-  if (!q) return null;
+  if (!q && !always) return null;
   const byId = new Map(sessions.map((s) => [s.sessionId, s]));
   const ids = new Set<string>();
   for (const session of sessions) {
-    if (!isListMember(session) || session.deletedAt) continue;
-    if (!matchesQuery(session, q, sessionTitle(session, displayNames, sessions))) continue;
+    if (session.deletedAt) continue;
+    if (session.sessionId !== always && (!isListMember(session) || !matchesQuery(session, q, sessionTitle(session, displayNames, sessions)))) continue;
     ids.add(session.sessionId);
     for (const id of lineagePathOf(session, byId)) ids.add(id);
   }
@@ -601,8 +603,10 @@ export function buildWorkspaceTree(
   sort: SessionListSort = { folders: "name", conversations: "modified" },
   displayNames: DisplayNames = {},
   searchQuery = "",
+  // A conversation outside the list that the view is narrowed to ("Find in list").
+  always?: string,
 ): WorkspaceTree {
-  const members = sessions.filter(isListMember).sort(compareSessionActivity);
+  const members = sessions.filter((session) => isListMember(session) || session.sessionId === always).sort(compareSessionActivity);
   const { roots, childrenByParent } = buildEdges(members);
   const byId = new Map(sessions.map((session) => [session.sessionId, session]));
   const familyActivity = new Map<string, number>();
