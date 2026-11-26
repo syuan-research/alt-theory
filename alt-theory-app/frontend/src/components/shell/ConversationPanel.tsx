@@ -47,6 +47,7 @@ function EmptyState() {
         ) : null}
         <button
           className="import-link"
+          data-tip={t("Import conversations from OpenCode, Codex (ChatGPT), Claude Code, Grok Build, and Pi. The original conversations are unaffected.")}
           onClick={() => shell.setImportOpen(true)}
         >
           {t("Or continue a conversation from another app…")}

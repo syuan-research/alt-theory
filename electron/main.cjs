@@ -40,6 +40,7 @@ app.disableHardwareAcceleration();
 app.commandLine.appendSwitch("no-sandbox");
 
 const isMac = process.platform === "darwin";
+const isWindows = process.platform === "win32";
 
 // No window chrome. Windows/Linux: hidden title bar with OS-drawn overlay
 // buttons and no application menu at all (20260907 bundle-chrome issue).
@@ -142,7 +143,7 @@ function createWindow() {
       ? {}
       : {
           titleBarOverlay: {
-            color: "#ebebec",
+            color: isWindows ? "#00000000" : "#ebebec",
             symbolColor: "#1f1e1a",
             height: 48,
           },
@@ -256,9 +257,8 @@ for (const method of ["locate", "read", "artifactUrl", "directory"]) {
   });
 }
 
-// The OS overlay-button band must match the page behind it. Surface-specific
-// colors keep full-window viewers and modal backdrops from leaving a stale
-// panel-colored strip in the corner.
+// Windows lets the page paint behind the controls; the palette still sets
+// icon contrast and supplies the overlay background on Linux.
 const TITLEBAR_OVERLAY = {
   light: {
     panel: { color: "#ebebec", symbolColor: "#1f1e1a" },
@@ -280,7 +280,7 @@ ipcMain.handle("alt:setTheme", (_event, theme, surface) => {
   const palette = TITLEBAR_OVERLAY[theme === "dark" ? "dark" : "light"];
   const overlay = palette[surface] ?? palette.panel;
   try {
-    mainWindow?.setTitleBarOverlay(overlay);
+    mainWindow?.setTitleBarOverlay(isWindows ? { ...overlay, color: "#00000000" } : overlay);
   } catch (err) {
     log(`setTitleBarOverlay failed: ${err.message}`);
   }

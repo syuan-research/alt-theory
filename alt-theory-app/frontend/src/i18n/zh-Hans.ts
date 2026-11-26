@@ -676,6 +676,7 @@ const catalog: Record<string, string> = {
   "OpenRouter": "OpenRouter",
   "option key": "选项键",
   "Or continue a conversation from another app…": "或导入其他应用的对话…",
+  "Import conversations from OpenCode, Codex (ChatGPT), Claude Code, Grok Build, and Pi. The original conversations are unaffected.": "支持导入 OpenCode、Codex (ChatGPT)、Claude Code、Grok Build 和 Pi 的对话，不影响这些应用中的原始对话。",
   "Origin conversation · {count} messages": "来源对话·{count}条消息",
   "Output": "输出",
   "Outside": "外部",

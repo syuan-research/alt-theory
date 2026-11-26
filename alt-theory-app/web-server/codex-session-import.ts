@@ -93,13 +93,15 @@ function discoverCodexFromStateDb(root: string): CodexDiscoveredSession[] | null
     const rows = db.prepare(`
       SELECT id, rollout_path, ${value("name")}, ${value("title")}, ${value("cwd")},
         ${value("created_at")}, ${value("updated_at")}, ${value("source")},
-        ${value("thread_source")}, ${value("archived")}, ${value("preview")}
+        ${value("thread_source")}, ${value("archived")}, ${value("preview")},
+        ${value("attached_thread_parent_id")}
       FROM threads
       ORDER BY ${columns.has("updated_at") ? "updated_at" : "created_at"} DESC, id DESC
     `).all() as Row[];
     return rows.flatMap((row) => {
       try {
         if (Number(row.archived ?? 0) !== 0) return [];
+        if (row.attached_thread_parent_id) return [];
         if (String(row.thread_source ?? "") === "subagent") return [];
         if (isSubagentSource(row.source)) return [];
         const path = existingRollout(row.rollout_path);
@@ -139,14 +141,15 @@ function discoverCodexFromStateDb(root: string): CodexDiscoveredSession[] | null
 }
 
 function discoverCodexFromRollouts(root: string): CodexDiscoveredSession[] {
-  return jsonlFiles(root)
+  const sessions = jsonlFiles(root)
     .flatMap((path) => {
       try {
         const stat = statSync(path);
         const records = parseJsonl(readHead(path));
         const meta = records.find((record) => record.type === "session_meta")?.payload;
         const id = String(meta?.id ?? meta?.session_id ?? "");
-        if (!id || !meta?.cwd || !meta?.timestamp || isSubagentSource(meta.source)) return [];
+        if (!id || !meta?.cwd || !meta?.timestamp || meta.attached_thread === true ||
+            meta.thread_source === "subagent" || isSubagentSource(meta.source)) return [];
         const messages = records.filter(
           (record) => record.type === "response_item" && record.payload?.type === "message"
         );
@@ -160,13 +163,18 @@ function discoverCodexFromRollouts(root: string): CodexDiscoveredSession[] {
           createdAt: new Date(meta.timestamp).toISOString(),
           updatedAt: stat.mtime.toISOString(),
           messageCount: messages.length,
-          preview: codexOpeningPreview(messages),
-        }];
+          preview: codexOpeningPreview(records),
+        } satisfies CodexDiscoveredSession];
       } catch {
         return [];
       }
     })
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    .sort((a, b) => basename(b.sourceStore).localeCompare(basename(a.sourceStore)));
+  const latest = new Map<string, CodexDiscoveredSession>();
+  for (const session of sessions) {
+    if (!latest.has(session.sourceSessionId)) latest.set(session.sourceSessionId, session);
+  }
+  return [...latest.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
 // Codex records its injected context as user-role messages.

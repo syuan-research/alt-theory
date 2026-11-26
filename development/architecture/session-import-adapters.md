@@ -174,7 +174,7 @@ source records.
 ### Codex
 
 Discovery prefers `state_5.sqlite.threads` for root metadata and rollout paths,
-excluding archived and subagent threads; bounded rollout scanning is the
+excluding archived, attached, and subagent threads; bounded rollout scanning is the
 fallback.
 
 The default session directory is `$CODEX_HOME/sessions` or `~/.codex/sessions`.
