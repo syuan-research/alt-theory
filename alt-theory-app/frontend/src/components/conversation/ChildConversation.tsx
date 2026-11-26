@@ -320,14 +320,6 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
           disabled={altControlsDisabled}
           pending={pendingChildRole}
         >
-          <button
-            type="button"
-            className="mi"
-            onClick={() => (conversation.switchRolePreset(null), setMenu(null))}
-          >
-            <span>{t("No role")}</span>
-            {!childRoleSlug ? <i className="ph ph-check check" /> : null}
-          </button>
           {(app.discovery?.rolePresets ?? []).map((role) => (
             <button
               type="button"
@@ -339,6 +331,15 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
               {childRoleSlug === role.slug ? <i className="ph ph-check check" /> : null}
             </button>
           ))}
+          {app.discovery?.rolePresets.length ? <div className="sep" /> : null}
+          <button
+            type="button"
+            className="mi"
+            onClick={() => (conversation.switchRolePreset(null), setMenu(null))}
+          >
+            <span>{t("No role")}</span>
+            {!childRoleSlug ? <i className="ph ph-check check" /> : null}
+          </button>
         </CtxPicker>
         <CtxPicker
           className="kb-picker"
@@ -415,11 +416,6 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
           >
             <i className="ph ph-magic-wand" />
           </button>
-          <PermissionChip
-            open={menu === "perm"}
-            onToggle={() => setMenu(menu === "perm" ? null : "perm")}
-            onClose={() => setMenu(null)}
-          />
           <button
             className="flat"
             data-tip={t("Add a file: copied into this conversation's folder and converted to text")}
@@ -438,6 +434,11 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
               attachCopies([...(event.target.files ?? [])]);
               event.target.value = "";
             }}
+          />
+          <PermissionChip
+            open={menu === "perm"}
+            onToggle={() => setMenu(menu === "perm" ? null : "perm")}
+            onClose={() => setMenu(null)}
           />
           <ModelChip open={menu === "model"} onToggle={() => setMenu(menu === "model" ? null : "model")} />
           <ContextRing />

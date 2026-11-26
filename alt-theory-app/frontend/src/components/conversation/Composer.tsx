@@ -406,16 +406,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             disabled={altControlsDisabled}
             pending={conv.pendingChanges.rolePresetSlug !== undefined}
           >
-            <button
-              type="button"
-              className="mi"
-              onClick={() => (conv.switchRolePreset(null), setMenu(null))}
-            >
-              <span>{t("No role")}</span>
-              {!roleSlug ? (
-                <i className="ph ph-check check" />
-              ) : null}
-            </button>
             {(app.discovery?.rolePresets ?? []).map((r) => (
               <button
                 type="button"
@@ -429,6 +419,15 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 ) : null}
               </button>
             ))}
+            {app.discovery?.rolePresets.length ? <div className="sep" /> : null}
+            <button
+              type="button"
+              className="mi"
+              onClick={() => (conv.switchRolePreset(null), setMenu(null))}
+            >
+              <span>{t("No role")}</span>
+              {!roleSlug ? <i className="ph ph-check check" /> : null}
+            </button>
           </CtxPicker>
 
           <CtxPicker
@@ -581,11 +580,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             >
               <i className="ph ph-magic-wand" />
             </button>
-            <PermissionChip
-              open={menu === "perm"}
-              onToggle={() => toggle("perm")}
-              onClose={() => setMenu(null)}
-            />
             {/* First-level attach, in every conversation. */}
             {canAttach ? (
               <>
@@ -609,6 +603,11 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 />
               </>
             ) : null}
+            <PermissionChip
+              open={menu === "perm"}
+              onToggle={() => toggle("perm")}
+              onClose={() => setMenu(null)}
+            />
 
             <ModelChip
               open={menu === "model"}
