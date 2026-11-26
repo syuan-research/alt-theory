@@ -76,12 +76,13 @@
   --fs-title: calc(var(--fs-primary) + 2px);         /* 16 */
   --fs-page: calc(var(--fs-primary) * 1.7);          /* ~24 */
   /* Two row pitches for icon+label rows (owner 2026-11-26): the file tree is
-     compact (14px x 1.3 + 4px = 26.2px), conversation/change rows and menus
-     are regular (14px x 1.48 + 4px = 28.7px). Strip icon buttons and the
-     settings nav keep --rail-row-h: 36px. */
+     compact (1.3 line-height + 4px padding = 26.2px), conversation/change
+     rows and menus are regular (1.48 + 6px = 32.7px). Strip icon buttons and
+     the settings nav keep --rail-row-h: 36px. */
   --row-lh: 1.3;
   --row-lh-2: 1.48;
-  --row-h: 28.7px;
+  --row-pad-2: 6px;
+  --row-h: 32.7px;
 
 /* Spacing steps: the only spacing values (4px module). */
   --space-hair: 4px;
@@ -675,7 +676,7 @@
   .session-rename-inline button:hover { background: var(--hover); color: var(--ink); }
   .sess {
     flex: 1;
-    min-width: 0; display: flex; align-items: center; gap: var(--space-tight); padding: var(--space-hair) var(--space-control); border-radius: var(--r-sm); cursor: pointer; color: var(--ink-soft); font-size: var(--fs-primary); text-align: left; white-space: nowrap; overflow: hidden; line-height: var(--row-lh-2); }
+    min-width: 0; display: flex; align-items: center; gap: var(--space-tight); padding: var(--row-pad-2) var(--space-control); border-radius: var(--r-sm); cursor: pointer; color: var(--ink-soft); font-size: var(--fs-primary); text-align: left; white-space: nowrap; overflow: hidden; line-height: var(--row-lh-2); }
   .session-row:hover .sess, .session-row:focus-within .sess { background: var(--row-active); }
   .sess.active { background: var(--row-active); font-weight: 500; }
   .sess .s-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -764,7 +765,7 @@
   .wb-actions button { display: flex; align-items: center; gap: var(--space-tight); border: none; background: var(--canvas); border-radius: var(--r-md); padding: var(--space-tight) var(--space-control); font-size: var(--fs-primary); cursor: pointer; color: var(--ink-soft); text-align: left; }
   .wb-actions button:hover { background: var(--hover); }
   .wb-sessions { flex: 1; overflow-y: auto; margin-top: var(--space-tight); padding: 0 var(--space-tight); }
-  .wb-sess { display: flex; align-items: center; gap: var(--space-tight); padding: var(--space-hair) var(--space-control); border-radius: var(--r-sm); font-size: var(--fs-primary); color: var(--ink-soft); cursor: pointer; white-space: nowrap; overflow: hidden; line-height: var(--row-lh-2); }
+  .wb-sess { display: flex; align-items: center; gap: var(--space-tight); padding: var(--row-pad-2) var(--space-control); border-radius: var(--r-sm); font-size: var(--fs-primary); color: var(--ink-soft); cursor: pointer; white-space: nowrap; overflow: hidden; line-height: var(--row-lh-2); }
   .wb-sess:hover { background: var(--hover); }
   .wb-sess.active { background: var(--selected); font-weight: 500; }
   .wb-sess .tag { margin-left: auto; font-size: var(--fs-micro); color: var(--text-3); font-family: var(--mono); flex-shrink: 0; }
@@ -1036,7 +1037,7 @@
     }
   }
   .list-menu { position: absolute; right: 0; top: 30px; z-index: 60; background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--r-md); box-shadow: var(--shadow-popup); padding: var(--space-hair); min-width: 200px; }
-  .list-menu button { display: flex; align-items: center; gap: var(--space-tight); width: 100%; border: none; background: none; padding: var(--space-hair) var(--space-control); border-radius: var(--r-sm); font-size: var(--fs-primary); color: var(--ink-soft); cursor: pointer; text-align: left; line-height: var(--row-lh-2); }
+  .list-menu button { display: flex; align-items: center; gap: var(--space-tight); width: 100%; border: none; background: none; padding: var(--row-pad-2) var(--space-control); border-radius: var(--r-sm); font-size: var(--fs-primary); color: var(--ink-soft); cursor: pointer; text-align: left; line-height: var(--row-lh-2); }
   .list-menu button:hover { background: var(--hover); }
   /* thinking block: collapsible, amber bar (v0.5.x lineage) */
   .think-block { max-width: 660px; margin: 0 auto var(--space-column); padding: 0 var(--space-column); font-size: var(--fs-secondary); color: var(--text-3); border-left: 2px solid var(--color-text-muted); }
@@ -1136,7 +1137,7 @@
   .queued-prompt-action:hover { background: var(--hover); color: var(--ink); }
   .queued-prompt-action.primary { color: var(--ink); }
   .slash-palette { margin-bottom: var(--space-tight); max-height: 200px; overflow-y: auto; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-md); box-shadow: var(--shadow-popup); padding: var(--space-hair); }
-  .slash-item { display: flex; align-items: baseline; gap: var(--space-control); width: 100%; text-align: left; padding: var(--space-hair) var(--space-control); border: none; background: none; border-radius: var(--r-sm); cursor: pointer; line-height: var(--row-lh-2); }
+  .slash-item { display: flex; align-items: baseline; gap: var(--space-control); width: 100%; text-align: left; padding: var(--row-pad-2) var(--space-control); border: none; background: none; border-radius: var(--r-sm); cursor: pointer; line-height: var(--row-lh-2); }
   .slash-item.on { background: var(--selected); }
   .slash-item:hover { background: var(--hover); }
   .slash-item .cmd { font-family: var(--mono); font-size: var(--fs-primary); color: var(--ink); flex-shrink: 0; }
@@ -1194,7 +1195,7 @@
   .menu.on { display: block; }
   /* .mi rows are real <button>s where menus are keyboard-operable; this reset
      strips the UA button chrome so they render exactly like the old divs. */
-  .menu .mi { display: flex; align-items: center; gap: var(--space-control); width: 100%; padding: var(--space-hair) var(--space-control); border-radius: var(--r-sm); border: 0; background: transparent; font: inherit; font-size: var(--fs-primary); color: var(--ink-soft); cursor: pointer; position: relative; text-align: left; line-height: var(--row-lh-2); }
+  .menu .mi { display: flex; align-items: center; gap: var(--space-control); width: 100%; padding: var(--row-pad-2) var(--space-control); border-radius: var(--r-sm); border: 0; background: transparent; font: inherit; font-size: var(--fs-primary); color: var(--ink-soft); cursor: pointer; position: relative; text-align: left; line-height: var(--row-lh-2); }
   .menu .mi:hover { background: var(--hover); }
   .menu .mi:focus-visible { background: var(--hover); outline: none; }
   .menu .mi i { color: var(--text-2); }
@@ -1328,7 +1329,7 @@
     width: 100%;
   }
   .rpanel .body:has(.child-conv) .child-conv { flex: 1; min-width: 0; min-height: 0; }
-  .rp-empty { padding: var(--space-column) var(--space-control); font-size: var(--fs-secondary); color: var(--text-3); text-align: center; }
+  .rp-empty { padding: var(--space-control) var(--space-control); font-size: var(--fs-secondary); color: var(--text-3); text-align: center; }
   .related-empty-actions { margin-top: var(--space-block); display: flex; flex-direction: column; align-items: center; gap: var(--space-tight); }
   .related-empty-actions button { padding: var(--space-hair) var(--space-hair); border: 0; background: none; color: var(--text-2); font-size: var(--fs-secondary); cursor: pointer; }
   .related-empty-actions button:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
@@ -1401,7 +1402,7 @@
   .sc-item:hover { background: var(--hover); }
   .sc-item .t { font-size: var(--fs-primary); font-weight: 500; display: flex; align-items: center; gap: var(--space-tight); color: var(--ink-soft); }
   .sc-item .d { font-size: var(--fs-secondary); color: var(--text-3); margin-top: var(--space-hair); }
-  .file-item { display: flex; align-items: center; gap: var(--space-tight); padding: var(--space-hair) var(--space-tight); border-radius: var(--r-sm); background: none; border: none; margin: 0; cursor: pointer; width: 100%; text-align: left; font-size: var(--fs-primary); color: var(--ink-soft); line-height: var(--row-lh-2); }
+  .file-item { display: flex; align-items: center; gap: var(--space-tight); padding: var(--row-pad-2) var(--space-tight); border-radius: var(--r-sm); background: none; border: none; margin: 0; cursor: pointer; width: 100%; text-align: left; font-size: var(--fs-primary); color: var(--ink-soft); line-height: var(--row-lh-2); }
   .file-item:hover { background: var(--row-active); }
   .file-item .delta { margin-left: auto; font-family: var(--mono); font-size: var(--fs-micro); color: var(--text-2); flex-shrink: 0; }
   .tree { font-size: var(--fs-primary); }
@@ -1688,7 +1689,7 @@
   .global-approval-notice span:last-of-type { color: color-mix(in srgb, var(--on-ink) 82%, transparent); white-space: nowrap; }
   .global-approval-notice b { min-width: 18px; padding: 1px var(--space-tight); border-radius: 999px; background: var(--on-ink); color: var(--ink); font-size: var(--fs-micro); }
   .context-menu { position: fixed; z-index: 260; width: 220px; max-height: min(320px, calc(100vh - 16px)); overflow-y: auto; padding: var(--space-tight); border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--panel); box-shadow: var(--shadow-popup); }
-  .context-menu button { display: flex; align-items: center; gap: var(--space-tight); width: 100%; padding: var(--space-hair) var(--space-control); border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-soft); text-align: left; cursor: pointer; line-height: var(--row-lh-2); }
+  .context-menu button { display: flex; align-items: center; gap: var(--space-tight); width: 100%; padding: var(--row-pad-2) var(--space-control); border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-soft); text-align: left; cursor: pointer; line-height: var(--row-lh-2); }
   .context-menu button:hover, .context-menu button:focus-visible { background: var(--hover); outline: none; }
   .context-menu button.danger { color: var(--danger); }
   .context-menu-swatches { display: flex; gap: var(--space-tight); padding: var(--space-hair) var(--space-control); }
@@ -1917,7 +1918,7 @@
   .add-provider-primary { width: 100%; display: flex; align-items: center; justify-content: center; gap: var(--space-tight); padding: var(--space-control) var(--space-control); border: 1px solid var(--ink); border-radius: var(--r-md); background: var(--ink); color: var(--on-ink); font: inherit; font-size: var(--fs-primary); font-weight: 600; cursor: pointer; }
   .add-provider-primary:hover { opacity: 0.9; }
   .provider-master-list { display: flex; flex-direction: column; gap: var(--space-hair); margin-top: var(--space-tight); }
-  .provider-master-row { display: flex; align-items: center; gap: var(--space-tight); width: 100%; padding: var(--space-hair) var(--space-control); border: none; border-radius: var(--r-sm); background: transparent; color: var(--ink-soft); font: inherit; font-size: var(--fs-primary); cursor: pointer; text-align: left; line-height: var(--row-lh-2); }
+  .provider-master-row { display: flex; align-items: center; gap: var(--space-tight); width: 100%; padding: var(--row-pad-2) var(--space-control); border: none; border-radius: var(--r-sm); background: transparent; color: var(--ink-soft); font: inherit; font-size: var(--fs-primary); cursor: pointer; text-align: left; line-height: var(--row-lh-2); }
   .provider-master-row:hover { background: var(--hover); }
   .provider-master-row.on { background: var(--selected); color: var(--ink); }
   .provider-master-entry { min-width: 0; }
