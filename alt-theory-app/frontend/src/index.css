@@ -1177,7 +1177,11 @@
      handle at the left end that puts the deck away to the right. Fills only, no strokes. */
   .deck { --we: 30px; --pill: 84px; --deck-card: var(--panel); --deck-spine: color-mix(in srgb, var(--panel) 90%, var(--ink));
     --deck-blue: color-mix(in srgb, var(--blue-100) 70%, var(--blue-25)); --deck-blue-spine: color-mix(in srgb, var(--blue-100) 72%, var(--blue-300));
-    position: relative; height: 44px; margin-bottom: var(--space-tight); font-size: var(--fs-secondary); color: var(--text-2); }
+    position: relative; height: 44px; margin-bottom: var(--space-tight); font-size: var(--fs-secondary); color: var(--text-2);
+    transition: height 0.3s var(--ease-out), margin-bottom 0.3s var(--ease-out); }
+  /* Put away, the deck gives its row back: it folds to no height and its tray floats over the composer's top right corner (owner 2026-11-26). */
+  .deck.away { height: 0; margin-bottom: 0; }
+  .composer-col:has(.deck.away) :is(.composer-notes, .staged-attachments) { padding-right: calc(var(--pill, 84px) + var(--space-tight)); }
   .deck:has(.deck-spine:hover) { --we: 74px; }
   .deck-front { position: absolute; inset: 0 calc((var(--n) - 1) * var(--we)) 0 0; z-index: 20; display: flex; align-items: center; gap: var(--space-hair);
     padding-right: var(--space-tight); border-radius: 14px; background: var(--deck-card);
@@ -1205,10 +1209,10 @@
   .deck-spine:hover .deck-dot { opacity: 0; }
   .deck.away .deck-front { left: calc(100% - var(--pill)); right: 0; opacity: 0; pointer-events: none; }
   .deck.away .deck-spine { opacity: 0; pointer-events: none; }
-  .deck-tray { position: absolute; top: 0; bottom: 0; right: 0; width: var(--pill); z-index: 30; display: flex; align-items: center; justify-content: center; gap: 2px;
+  .deck-tray { position: absolute; bottom: 0; right: 0; height: 44px; width: var(--pill); z-index: 30; display: flex; align-items: center; justify-content: center; gap: 2px;
     border-radius: 14px; background: var(--deck-card); opacity: 0; pointer-events: none; transform: scale(0.96);
     transition: opacity 0.2s 0.1s, transform 0.2s 0.1s var(--ease-out); }
-  .deck.away .deck-tray { opacity: 1; pointer-events: auto; transform: none; }
+  .deck.away .deck-tray { opacity: 1; pointer-events: auto; transform: none; bottom: var(--space-tight); height: 36px; border-radius: 12px; box-shadow: 0 1px 2px rgba(24, 24, 30, 0.06), 0 6px 18px -6px rgba(24, 24, 30, 0.18); }
   .deck-tray button { position: relative; width: 34px; height: 32px; display: grid; place-items: center; border: none; border-radius: 10px; background: none; color: var(--text-2); cursor: pointer; font-size: 1rem; transition: background 0.15s, color 0.15s; }
   .deck-tray button:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
   .deck-tray button.live { color: var(--blue-500); }
