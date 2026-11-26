@@ -1337,8 +1337,11 @@
      composers (light: near-black; dark: light ink). */
   .composer .row > .send.stop { background: var(--ink); color: var(--on-ink); border-radius: var(--r-md); }
   .send:disabled { opacity: 0.45; cursor: default; }
-  .send.continue { width: auto; gap: 6px; padding: 0 12px; font-size: var(--fs-secondary); font-weight: 500; white-space: nowrap; }
-  .composer .row > .send.continue { color: var(--ink); padding: 2px 8px; }
+  .send.continue { width: auto; gap: 6px; padding: 0 12px; font-size: var(--fs-secondary); white-space: nowrap; }
+  /* Same ink and weight as its neighbours in the row; a small solid play mark keeps it findable. */
+  .composer .row > .send.continue { color: var(--text-2); font-weight: 400; padding: 2px 8px; }
+  .composer .row > .send.continue:hover { color: var(--ink); }
+  .send.continue::before { content: ""; width: 7px; height: 8px; flex: none; background: currentColor; clip-path: polygon(0 0, 100% 50%, 0 100%); }
   .composer-notes .run-tip-more { color: var(--text-3); }
 
   /* menus */

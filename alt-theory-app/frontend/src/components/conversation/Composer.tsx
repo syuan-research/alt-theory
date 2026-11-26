@@ -621,7 +621,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   onClick={handleSubmit}
                   data-tip={t("Continue the last answer from where it stopped")}
                 >
-                  <i className="ph ph-play" />
                   <span>{t("Continue")}</span>
                 </button>
               ) : (

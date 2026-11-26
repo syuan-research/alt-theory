@@ -450,7 +450,6 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
           <ContextRing />
           {canContinue ? (
             <button className="send continue" onClick={send} data-tip={t("Continue the last answer from where it stopped")}>
-              <i className="ph ph-play" aria-hidden="true" />
               <span>{t("Continue")}</span>
             </button>
           ) : (
