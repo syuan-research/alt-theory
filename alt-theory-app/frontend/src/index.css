@@ -1284,7 +1284,7 @@
   .right.open .rpanel { width: var(--right-width); }
   /* Tight on purpose: the left column keeps only ~4px under its brand row,
      so this header should not sit visibly airier than that. */
-  .rpanel .head { display: flex; align-items: center; gap: var(--space-tight); padding: var(--space-tight) var(--space-control); overflow: hidden; border-bottom: 1px solid var(--hairline); font-weight: 500; font-size: var(--fs-primary); white-space: nowrap; }
+  .rpanel .head { display: flex; align-items: center; gap: var(--space-tight); padding: var(--space-tight) var(--space-control) var(--space-tight) var(--space-hair); overflow: hidden; border-bottom: 1px solid var(--hairline); font-weight: 500; font-size: var(--fs-primary); white-space: nowrap; }
   .rpanel .head .rp-close { border: none; background: transparent; cursor: pointer; color: var(--text-2); padding: var(--space-hair); flex: 0 0 auto; }
   .rpanel .head .rp-full { border: none; background: transparent; cursor: pointer; color: var(--text-2); padding: var(--space-hair); flex: 0 0 auto; margin-left: auto; }
   .rpanel .head .back { border: none; background: transparent; cursor: pointer; color: var(--text-2); padding: var(--space-hair); display: none; }
@@ -1298,7 +1298,7 @@
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: var(--space-tight) var(--space-control) var(--space-control);
+    padding: var(--space-tight) var(--space-control) var(--space-control) var(--space-hair);
   }
   /* When a related child is open, the outer body must not double-scroll. */
   .rpanel .body:has(.child-conv) {
