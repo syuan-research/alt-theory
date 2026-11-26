@@ -291,7 +291,7 @@ const catalog: Record<string, string> = {
   "Clear": "清除",
   "Close": "关闭",
   "Codex": "Codex",
-  "Codex (ChatGPT)": "Codex（ChatGPT）",
+  "Codex (ChatGPT)": "Codex (ChatGPT)",
   "Collapse": "收起",
   "Collapse all": "全部折叠",
   "Collapse all projects": "折叠全部项目",
