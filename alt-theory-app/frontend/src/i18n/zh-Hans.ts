@@ -1160,6 +1160,18 @@ const catalog: Record<string, string> = {
   "Tool output cleared in the original conversation appears as a placeholder.": "原对话中已清除的工具输出以占位文字显示。",
   "Some tool activity is shown without its original results.": "部分工具只显示调用记录，未导入原始结果。",
   "Turns undone in the original conversation are saved separately.": "原对话中已撤回的轮次另行保留。",
+  "Bookmarks": "收藏夹",
+  "By source": "按出处",
+  "Extend to": "扩展到",
+  "Project": "项目",
+  "All": "全部",
+  "Message": "消息",
+  "(no text)": "（无文字）",
+  "Nothing matches.": "没有匹配的条目。",
+  "No bookmarks or marks yet. Bookmark a message from its ⋯ menu; mark text by selecting it and right-clicking.": "还没有收藏或标记。在消息的 ⋯ 菜单里收藏；选中文字后右键可以标记。",
+  "Open a conversation to see its bookmarks and marks.": "打开一个对话，查看它的收藏和标记。",
+  "Not on this conversation's current branch": "不在本对话当前的分支上",
+  "The latest message when this was bookmarked": "收藏时对话里最新的一条消息",
 };
 
 export default catalog;

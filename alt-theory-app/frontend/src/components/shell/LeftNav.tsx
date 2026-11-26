@@ -992,9 +992,10 @@ function UserNav({ onImport }: { onImport: () => void }) {
         ) : (
           <>
             {/* Workspaces once there are two, then pins once there is one
-                (owner 2026-11-26); neither shows while the list is filtered. */}
+                (owner 2026-11-26); neither shows while the list is filtered.
+                Workspaces stay at the top while the list scrolls. */}
             {visibleIds === null && main.workspaces.length > 1 ? (
-              <div>
+              <div className="workspaces-pinned">
                 <div className="workspace-list-head"><span className="workspace-list-title"><i className="ph ph-squares-four section-icon" aria-hidden="true" /><span className="lbl">{t("Workspaces")}</span></span></div>
                 {main.workspaces.map((workspace) => {
                   const summary = workspace.sessionId ? sessionsById.get(workspace.sessionId) : undefined;

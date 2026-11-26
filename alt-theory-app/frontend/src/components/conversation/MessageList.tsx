@@ -39,6 +39,7 @@ import { useMarks } from "@/components/conversation/useMarks";
 import { BookmarkAction } from "./BookmarkAction";
 import { loadBookmarks, useBookmarks } from "@/lib/bookmarks";
 import { marksOf, railMarksOf, subscribeMarks } from "@/lib/marks";
+import { clearRowJump, pendingRowJump, subscribeRowJump } from "@/lib/rowJump";
 
 export function MessageList() {
   const conv = useConversationContext();
@@ -91,12 +92,19 @@ export function MessageList() {
     () => railMarksOf(userRows, bookmarks.map((bookmark) => bookmark.row), textMarks),
     [userRows, bookmarks, textMarks],
   );
+  // A user row carries data-row; an answer is found by its marked text.
+  const rowElement = (rowId: string): HTMLElement | null => {
+    const container = containerRef.current;
+    const id = CSS.escape(rowId);
+    const el = container?.querySelector(`[data-row="${id}"]`) ?? container?.querySelector(`[data-mark-row="${id}"]`)?.closest(".msg");
+    return el instanceof HTMLElement ? el : null;
+  };
   const scrollToRow = (rowId: string) => {
     const container = containerRef.current;
-    const target = container?.querySelector(`[data-row="${CSS.escape(rowId)}"]`);
-    if (!container || !(target instanceof HTMLElement)) return false;
+    const target = rowElement(rowId);
+    if (!container || !target) return false;
     stickToBottomRef.current = false;
-    container.scrollTop = target.offsetTop - container.offsetTop - 8;
+    container.scrollTop += target.getBoundingClientRect().top - container.getBoundingClientRect().top - 8;
     return true;
   };
 
@@ -142,6 +150,14 @@ export function MessageList() {
       conv.loadEarlier(row.rowId);
     }
   };
+  // A row asked for from elsewhere (the collection pane), once its conversation is on show.
+  const asked = useSyncExternalStore(subscribeRowJump, pendingRowJump);
+  const hasRows = messages.length > 0;
+  useEffect(() => {
+    if (!asked || asked.sessionId !== conv.sessionId || !hasRows) return;
+    clearRowJump();
+    setJumpTo(asked.row);
+  }, [asked, conv.sessionId, hasRows]);
   // The jump's rows landed (after the anchor kept the view): go there. A
   // page already in flight when the jump was asked delays it one round.
   // A jump the server refuses (the row is gone) is not asked again.
@@ -151,8 +167,12 @@ export function MessageList() {
       jumpRetried.current = false;
       return;
     }
-    if (scrollToRow(jumpTo)) setJumpTo(null);
-    else if (!conv.loadingEarlier && (jumpRetried.current || !conv.loadEarlier(jumpTo))) setJumpTo(null);
+    if (scrollToRow(jumpTo)) {
+      const row = rowElement(jumpTo);
+      row?.classList.add("row-flash");
+      window.setTimeout(() => row?.classList.remove("row-flash"), 1200);
+      setJumpTo(null);
+    } else if (!conv.loadingEarlier && (jumpRetried.current || !conv.loadEarlier(jumpTo))) setJumpTo(null);
     else if (!conv.loadingEarlier) jumpRetried.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jumpTo, messages, conv.loadingEarlier]);

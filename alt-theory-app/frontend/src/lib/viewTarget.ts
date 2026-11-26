@@ -16,7 +16,7 @@ import type { PreviewMode } from "./fileContent";
  */
 
 /** The side view's rails. Records and provenance are researcher-only. */
-export type RailKey = "chats" | "changes" | "workspace" | "open" | "records" | "provenance";
+export type RailKey = "chats" | "changes" | "workspace" | "open" | "marks" | "records" | "provenance";
 
 export type ViewTarget = (
   /** A local interactive page; it can be opened before a conversation exists. */

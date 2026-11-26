@@ -672,6 +672,32 @@
   .workspace-close { flex: 0 0 auto; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: var(--r-sm); background: transparent; color: var(--text-3); cursor: pointer; opacity: 0; }
   .workspace-row:hover .workspace-close, .workspace-close:focus-visible { opacity: 1; }
   .workspace-close:hover { background: var(--hover); color: var(--ink); }
+  /* The collection (owner 2026-11-26): cards in conversation order; a long node is capped and expands. */
+  .marks-source { width: 100%; }
+  .marks-source .marks-source-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .marks-here { flex: none; font-size: var(--fs-secondary); font-weight: 400; color: var(--text-3); }
+  .mk-item { margin: var(--space-tight) var(--space-hair); padding: var(--space-tight) var(--space-control); border-radius: var(--r-sm); cursor: pointer; }
+  .mk-item:hover { background: var(--hover); }
+  .mk-item.gone { cursor: default; opacity: 0.65; }
+  .mk-meta { display: flex; align-items: center; gap: var(--space-tight); min-width: 0; font-size: var(--fs-secondary); color: var(--text-3); }
+  .mk-swatch { flex: none; width: 10px; height: 10px; border-radius: 2px; }
+  .mk-source { margin-left: auto; min-width: 0; max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mk-text { margin-top: var(--space-hair); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; color: var(--ink); }
+  .mk-text.open { display: block; }
+  .mk-text > span { box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+  .mk-hl-1 > span { background: var(--hl-1); } .mk-hl-2 > span { background: var(--hl-2); } .mk-hl-3 > span { background: var(--hl-3); }
+  .mk-hl-4 > span { background: var(--hl-4); } .mk-hl-5 > span { background: var(--hl-5); }
+  .mk-under > span { text-decoration: underline; text-underline-offset: 3px; }
+  .mk-strike > span { text-decoration: line-through; }
+  .mk-more { border: none; background: none; padding: 0; margin-top: var(--space-tight); font-size: var(--fs-secondary); color: var(--text-3); cursor: pointer; }
+  .mk-more:hover { color: var(--ink); }
+  .mk-note { margin-top: var(--space-hair); padding-left: var(--space-tight); border-left: 2px solid var(--hairline); white-space: pre-wrap; font-size: var(--fs-secondary); color: var(--text-2); }
+  .mk-at { display: flex; align-items: flex-start; gap: var(--space-hair); width: 100%; margin-top: var(--space-hair); padding: 0; border: none; background: none; text-align: left; font-size: var(--fs-secondary); color: var(--text-3); cursor: pointer; }
+  .mk-at span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mk-at:hover { color: var(--ink); }
+  .msg.row-flash, [data-row].row-flash { animation: row-flash 1.2s ease-out; }
+  @keyframes row-flash { from { background: var(--selected); } to { background: transparent; } }
+  .workspaces-pinned { position: sticky; top: calc(-1 * var(--space-hair)); z-index: 2; background: var(--panel); padding-bottom: var(--space-hair); border-bottom: 1px solid var(--hairline); }
   .session-row {
     display: flex;
     align-items: center;

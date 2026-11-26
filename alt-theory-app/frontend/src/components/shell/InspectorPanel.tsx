@@ -29,6 +29,7 @@ import { WorkspaceTree } from "@/components/inspector/WorkspaceTree";
 import { ChangesPanel } from "@/components/inspector/ChangesPanel";
 import { LocalPage } from "@/components/inspector/LocalPage";
 import { OpenFilesPanel } from "@/components/inspector/OpenFilesPanel";
+import { MarksPanel } from "@/components/inspector/MarksPanel";
 import { MenuButton, NameForm } from "@/components/inspector/FolderList";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 import { TabStrip } from "@/components/shell/TabStrip";
@@ -46,11 +47,12 @@ const RAIL_META: Record<RailKey, { title: string; icon: string; adv?: boolean }>
   changes: { title: t("Changes"), icon: "ph-pencil-simple-line" },
   workspace: { title: t("Files"), icon: "ph-folder" },
   open: { title: t("Open files"), icon: "ph-files" },
+  marks: { title: t("Bookmarks"), icon: "ph-bookmarks-simple" },
   records: { title: t("Records"), icon: "ph-scroll", adv: true },
   provenance: { title: t("Provenance"), icon: "ph-tree-structure", adv: true },
 };
 
-const PRIMARY: RailKey[] = ["chats", "changes", "workspace", "open"];
+const PRIMARY: RailKey[] = ["chats", "changes", "workspace", "open", "marks"];
 const ADVANCED: RailKey[] = ["records", "provenance"];
 
 export function InspectorPanel() {
@@ -188,6 +190,7 @@ export function InspectorPanel() {
           {active === "changes" ? <ChangesPanel /> : null}
           {active === "workspace" ? shell.target?.kind === "page" ? <LocalPage /> : <WorkspaceTree /> : null}
           {active === "open" ? <OpenFilesPanel /> : null}
+          {active === "marks" ? <MarksPanel /> : null}
           {active === "records" ? (
             <RecordsPanel
               sessionId={conv.sessionId}

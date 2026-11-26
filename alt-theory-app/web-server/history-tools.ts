@@ -31,6 +31,7 @@ import {
   toolPhrase,
   viewToLines,
   viewToMarkdown,
+  type ViewKind,
   type ViewSelection,
 } from "../frontend/src/lib/sessionView.js";
 
@@ -105,6 +106,75 @@ function fullRow(dataDir: string, sessionId: string, row: TranscriptMessage): st
     out.text = readToolResultText(dataDir, sessionId, row.toolCallId, row.entryId ?? undefined) ?? row.text;
   }
   return viewToLines([out], { rowIds: true });
+}
+
+/** One bookmark or mark as the user's collection shows it (owner 2026-11-26). */
+export interface MarkedItem {
+  sessionId: string;
+  /** The node's row id; a mark in thinking keeps its "#thinking" row in `markRow`. */
+  row: string;
+  /** Position in the conversation; -1 = not on the current branch. */
+  order: number;
+  timestamp: string | null;
+  role: ViewKind | null;
+  kind: "bookmark" | TextMark["kind"];
+  /** A bookmark: the node's text. A mark: its quote. */
+  text: string;
+  note?: string;
+  thinking?: boolean;
+  createdAt?: string;
+  /** A bookmark: the latest message when it was made. */
+  at?: { row: string; text: string };
+}
+
+const ITEM_TEXT = 20000;
+
+/** The collection of the given conversations: their bookmarks and marks with the text they point at. */
+export function markedItems(dataDir: string, ids: string[]): MarkedItem[] {
+  const items: MarkedItem[] = [];
+  for (const sessionId of ids) {
+    const notes = marksOf(dataDir, sessionId);
+    if (!notes.bookmarks.length && !notes.marks.length) continue;
+    let transcript: TranscriptMessage[] = [];
+    try {
+      transcript = readVisibleTranscript(dataDir, sessionId);
+    } catch {
+      // An unreadable history still lists its notes.
+    }
+    const index = new Map(transcript.map((row, order) => [row.rowId, order]));
+    const node = (rowId: string) => {
+      const order = index.get(rowId) ?? -1;
+      const row = order >= 0 ? transcript[order] : undefined;
+      return { order, timestamp: row?.timestamp ?? null, role: row ? rowKind(row) : null, row };
+    };
+    for (const bookmark of notes.bookmarks) {
+      const { row, ...where } = node(bookmark.row);
+      items.push({
+        sessionId, row: bookmark.row, ...where, kind: "bookmark",
+        text: clipText(row?.text ?? "", ITEM_TEXT).text,
+        note: bookmark.note, createdAt: bookmark.createdAt,
+        ...(bookmark.at ? { at: bookmark.at } : {}),
+      });
+    }
+    for (const mark of notes.marks) {
+      const rowId = mark.row.replace(/#thinking$/, "");
+      const { row: _row, ...where } = node(rowId);
+      items.push({ sessionId, row: rowId, ...where, kind: mark.kind, text: mark.quote, ...(rowId !== mark.row ? { thinking: true } : {}) });
+    }
+  }
+  return items;
+}
+
+/** The latest message of a conversation, as a bookmark's context (owner 2026-11-26). */
+export function latestMessage(dataDir: string, sessionId: string): { row: string; text: string } | undefined {
+  const rows = readVisibleTranscript(dataDir, sessionId);
+  for (let i = rows.length - 1; i >= 0; i -= 1) {
+    const kind = rowKind(rows[i]);
+    if ((kind === "user" || kind === "assistant" || kind === "mail") && rows[i].rowId && rows[i].text.trim()) {
+      return { row: rows[i].rowId!, text: clipText(rows[i].text.replace(/\s+/g, " ").trim(), 300).text };
+    }
+  }
+  return undefined;
 }
 
 export interface ReadParams {

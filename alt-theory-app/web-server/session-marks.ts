@@ -34,6 +34,8 @@ export interface NodeBookmark {
   note: string;
   createdAt: string;
   updatedAt: string;
+  /** The latest message when the bookmark was made (owner 2026-11-26). */
+  at?: { row: string; text: string };
 }
 
 function readDocument(recordsDir: string): Record<string, unknown> {
@@ -50,14 +52,20 @@ export function readBookmarks(recordsDir: string): NodeBookmark[] {
   if (!Array.isArray(value) || value.some((item) => !item ||
     typeof item.row !== "string" || !item.row ||
     typeof item.note !== "string" ||
-    typeof item.createdAt !== "string" || typeof item.updatedAt !== "string")) {
+    typeof item.createdAt !== "string" || typeof item.updatedAt !== "string" ||
+    (item.at !== undefined && (typeof item.at?.row !== "string" || typeof item.at?.text !== "string")))) {
     throw new Error("Invalid bookmarks");
   }
   return value;
 }
 
 /** Update one node so saves from different panes do not replace each other's bookmarks. */
-export function writeBookmark(recordsDir: string, row: unknown, note: unknown): NodeBookmark[] {
+export function writeBookmark(
+  recordsDir: string,
+  row: unknown,
+  note: unknown,
+  latest?: () => NodeBookmark["at"],
+): NodeBookmark[] {
   if (typeof row !== "string" || !row || row.length > 200) throw new Error("Invalid bookmark row");
   if (note !== null && (typeof note !== "string" || note.length > MAX_QUOTE)) throw new Error("Invalid bookmark note");
   const document = readDocument(recordsDir);
@@ -67,7 +75,8 @@ export function writeBookmark(recordsDir: string, row: unknown, note: unknown): 
   if (note !== null) {
     if (next.length >= MAX_MARKS) throw new Error(`at most ${MAX_MARKS} bookmarks`);
     const now = new Date().toISOString();
-    next.push({ row, note: note as string, createdAt: previous?.createdAt ?? now, updatedAt: now });
+    const at = previous ? previous.at : latest?.();
+    next.push({ row, note: note as string, createdAt: previous?.createdAt ?? now, updatedAt: now, ...(at ? { at } : {}) });
   }
   writeJsonAtomic(join(recordsDir, FILE), { ...document, bookmarks: next });
   return next;

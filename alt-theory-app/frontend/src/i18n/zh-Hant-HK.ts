@@ -1159,6 +1159,18 @@ const catalog: Record<string, string> = {
   "Tool output cleared in the original conversation appears as a placeholder.": "原對話中已清除的工具輸出以佔位文字顯示。",
   "Some tool activity is shown without its original results.": "部分工具只顯示呼叫記錄，未匯入原始結果。",
   "Turns undone in the original conversation are saved separately.": "原對話中已撤回的輪次另行保留。",
+  "Bookmarks": "收藏夾",
+  "By source": "按出處",
+  "Extend to": "擴展到",
+  "Project": "項目",
+  "All": "全部",
+  "Message": "訊息",
+  "(no text)": "（無文字）",
+  "Nothing matches.": "沒有匹配的條目。",
+  "No bookmarks or marks yet. Bookmark a message from its ⋯ menu; mark text by selecting it and right-clicking.": "還沒有收藏或標記。在訊息的 ⋯ 選單裏收藏；選取文字後右鍵可以標記。",
+  "Open a conversation to see its bookmarks and marks.": "打開一個對話，查看它的收藏和標記。",
+  "Not on this conversation's current branch": "不在本對話當前的分支上",
+  "The latest message when this was bookmarked": "收藏時對話裏最新的一條訊息",
 };
 
 export default catalog;

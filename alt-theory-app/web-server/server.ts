@@ -168,6 +168,7 @@ import {
 import { discoverSkillResources } from "./resource-discovery.js";
 import { adoptStagedAttachments, stageAttachment } from "./attachment-staging.js";
 import { readMarks, writeMarks, readBookmarks, writeBookmark } from "./session-marks.js";
+import { latestMessage, markedItems } from "./history-tools.js";
 import { reviewerRecommendations } from "./reviewer-recommendations.js";
 import {
   readSubagentConfig,
@@ -1870,10 +1871,32 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     if (!requireSessionRestContentAccess(req, res, sessionId)) return;
     try {
       const body = asObject(req.body);
-      res.json({ bookmarks: writeBookmark(join(resolveSessionRoot(dataDir, sessionId)!, "records"), body.row, body.note) });
+      res.json({ bookmarks: writeBookmark(join(resolveSessionRoot(dataDir, sessionId)!, "records"), body.row, body.note, () => {
+        try { return latestMessage(dataDir, sessionId); } catch { return undefined; }
+      }) });
     } catch (error) {
       res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
     }
+  });
+  // The collection pane (owner 2026-11-26): this conversation's bookmarks and
+  // marks, or those of its family, project or every conversation.
+  app.get("/api/sessions/:sessionId/marked", (req, res) => {
+    const { sessionId } = req.params;
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    const scope = String(req.query.scope ?? "this");
+    const summaries = listSessionSummaries(dataDir).sessions
+      .filter((summary) => access.canList(req, summary.sessionId) && access.canReadContent(req, summary.sessionId));
+    const self = summaries.find((summary) => summary.sessionId === sessionId);
+    let ids: string[];
+    if (scope === "family") ids = familyMemberIds(dataDir, sessionId);
+    else if (scope === "project") {
+      const dir = self?.workspacePrimaryDir ?? null;
+      ids = dir ? summaries.filter((summary) => summary.workspacePrimaryDir === dir).map((summary) => summary.sessionId) : [sessionId];
+    } else if (scope === "all") ids = summaries.map((summary) => summary.sessionId);
+    else ids = [sessionId];
+    const listed = new Set(summaries.map((summary) => summary.sessionId));
+    ids = [...new Set([sessionId, ...ids])].filter((id) => id === sessionId || listed.has(id));
+    res.json({ items: markedItems(dataDir, ids) });
   });
   app.post(
     "/api/sessions/:sessionId/ab-comparisons/generate",

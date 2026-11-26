@@ -221,7 +221,8 @@ surfaces remain designation-gated and absent for everyone else.
   - Pinned (Owner 2026-11-26): a row menu pins a conversation; pinned rows
     show in their own section above the list, in pin order, and stay in
     their place below. The section exists only while something is pinned
-    and has no collapsed-strip icon. Pins and the workspace choice live in
+    and has no collapsed-strip icon. The Workspaces section stays at the
+    top of the list while it scrolls. Pins and the workspace choice live in
     app settings (`/api/settings/navigation`). The row's "…" menu and its
     right-click menu are one item list.
   - The highlighted row is the conversation the user opened or created, and
@@ -301,6 +302,20 @@ surfaces remain designation-gated and absent for everyone else.
     `.child-switch`): no scrollbar and one height; it scrolls by wheel,
     trackpad and the arrow keys, with a partly visible chip at an edge.
     Deleting a conversation drops its open files too.
+  - Bookmarks (Owner 2026-11-26, `components/inspector/MarksPanel.tsx`): the
+    rail entry below Open files lists the conversation's bookmarks and text
+    marks as cards (`GET /api/sessions/:id/marked`). This conversation is
+    always in; Extend to Family / Project / All widens it (Project only for a
+    conversation with a main folder), and the extension and arrangement
+    stay as the center changes. One conversation defaults to By time (one
+    stream in conversation order), an extended scope to By source (a group
+    per conversation, this one first); the user may pick either. A card
+    shows who said it, the node's text for a bookmark or the quote styled
+    as its mark, the bookmark note, and the latest message when the
+    bookmark was made; text is capped at five lines with Expand. Clicking a
+    card shows that row in the center (opening its conversation through the
+    list's workspace rule) and flashes it; dragging a card carries
+    `conversation:<id>#<row>`, the quote and the note as plain text.
   - Branches (purpose `fork`), BTW and subagents open in this rail at the
     pane's current width.
   - Navigation has one owner, `ShellContext`, which changes one state only

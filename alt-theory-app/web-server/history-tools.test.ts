@@ -4,7 +4,8 @@ import { join } from "path";
 import test from "node:test";
 import { APPROVAL_ALLOW_SESSION } from "../core/security-extension.js";
 import { createTestService, setupFixture } from "./session-service.fixture.js";
-import { createHistoryTools, REFERENCE_PATTERN } from "./history-tools.js";
+import { createHistoryTools, latestMessage, markedItems, REFERENCE_PATTERN } from "./history-tools.js";
+import { writeBookmark, writeMarks } from "./session-marks.js";
 import { readVisibleTranscript } from "./session-store.js";
 import { ADVISOR_ROLE, type SessionService } from "./session-service.js";
 import { listSessionSummaries } from "./session-store.js";
@@ -141,4 +142,28 @@ test("/advisor: a fresh conversation in the source's family, with the advisor ro
   const read = await run(service, advisor.sessionId, "read_conversation", { session_id: source });
   assert.equal(read.asked, null);
   assert.match(read.text, /section 2 circular/);
+});
+
+test("collection: bookmarks with their node's text and the then-latest message; marks with their quote", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const lead = (await service.createSession(SELECTORS)).sessionId;
+  say(service, lead, "Code the interviews", "Coding the interviews by theme");
+  say(service, lead, "Now the second round", "Second round done");
+  const rows = readVisibleTranscript(fixture.dataDir, lead);
+  const records = managedOf(service, lead).manifest.recordsDir;
+  writeBookmark(records, rows[1].rowId, "themes", () => latestMessage(fixture.dataDir, lead));
+  writeBookmark(records, rows[1].rowId, "themes, edited", () => ({ row: "never", text: "asked again" }));
+  writeMarks(records, [{ row: `${rows[3].rowId}#thinking`, kind: "hl-5", quote: "done", prefix: "", suffix: "" }]);
+
+  const items = markedItems(fixture.dataDir, [lead]);
+  const bookmark = items.find((item) => item.kind === "bookmark")!;
+  assert.equal(bookmark.text, "Coding the interviews by theme");
+  assert.equal(bookmark.note, "themes, edited");
+  assert.equal(bookmark.order, 1);
+  assert.deepEqual(bookmark.at, { row: rows[3].rowId, text: "Second round done" }, "the context is kept from when it was made");
+  const mark = items.find((item) => item.kind === "hl-5")!;
+  assert.equal(mark.row, rows[3].rowId);
+  assert.equal(mark.thinking, true);
+  assert.equal(mark.text, "done");
 });

@@ -274,6 +274,33 @@ export interface NodeBookmark {
   note: string;
   createdAt: string;
   updatedAt: string;
+  /** The latest message when the bookmark was made. */
+  at?: { row: string; text: string };
+}
+
+/** Scope of the collection pane: this conversation, or extended to its family, project or every conversation. */
+export type MarkedScope = "this" | "family" | "project" | "all";
+
+/** One bookmark or mark with the text it points at (backend history-tools markedItems). */
+export interface MarkedItem {
+  sessionId: string;
+  row: string;
+  /** Position in the conversation; -1 = not on the current branch. */
+  order: number;
+  timestamp: string | null;
+  role: "user" | "assistant" | "thinking" | "tool" | "toolResult" | "mail" | "system" | null;
+  kind: "bookmark" | TextMark["kind"];
+  text: string;
+  note?: string;
+  thinking?: boolean;
+  createdAt?: string;
+  at?: { row: string; text: string };
+}
+
+export async function fetchMarkedItems(sessionId: string, scope: MarkedScope): Promise<MarkedItem[]> {
+  const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/marked?scope=${scope}`);
+  if (!res.ok) throw new Error(`Collection failed (${res.status})`);
+  return ((await res.json()) as { items: MarkedItem[] }).items;
 }
 
 export async function fetchBookmarks(sessionId: string): Promise<NodeBookmark[]> {
