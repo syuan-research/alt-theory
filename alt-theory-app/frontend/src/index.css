@@ -1133,7 +1133,7 @@
   .slash-item .cmd { font-family: var(--mono); font-size: var(--fs-primary); color: var(--ink); flex-shrink: 0; }
   .slash-item .desc { font-size: var(--fs-secondary); color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  .composer { background: var(--surface); border: none; border-radius: var(--r-lg); padding: var(--space-control) var(--space-control) var(--space-tight); box-shadow: var(--shadow-rest); }
+  .composer { background: var(--surface); border: none; border-radius: var(--r-lg); padding: var(--space-control) var(--space-control) var(--space-hair); box-shadow: var(--shadow-rest); }
   .composer.file-drag-over { outline: 1.5px dashed var(--color-warning); outline-offset: -2px; }
   /* ~2 lines empty; grows with content up to ~8 lines, then scrolls. */
   .composer textarea {
@@ -1610,7 +1610,11 @@
   }
   .child-composer {
     margin-top: var(--space-tight);
-    margin-bottom: var(--space-control);
+    /* Flush to the pane's bottom edge (owner 2026-11-26): no gray band below
+       the card, so the same height stands lower and the message area gains
+       the space. Only the top corners stay round. */
+    margin-bottom: 0;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
   }
   /* +8 from the card edge, same line as the status band's spinner and the
      main composer's ctx-line (owner 2026-10-29, option B): the rows share
