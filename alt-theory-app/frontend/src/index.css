@@ -675,11 +675,11 @@
   .left { --rail-head-h: 46px; --rail-row-h: 36px; --rail-icon-size: 1rem; width: var(--left-width); flex-shrink: 0; background: var(--panel); display: flex; flex-direction: column; transition: width 0.18s ease; }
   .app-root.leftCol .left .full { display: none !important; }
   /* Opening the left pane: the full rail waits until the width has nearly arrived, then fades in, so nothing
-     lays out at a half width (owner 2026-11-26). */
+     lays out at a half width (owner 2026-11-26). Not on first launch: the list shows at once. */
   /* backwards, not both: a fill that outlasts the fade would keep the rail its own stacking context and trap its menus under the center. */
-  .left > .full { animation: left-full-in 0.14s ease-out 0.13s backwards; }
+  .app-root.leftOpened .left > .full { animation: left-full-in 0.14s ease-out 0.13s backwards; }
   @keyframes left-full-in { from { opacity: 0; } }
-  @media (prefers-reduced-motion: reduce) { .left > .full { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .app-root.leftOpened .left > .full { animation: none; } }
   .left .mini { display: none; flex-direction: column; align-items: stretch; flex: 1; padding-bottom: var(--space-tight); }
   .app-root.leftCol .left .mini { display: flex; }
   .mini > .left-head { margin-bottom: var(--space-tight); }

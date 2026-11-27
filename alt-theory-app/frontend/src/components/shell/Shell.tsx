@@ -25,6 +25,9 @@ export function Shell() {
   const main = useMainView();
   const rootRef = useRef<HTMLDivElement>(null);
   const latest = useRef(shell);
+  // The left rail fades in only when the user opens it, not when the app starts.
+  const leftWasCollapsed = useRef(false);
+  if (shell.leftCollapsed) leftWasCollapsed.current = true;
   latest.current = shell;
   const dragCleanup = useRef<(() => void) | null>(null);
   const { state: layout, geometry, measure } = shell.layout;
@@ -153,6 +156,7 @@ export function Shell() {
   const rootClass = [
     "app-root",
     shell.leftCollapsed ? "leftCol" : "",
+    !shell.leftCollapsed && leftWasCollapsed.current ? "leftOpened" : "",
     (geometry.leftFloat ? layout.leftWidth : geometry.left) <= 240 ? "leftNarrow" : "",
     geometry.leftFloat ? "leftFloat" : "",
     app.viewMode === "researcher" ? "researcher" : "",
