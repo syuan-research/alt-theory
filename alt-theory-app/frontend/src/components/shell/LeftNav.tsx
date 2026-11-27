@@ -862,7 +862,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
   return (
     <div
       ref={navRef}
-      className={`user-nav${visibleIds === null && !shell.searchOpen && main.workspaces.length > 0 && deskPlaces.includes("left") ? " joined" : ""}`}
+      className={`user-nav${main.workspaces.length > 0 && deskPlaces.includes("left") ? ` joined${visibleIds === null ? " desks-in" : ""}` : ""}`}
       style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, }}
       onKeyDown={(event) => {
         // Escape closes the rail search from anywhere in the rail — the
@@ -980,6 +980,8 @@ function UserNav({ onImport }: { onImport: () => void }) {
         </div>
         {shell.searchOpen ? (
           <div className="inline-search">
+            {/* The same field as the Files search (owner: one search look everywhere). */}
+            <label className="files-search">
             <i className="ph ph-magnifying-glass" aria-hidden="true" />
             <input
               autoFocus
@@ -995,6 +997,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                 <i className="ph ph-x" aria-hidden="true" />
               </button>
             ) : null}
+            </label>
             <select aria-label={t("Search in")} value={searchScope} onChange={(event) => { setSearchScope(event.target.value as "names" | "content"); setContentResult(null); setContentSearchError(""); }}>
               <option value="names">{t("Names")}</option>
               <option value="content">{t("Content")}</option>

@@ -774,15 +774,21 @@
   /* The tool row and the desks block as one light-blue card (owner 2026-11-27, proto B),
      while nothing (search) sits between them; the desks part still folds alone. */
   .user-nav.joined > .pad { margin-right: var(--space-hair); padding-bottom: 0; }
-  .user-nav.joined .split-new { background: var(--blue-25); border-radius: var(--r-lg) var(--r-lg) 0 0; }
+  .user-nav.joined .split-new { background: var(--blue-25); border-radius: var(--r-lg); }
+  /* The search opens inside the card, under the tool row; the desks follow it (or the card ends with it while filtering hides them). */
+  .user-nav.joined:is(.desks-in) .split-new, .user-nav.joined .pad:has(.inline-search) .split-new { border-radius: var(--r-lg) var(--r-lg) 0 0; }
+  .user-nav.joined .inline-search { margin: 0; padding: var(--space-hair) var(--space-tight) var(--space-tight); background: var(--blue-25); border-radius: 0 0 var(--r-lg) var(--r-lg); }
+  .user-nav.joined.desks-in .inline-search { border-radius: 0; }
+  .user-nav.joined .inline-search .files-search { background: var(--surface); }
+  .user-nav.joined .inline-search select { color: var(--blue-700); }
   .user-nav.joined .split-new .ws-pick > summary, .user-nav.joined .split-new > button { color: var(--blue-700); box-shadow: none; }
   .user-nav.joined .split-new .ws-pick > summary { border-radius: var(--r-lg) 0 0 0; }
   .user-nav.joined .split-new > button:last-child { border-radius: 0 var(--r-lg) 0 0; }
   .user-nav.joined .split-new .ws-pick > summary:hover, .user-nav.joined .split-new > button:hover, .user-nav.joined .split-new > button.on { background: var(--blue-100); }
   .user-nav.joined .split-new .caret { color: var(--blue-300); }
-  .user-nav.joined .sessions { padding-top: 0; }
-  .user-nav.joined .workspaces-pinned { top: 0; }
-  .user-nav.joined .workspaces-pinned::before { display: none; }
+  .user-nav.joined.desks-in .sessions { padding-top: 0; }
+  .user-nav.joined.desks-in .workspaces-pinned { top: 0; }
+  .user-nav.joined.desks-in .workspaces-pinned::before { display: none; }
   .user-nav.joined .workspaces-box { border-radius: 0 0 var(--r-lg) var(--r-lg); padding-top: 0; }
   .user-nav.joined .workspaces-box::before { content: ""; display: block; height: 1px; margin: 0 var(--space-tight) var(--space-hair); background: color-mix(in srgb, var(--blue-300) 35%, transparent); }
   /* Folded (owner 2026-11-26): a row of dots, one per desk, the current one drawn long; each opens its desk. */
@@ -1608,8 +1614,8 @@
   ::highlight(hl-5) { background-color: var(--hl-5); }
   ::highlight(under) { text-decoration: underline 1.5px var(--text-2); text-underline-offset: 3px; }
   ::highlight(strike) { text-decoration: line-through var(--text-2); color: var(--text-3); }
-  .fsearch input, .inline-search input { width: 100%; min-width: 0; border: 0; border-bottom: 1px solid transparent; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: var(--fs-primary); padding: var(--space-hair) var(--space-hair); }
-  .fsearch input:focus, .inline-search input:focus { border-bottom-color: var(--hairline); }
+  .fsearch input { width: 100%; min-width: 0; border: 0; border-bottom: 1px solid transparent; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: var(--fs-primary); padding: var(--space-hair) var(--space-hair); }
+  .fsearch input:focus { border-bottom-color: var(--hairline); }
   .sect-head { display: flex; align-items: center; gap: var(--space-tight); width: 100%; border: 0; background: none; padding: var(--space-tight) var(--space-hair) var(--space-hair); font: inherit; font-size: var(--fs-micro); cursor: pointer; text-align: left; }
   .sect-head .n { color: var(--text-3); }
   .sect-head .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink); flex: 0 0 auto; }
@@ -1623,7 +1629,8 @@
   /* in-place rail filter (proto E): borderless, a hairline only on focus */
   /* Borderless like .fsearch: the box look was style drift from the designed
      in-place filter (proto E); lives under the new-row since 2026-09-18. */
-  .inline-search { display: flex; align-items: center; gap: var(--space-tight); margin: var(--space-tight) 0 0; padding: var(--space-tight) var(--space-control); color: var(--text-3); }
+  .inline-search { display: flex; align-items: center; gap: var(--space-tight); margin: var(--space-tight) 0 0; color: var(--text-3); }
+  .inline-search .files-search { padding: var(--space-hair) var(--space-tight); }
   .inline-search .clear { border: 0; background: none; color: var(--text-3); cursor: pointer; padding: 0 var(--space-hair); font-size: 0.8rem; }
   .inline-search select { max-width: 88px; border: 0; background: transparent; color: var(--text-2); font: inherit; font-size: var(--fs-micro); cursor: pointer; }
   .search-related-hit { width: 100%; border: 0; background: transparent; padding-left: var(--space-control); }

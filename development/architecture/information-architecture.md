@@ -256,8 +256,10 @@ surfaces remain designation-gated and absent for everyone else.
     chooses (`components/shell/Desks.tsx`, kept per device). The list's block
     folds upward by its bottom grabber (click, or drag up) into a row of
     dots, one per desk, the one on show drawn long; a dot opens its desk.
-    While the list shows its Desks block right under the tool row (no search
-    open), the two read as one light-blue card (Owner 2026-11-27).
+    With Desks shown in the list, the tool row, the search when open, and the
+    Desks block read as one light-blue card (Owner 2026-11-27); while a
+    filter hides the desks the card ends at the search. The list's search
+    field is the Files search's field.
   - Pinned (Owner 2026-11-26): a row menu pins a conversation; pinned rows
     show in their own section above the list, in pin order, and stay in
     their place below. The section exists only while something is pinned
