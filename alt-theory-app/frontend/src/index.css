@@ -1233,6 +1233,12 @@
   .deck.away { height: 0; margin-bottom: 0; }
   .composer-col:has(.deck.away) :is(.composer-notes, .staged-attachments) { padding-right: calc(var(--pill, 118px) + var(--space-tight)); }
   .deck:has(.deck-spine:hover) { --we: 74px; }
+  /* Hover intent (owner 2026-11-27): the spines open only after the pointer rests;
+     a pass-through cancels the pending transition, leaving closes at once. */
+  .deck:has(.deck-spine:hover) .deck-front { transition-delay: 0.3s, 0.3s, 0s, 0s; }
+  .deck:has(.deck-spine:hover) .deck-spine { transition-delay: 0.3s, 0.3s, 0s, 0s; }
+  .deck:has(.deck-spine:hover) .deck-spine-label { transition-delay: 0.3s; }
+  .deck-spine:hover :is(.deck-spine-name, .deck-dot) { transition-delay: 0.3s; }
   .deck-front { position: absolute; inset: 0 calc((var(--n) - 1) * var(--we)) 0 0; z-index: 20; display: flex; align-items: center; gap: var(--space-hair);
     padding-right: var(--space-tight); border-radius: 14px; background: var(--deck-card);
     transition: left 0.3s var(--ease-out), right 0.3s var(--ease-out), opacity 0.2s, background 0.2s; touch-action: none; }
