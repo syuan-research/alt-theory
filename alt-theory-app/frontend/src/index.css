@@ -607,7 +607,17 @@
   .note-swatch { width: 12px; height: 12px; border-radius: 50%; display: block; margin: 0 var(--space-hair); }
   .bookmark-popover-title > .ph { font-size: 14px; color: var(--text-3); margin: 0 var(--space-hair); }
   /* A noted mark: a dot just above the end of the marked text, one step darker than its color. */
-  .mark-notes { position: relative; height: 0; }
+  /* Marks are blocks over the text (lib/marks.ts): a color multiplies onto the page (lightens in dark), so the
+     text shows through as with a highlighter; strike washes the text toward the page and crosses it. */
+  .mark-layer { position: relative; height: 0; }
+  .mark-block { position: absolute; z-index: 1; pointer-events: none; }
+  .mark-hl-1 { background: var(--hl-1); } .mark-hl-2 { background: var(--hl-2); } .mark-hl-3 { background: var(--hl-3); }
+  .mark-hl-4 { background: var(--hl-4); } .mark-hl-5 { background: var(--hl-5); }
+  .mark-block:is(.mark-hl-1, .mark-hl-2, .mark-hl-3, .mark-hl-4, .mark-hl-5) { mix-blend-mode: multiply; }
+  :root[data-theme="dark"] .mark-block:is(.mark-hl-1, .mark-hl-2, .mark-hl-3, .mark-hl-4, .mark-hl-5) { mix-blend-mode: lighten; }
+  .mark-under::after { content: ""; position: absolute; left: 0; right: 0; bottom: -0.5px; height: 1.5px; background: var(--text-2); }
+  .mark-strike { background: color-mix(in srgb, var(--canvas) 50%, transparent); }
+  .mark-strike::after { content: ""; position: absolute; left: 0; right: 0; top: 52%; height: 1px; background: var(--text-2); }
   .mark-note-dot { position: absolute; width: 14px; height: 14px; margin: -10px 0 0 -7px; padding: 0; border: 0; border-radius: 50%; background: transparent; display: grid; place-items: center; cursor: pointer; z-index: 2; }
   .mark-note-dot::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: color-mix(in srgb, var(--c) 45%, var(--ink)); transition: transform 0.15s var(--ease-out); }
   .mark-note-dot:hover::before, .mark-note-dot:focus-visible::before { transform: scale(1.35); }
@@ -1613,13 +1623,6 @@
      inside a mark shows the search color, not a blend (owner 2026-10-13). */
   ::highlight(find) { background-color: color-mix(in srgb, var(--color-warning) 50%, var(--canvas)); }
   ::highlight(find-current) { background-color: color-mix(in srgb, var(--color-warning) 85%, var(--canvas)); color: var(--ink); }
-  ::highlight(hl-1) { background-color: var(--hl-1); }
-  ::highlight(hl-2) { background-color: var(--hl-2); }
-  ::highlight(hl-3) { background-color: var(--hl-3); }
-  ::highlight(hl-4) { background-color: var(--hl-4); }
-  ::highlight(hl-5) { background-color: var(--hl-5); }
-  ::highlight(under) { text-decoration: underline 1.5px var(--text-2); text-underline-offset: 3px; }
-  ::highlight(strike) { text-decoration: line-through var(--text-2); color: var(--text-3); }
   .fsearch input { width: 100%; min-width: 0; border: 0; border-bottom: 1px solid transparent; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: var(--fs-primary); padding: var(--space-hair) var(--space-hair); }
   .fsearch input:focus { border-bottom-color: var(--hairline); }
   .sect-head { display: flex; align-items: center; gap: var(--space-tight); width: 100%; border: 0; background: none; padding: var(--space-tight) var(--space-hair) var(--space-hair); font: inherit; font-size: var(--fs-micro); cursor: pointer; text-align: left; }

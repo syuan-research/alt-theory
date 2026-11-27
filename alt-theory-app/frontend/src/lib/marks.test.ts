@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { anchorAt, locate, railMarksOf, type TextMark } from "./marks.ts";
+import { anchorAt, lineBoxes, locate, railMarksOf, type TextMark } from "./marks.ts";
 
 test("anchorAt trims whitespace and keeps context on both sides", () => {
   const text = "\n第一次贴着原话，第二次找关系。\n";
@@ -30,4 +30,12 @@ test("rail marks: a reply's bookmark and marks land on its turn", () => {
   assert.deepEqual(rail.get("u1:0"), { bookmark: true, colors: ["var(--hl-5)", "var(--hl-1)"] });
   assert.deepEqual(rail.get("u2:0"), { bookmark: false, colors: ["var(--text-3)"] });
   assert.equal(rail.size, 2);
+});
+
+test("lineBoxes merges pieces on one line, keeps lines apart and drops empty pieces", () => {
+  const box = (left: number, top: number, right: number, bottom: number) => ({ left, top, right, bottom });
+  assert.deepEqual(
+    lineBoxes([box(10, 0, 50, 18), box(50, 1, 80, 17), box(80, 0, 80, 18), box(0, 22, 40, 40), box(40, 20, 60, 42)]),
+    [box(10, 0, 80, 18), box(0, 20, 60, 42)],
+  );
 });

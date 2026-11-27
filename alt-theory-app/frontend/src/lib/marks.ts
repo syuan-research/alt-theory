@@ -3,8 +3,11 @@ import { collectText } from "@/lib/find";
 
 /**
  * Reader marks on conversation text (owner 2026-10-13): five highlight
- * colors (red added 2026-11-26) plus underline and strikethrough, painted with the CSS Custom
- * Highlight API like Ctrl+F (no DOM wrapping); Ctrl+F paints above them.
+ * colors (red added 2026-11-26) plus underline and strikethrough, drawn as
+ * blocks in a layer over the text (no DOM wrapping). Not the CSS Custom
+ * Highlight API (2026-11-27): the browser repaints every highlighted passage
+ * on any change anywhere on the page, which with software rendering made
+ * scrolling and streaming slow; blocks repaint only where they are.
  * Any conversation pane can host marks: rows carry `data-mark-row`, the
  * pane registers itself with its session id. Stored per session beside the
  * history (backend session-marks.ts), anchored by row id + quoted text.
@@ -13,7 +16,6 @@ import { collectText } from "@/lib/find";
 export type { TextMark };
 export type MarkKind = TextMark["kind"];
 export const COLOR_KINDS = ["hl-1", "hl-2", "hl-3", "hl-4", "hl-5"] as const;
-const KINDS: MarkKind[] = [...COLOR_KINDS, "under", "strike"];
 export const isColorMark = (kind: MarkKind) => (COLOR_KINDS as readonly string[]).includes(kind);
 /** Colors replace each other; underline and strikethrough stack on them. */
 const group = (kind: MarkKind) => (isColorMark(kind) ? "color" : kind);
@@ -81,6 +83,39 @@ function offsetOf(row: RowText, container: Node, offset: number): number {
     pos += row.texts[i].length;
   }
   return pos;
+}
+
+/** Screen boxes of the text in [start, end), one per text node piece; text
+ *  only, so a fully covered element's own box never counts. */
+function textRects(row: RowText, start: number, end: number): DOMRect[] {
+  const out: DOMRect[] = [];
+  const range = document.createRange();
+  let pos = 0;
+  for (let i = 0; i < row.nodes.length; i++) {
+    const node = row.nodes[i];
+    const len = row.texts[i].length;
+    if (node && start < pos + len && pos < end) {
+      range.setStart(node, Math.max(0, start - pos));
+      range.setEnd(node, Math.min(len, end - pos));
+      out.push(...range.getClientRects());
+    }
+    pos += len;
+  }
+  return out;
+}
+
+export interface Box { left: number; top: number; right: number; bottom: number }
+
+/** One box per line: pieces that share a line merge, empty ones drop. */
+export function lineBoxes(rects: readonly Box[]): Box[] {
+  const lines: Box[] = [];
+  for (const r of rects) {
+    if (r.right - r.left < 0.5 || r.bottom - r.top < 0.5) continue;
+    const line = lines.find((l) => Math.min(l.bottom, r.bottom) - Math.max(l.top, r.top) > 0.5 * Math.min(l.bottom - l.top, r.bottom - r.top));
+    if (!line) lines.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+    else Object.assign(line, { left: Math.min(line.left, r.left), top: Math.min(line.top, r.top), right: Math.max(line.right, r.right), bottom: Math.max(line.bottom, r.bottom) });
+  }
+  return lines;
 }
 
 function rangeOf(row: RowText, start: number, end: number): Range | null {
@@ -154,7 +189,6 @@ async function update(sessionId: string, change: (marks: TextMark[]) => TextMark
 
 // ---- hosts + painting -----------------------------------------------------
 
-const HAS_HIGHLIGHT = typeof CSS !== "undefined" && "highlights" in CSS;
 const hosts = new Set<{ el: HTMLElement; sessionId: string }>();
 let frame = 0;
 
@@ -163,8 +197,8 @@ function rowEl(host: HTMLElement, row: string): HTMLElement | null {
 }
 
 /** Every mark of the host's session that is on screen, with its range. */
-function located(host: HTMLElement, sessionId: string): { mark: TextMark; range: Range; span: [number, number] }[] {
-  const out: { mark: TextMark; range: Range; span: [number, number] }[] = [];
+function located(host: HTMLElement, sessionId: string): { mark: TextMark; range: Range; span: [number, number]; row: RowText }[] {
+  const out: { mark: TextMark; range: Range; span: [number, number]; row: RowText }[] = [];
   const rows = new Map<string, RowText | null>();
   for (const mark of cache.get(sessionId) ?? []) {
     if (!rows.has(mark.row)) {
@@ -174,69 +208,66 @@ function located(host: HTMLElement, sessionId: string): { mark: TextMark; range:
     const row = rows.get(mark.row);
     const span = row && locate(row.text, mark);
     const range = span && rangeOf(row, span[0], span[1]);
-    if (span && range) out.push({ mark, range, span });
+    if (span && range) out.push({ mark, range, span, row });
   }
   return out;
 }
 
-const NOTES_LAYER = "mark-notes";
+const LAYER = "mark-layer";
 const dotMarks = new WeakMap<Element, TextMark>();
 /** The mark a note dot stands for. */
 export const markOfNoteDot = (el: Element): TextMark | undefined => dotMarks.get(el);
 
-/** A small dot after each mark that has a note (owner 2026-11-26), in a
- *  zero-height layer at the top of the pane so the dots scroll with the text. */
-function placeNoteDots(host: HTMLElement, items: { mark: TextMark; range: Range }[]): void {
-  let layer = host.querySelector<HTMLElement>(`:scope > .${NOTES_LAYER}`);
-  const noted = items.filter(({ mark }) => mark.note);
-  if (!noted.length) { layer?.remove(); return; }
+/** The marks as blocks, and a small dot after each mark that has a note
+ *  (owner 2026-11-26), in a zero-height layer at the top of the pane so they
+ *  scroll with the text. Strike and underline go first so a color multiplies
+ *  over them. */
+function drawMarks(host: HTMLElement, items: ReturnType<typeof located>): void {
+  let layer = host.querySelector<HTMLElement>(`:scope > .${LAYER}`);
+  if (!items.length) { layer?.remove(); return; }
   if (!layer) {
     layer = document.createElement("div");
-    layer.className = NOTES_LAYER;
+    layer.className = LAYER;
     host.prepend(layer);
   }
   const base = layer.getBoundingClientRect();
-  const dots = noted.flatMap(({ mark, range }) => {
-    const rects = range.getClientRects();
-    const end = rects[rects.length - 1];
-    return end ? [{ mark, x: Math.round(end.right - base.left), y: Math.round(end.top - base.top) }] : [];
-  });
-  const key = dots.map(({ mark, x, y }) => `${x},${y},${mark.kind},${mark.note}`).join("|");
+  const order = (kind: MarkKind) => (kind === "strike" ? 0 : kind === "under" ? 1 : 2);
+  const blocks: { kind: MarkKind; x: number; y: number; w: number; h: number }[] = [];
+  const dots: { mark: TextMark; x: number; y: number }[] = [];
+  for (const { mark, span, row } of [...items].sort((a, b) => order(a.mark.kind) - order(b.mark.kind))) {
+    const lines = lineBoxes(textRects(row, span[0], span[1]));
+    for (const l of lines) blocks.push({ kind: mark.kind, x: Math.round(l.left - base.left), y: Math.round(l.top - base.top), w: Math.round(l.right - l.left), h: Math.round(l.bottom - l.top) });
+    const end = lines[lines.length - 1];
+    if (mark.note && end) dots.push({ mark, x: Math.round(end.right - base.left), y: Math.round(end.top - base.top) });
+  }
+  const key = blocks.map((b) => `${b.kind},${b.x},${b.y},${b.w},${b.h}`).join("|") + "#" + dots.map(({ mark, x, y }) => `${x},${y},${mark.kind},${mark.note}`).join("|");
   if (layer.dataset.key === key) return;
   layer.dataset.key = key;
-  layer.replaceChildren(...dots.map(({ mark, x, y }) => {
-    const dot = document.createElement("button");
-    dot.type = "button";
-    dot.className = "mark-note-dot";
-    dot.style.left = `${x}px`;
-    dot.style.top = `${y}px`;
-    dot.style.setProperty("--c", isColorMark(mark.kind) ? `var(--${mark.kind})` : "var(--text-3)");
-    dot.dataset.tip = mark.note!.length > 240 ? `${mark.note!.slice(0, 240)}…` : mark.note!;
-    dot.setAttribute("aria-label", mark.note!);
-    dotMarks.set(dot, mark);
-    return dot;
-  }));
+  layer.replaceChildren(
+    ...blocks.map(({ kind, x, y, w, h }) => {
+      const block = document.createElement("div");
+      block.className = `mark-block mark-${kind}`;
+      block.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px`;
+      return block;
+    }),
+    ...dots.map(({ mark, x, y }) => {
+      const dot = document.createElement("button");
+      dot.type = "button";
+      dot.className = "mark-note-dot";
+      dot.style.left = `${x}px`;
+      dot.style.top = `${y}px`;
+      dot.style.setProperty("--c", isColorMark(mark.kind) ? `var(--${mark.kind})` : "var(--text-3)");
+      dot.dataset.tip = mark.note!.length > 240 ? `${mark.note!.slice(0, 240)}…` : mark.note!;
+      dot.setAttribute("aria-label", mark.note!);
+      dotMarks.set(dot, mark);
+      return dot;
+    }),
+  );
 }
 
 function paint(): void {
   frame = 0;
-  if (!HAS_HIGHLIGHT) return;
-  const byKind = new Map<MarkKind, Range[]>();
-  for (const { el, sessionId } of hosts) {
-    if (!el.isConnected) continue;
-    const items = located(el, sessionId);
-    for (const { mark, range } of items) {
-      const ranges = byKind.get(mark.kind) ?? [];
-      ranges.push(range);
-      byKind.set(mark.kind, ranges);
-    }
-    placeNoteDots(el, items);
-  }
-  for (const kind of KINDS) {
-    const ranges = byKind.get(kind);
-    if (ranges) CSS.highlights.set(kind, new Highlight(...ranges));
-    else CSS.highlights.delete(kind);
-  }
+  for (const { el, sessionId } of hosts) if (el.isConnected) drawMarks(el, located(el, sessionId));
 }
 
 function schedulePaint(): void {
@@ -248,21 +279,24 @@ export function registerMarksHost(el: HTMLElement, sessionId: string): () => voi
   const host = { el, sessionId };
   hosts.add(host);
   void load(sessionId).catch(() => undefined);
-  // ponytail: repaints the whole set on any DOM change, one frame at most;
-  // cheap while marked rows are few — scope to the changed row if it shows up.
-  // The note dots' own layer changing is not a reason to repaint.
+  // ponytail: re-measures the whole set on any DOM change, one frame at most,
+  // and writes nothing when no block moved; scope to the changed row if the
+  // measuring shows up. The layer's own changes are not a reason to repaint.
   const observer = new MutationObserver((records) => {
-    if (records.some((record) => !(record.target instanceof Element ? record.target : record.target.parentElement)?.closest(`.${NOTES_LAYER}`))) schedulePaint();
+    if (records.some((record) => !(record.target instanceof Element ? record.target : record.target.parentElement)?.closest(`.${LAYER}`))) schedulePaint();
   });
-  observer.observe(el, { childList: true, subtree: true, characterData: true });
-  // Text reflows when the pane's width changes; the dots follow.
+  // `open`: a fold above a mark moves the text without changing children.
+  observer.observe(el, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["open"] });
+  // Text reflows when the pane's width changes, and moves when an image above loads.
   const resize = new ResizeObserver(schedulePaint);
   resize.observe(el);
+  el.addEventListener("load", schedulePaint, true);
   schedulePaint();
   return () => {
     observer.disconnect();
     resize.disconnect();
-    el.querySelector(`:scope > .${NOTES_LAYER}`)?.remove();
+    el.removeEventListener("load", schedulePaint, true);
+    el.querySelector(`:scope > .${LAYER}`)?.remove();
     hosts.delete(host);
     schedulePaint();
   };
