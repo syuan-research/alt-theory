@@ -1248,10 +1248,10 @@
   .deck:has(.deck-spine:hover) { --we: 74px; }
   /* Hover intent (owner 2026-11-27): the spines open only after the pointer rests;
      a pass-through cancels the pending transition, leaving closes at once. */
-  .deck:has(.deck-spine:hover) .deck-front { transition-delay: 0.3s, 0.3s, 0s, 0s; }
-  .deck:has(.deck-spine:hover) .deck-spine { transition-delay: 0.3s, 0.3s, 0s, 0s; }
-  .deck:has(.deck-spine:hover) .deck-spine-label { transition-delay: 0.3s; }
-  .deck-spine:hover :is(.deck-spine-name, .deck-dot) { transition-delay: 0.3s; }
+  .deck:has(.deck-spine:hover) .deck-front { transition-delay: 0.2s, 0.2s, 0s, 0s; }
+  .deck:has(.deck-spine:hover) .deck-spine { transition-delay: 0.2s, 0.2s, 0s, 0s; }
+  .deck:has(.deck-spine:hover) .deck-spine-label { transition-delay: 0.2s; }
+  .deck-spine:hover :is(.deck-spine-name, .deck-dot) { transition-delay: 0.2s; }
   .deck-front { position: absolute; inset: 0 calc((var(--n) - 1) * var(--we)) 0 0; z-index: 20; display: flex; align-items: center; gap: var(--space-hair);
     padding-right: var(--space-tight); border-radius: 14px; background: var(--deck-card);
     transition: left 0.3s var(--ease-out), right 0.3s var(--ease-out), opacity 0.2s, background 0.2s; touch-action: none; }
@@ -1364,6 +1364,17 @@
 
   .composer { background: var(--surface); border: none; border-radius: var(--r-lg); padding: var(--space-control) var(--space-control) var(--space-hair); box-shadow: var(--shadow-rest); }
   .composer.file-drag-over { outline: 1.5px dashed var(--color-warning); outline-offset: -2px; }
+  /* The fold handle along the top edge (owner 2026-11-27): click, or drag down to fold to one line, up to unfold. */
+  .composer { position: relative; }
+  .composer-grab { position: absolute; top: 0; left: 50%; translate: -50% 0; width: 56px; height: 10px; display: grid; place-items: center; cursor: grab; touch-action: none; border-radius: var(--r-sm); }
+  .composer-grab::before { content: ""; width: 28px; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--text-3) 28%, transparent); transition: width 0.15s, background 0.15s; }
+  .composer-grab:hover::before, .composer-grab:focus-visible::before { width: 36px; background: var(--text-3); }
+  .composer-grab:focus-visible { outline: none; }
+  /* Folded: the message and the send button on one line; everything else waits in the unfolded row. */
+  .composer.folded { min-height: 0; display: flex; align-items: flex-end; gap: var(--space-tight); padding: var(--space-control) var(--space-tight) var(--space-tight) var(--space-control); }
+  .composer.folded textarea { flex: 1; min-width: 0; min-height: 0; padding-block: 5px 4px; }
+  .composer.folded .row { margin-top: 0; }
+  .composer.folded .row > :not(.send) { display: none; }
   /* ~2 lines empty; grows with content up to ~8 lines, then scrolls. */
   .composer textarea {
     width: 100%;

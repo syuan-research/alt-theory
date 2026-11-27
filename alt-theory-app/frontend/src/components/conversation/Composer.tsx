@@ -4,6 +4,7 @@ import { PRESET_TURNS, useApp } from "@/context/AppProvider";
 import { useConversationContext } from "@/context/ConversationContext";
 import { useShell } from "@/context/ShellContext";
 import { PendingMark } from "@/components/ui/PendingMark";
+import { Grab } from "@/components/ui/Grab";
 import { ApprovalDock } from "@/components/conversation/ApprovalDock";
 import { ModelChip } from "@/components/conversation/ModelChip";
 import { PermissionChip } from "@/components/conversation/PermissionChip";
@@ -45,6 +46,13 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     catch { return "set"; }
   });
   const presetOpen = deckFront === "steer";
+  // Folded, the composer keeps only the message and the send button (owner 2026-11-27).
+  const [folded, setFoldedState] = useState(() => { try { return window.localStorage.getItem("alt-composer-folded") === "1"; } catch { return false; } });
+  const setFolded = (next: boolean) => {
+    setFoldedState(next);
+    setMenu(null);
+    try { window.localStorage.setItem("alt-composer-folded", next ? "1" : "0"); } catch { /* per-device convenience */ }
+  };
   const [moreHelpStarters, setMoreHelpStarters] = useState(false);
   const [helpQuestionArmed, setHelpQuestionArmed] = useState(false);
   const bringFront = (key: string) => {
@@ -526,7 +534,8 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
           </div>
         ) : null}
 
-        <div className={`composer${dragOver ? " file-drag-over" : ""}`} {...dropHandlers}>
+        <div className={`composer${folded ? " folded" : ""}${dragOver ? " file-drag-over" : ""}`} {...dropHandlers}>
+          <Grab className="composer-grab" folded={folded} onFold={setFolded} toward="down" />
           <textarea
             ref={textareaRef}
             rows={1}

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent } from "react";
+import { useMemo, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent } from "react";
 import { t } from "@/i18n";
 import { useApp } from "@/context/AppProvider";
 import { useMainView } from "@/context/MainView";
@@ -6,6 +6,7 @@ import { useShell } from "@/context/ShellContext";
 import { folderLabel, sessionTitle } from "@/lib/sessionList";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 import { targetTitle } from "@/lib/viewTarget";
+import { Grab } from "@/components/ui/Grab";
 
 /**
  * Desks (工作位, owner 2026-11-26): shown in the left list, as a card on the
@@ -93,7 +94,6 @@ export function DesksBlock() {
   };
   const toggle = () => setFolded(!folded);
   const menu = useDeskMenu({ folded, toggle });
-  const drag = useRef<number | null>(null);
   const open = (id: number) => { shell.openApp(); main.switchWorkspace(id); };
 
   return (
@@ -132,27 +132,8 @@ export function DesksBlock() {
             ))}
           </>
         )}
-        {/* The grabber: the composer deck's handle turned on its side. Click, or drag up to fold / down to unfold. */}
-        <span
-          className="desk-grab"
-          role="button"
-          tabIndex={0}
-          aria-label={folded ? t("Unfold") : t("Fold")}
-          aria-expanded={!folded}
-          data-tip={folded ? t("Unfold") : t("Fold")}
-          onPointerDown={(event) => { drag.current = event.clientY; event.currentTarget.setPointerCapture(event.pointerId); }}
-          onPointerUp={(event) => {
-            const from = drag.current;
-            drag.current = null;
-            if (from === null) return;
-            const dy = event.clientY - from;
-            if (Math.abs(dy) < 4) toggle();
-            else if (dy < -8) setFolded(true);
-            else if (dy > 8) setFolded(false);
-          }}
-          onPointerCancel={() => { drag.current = null; }}
-          onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); toggle(); } }}
-        />
+        {/* The grabber: the composer deck's handle turned on its side. */}
+        <Grab className="desk-grab" folded={folded} onFold={setFolded} toward="up" />
       </div>
       {menu.element}
     </div>

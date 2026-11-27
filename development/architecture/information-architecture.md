@@ -150,12 +150,18 @@ surfaces remain designation-gated and absent for everyone else.
     next few messages, not on the session's identity. The slot is not limited
     to these two cards. It is drawn as a deck (Owner 2026-11-26,
     `ComposerDeck.tsx`): the front card full width, the others' spines on the
-    right showing their icon and, on hover, their name; a click brings one
+    right showing their icon and, on hover, their name (after the pointer
+    rests 0.2 s, so passing over does not move them); a click brings one
     forward. The handle at the front card's left end puts the deck away to
     the right (click, or drag right past a third), leaving a tray with each
     card's icon that opens that card. A spine or tray icon turns blue while
     its card has something switched on. A new conversation shows only the
     role/knowledge card.
+  - The composer card has a fold handle at the middle of its top edge (Owner
+    2026-11-27; click, or drag down to fold and up to unfold). Folded, it is
+    one line: the message and the send / stop / continue button; the tool
+    row waits until it is unfolded. The text still grows to several lines.
+    The deck folds on its own; the state is kept per device.
   - Steer offers bundled Alt Theory skills only; each chip's tooltip states
     that skill's own job, while what "steer" means lives on the card's lead
     icon. An active chip shows its remaining turns as dots; a locked one is
