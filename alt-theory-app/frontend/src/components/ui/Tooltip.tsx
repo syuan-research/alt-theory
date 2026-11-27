@@ -62,6 +62,10 @@ export function TooltipRoot() {
       window.clearTimeout(timer);
       cancelAnimationFrame(raf);
       active = null;
+      // Scroll and pointer events call this many times a second; writing the
+      // class when nothing is up still counts as a DOM change, and every DOM
+      // change makes the browser repaint all highlighted text.
+      if (!tip.classList.contains("show") && !tip.classList.contains("glide")) return;
       if (tip.classList.contains("show")) lastHidden = performance.now();
       tip.classList.remove("show", "glide");
     };
