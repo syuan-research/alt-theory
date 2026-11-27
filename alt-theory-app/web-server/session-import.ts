@@ -86,6 +86,7 @@ export interface ImportSourceSession {
   sourceSessionId: string;
   name: string | null;
   cwd: string;
+  projectDir?: string;
   cwdAvailable: boolean;
   createdAt: string;
   updatedAt: string;
@@ -122,6 +123,7 @@ export interface ImportDiscoveredSession {
   sourceVersion?: string;
   name: string | null;
   cwd: string;
+  projectDir?: string;
   createdAt: string;
   updatedAt: string;
   messageCount: number | null;

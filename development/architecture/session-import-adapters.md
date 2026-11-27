@@ -180,7 +180,12 @@ fallback.
 The default session directory is `$CODEX_HOME/sessions` or `~/.codex/sessions`.
 Discovery accepts both JSONL and Zstandard-compressed JSONL. A state index
 path that still points to the uncompressed file can resolve to its compressed
-sibling. Discovery does not filter by Codex account.
+sibling. Discovery scans the session directory even when the read-only state
+index is available and lists the current saved rollout once per thread ID.
+The index supplies titles and visibility metadata. Import-list grouping uses
+the Codex project root when available, including assignments in desktop state,
+and otherwise uses the recorded working folder. Discovery does not filter by
+Codex account.
 
 For a rollout with `history_base`, import follows the referenced local
 rollout IDs and reads each inherited prefix up to the stored byte boundary

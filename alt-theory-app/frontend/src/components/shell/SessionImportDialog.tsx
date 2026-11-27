@@ -138,6 +138,7 @@ export function SessionImportDialog({
       { text: session.name, weight: 1 },
       { text: session.preview, weight: 1 },
       { text: session.cwd, weight: 1 },
+      { text: session.projectDir, weight: 1 },
       { text: session.sourceSessionId, weight: 1 },
     ]) > 0);
   }, [query, sessions]);
@@ -145,7 +146,7 @@ export function SessionImportDialog({
   const workspaceGroups = useMemo(() => {
     const groups = new Map<string, ImportSourceSession[]>();
     for (const session of visibleSessions) {
-      const key = session.cwd || "";
+      const key = session.projectDir || session.cwd || "";
       const group = groups.get(key) ?? [];
       group.push(session);
       groups.set(key, group);

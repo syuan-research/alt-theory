@@ -3,6 +3,7 @@ export interface ImportSourceSession {
   sourceSessionId: string;
   name: string | null;
   cwd: string;
+  projectDir?: string;
   cwdAvailable: boolean;
   createdAt: string;
   updatedAt: string;

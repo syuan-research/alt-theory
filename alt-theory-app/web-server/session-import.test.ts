@@ -1669,6 +1669,63 @@ test("Codex uses the state index for roots and archives spawned descendants", as
   );
 });
 
+test("Codex discovery includes unindexed conversations and groups moved chats by their desktop project", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-codex-discovery-"));
+  const sessionsDir = join(root, "sessions");
+  const workspace = join(root, "original-folder");
+  const projectDir = join(root, "desktop-project");
+  mkdirSync(sessionsDir);
+  mkdirSync(workspace);
+  mkdirSync(projectDir);
+  const timestamp = "2026-11-27T09:00:00.000Z";
+  const writeRollout = (name: string, id: string, text: string) => {
+    const path = join(sessionsDir, `${name}.jsonl`);
+    const records = [
+      { timestamp, type: "session_meta", payload: {
+        id, cwd: workspace, timestamp, source: "cli", base_instructions: { text: "base" },
+      } },
+      { timestamp, type: "response_item", payload: {
+        type: "message", role: "user", content: [{ type: "input_text", text }],
+      } },
+    ];
+    writeFileSync(path, `${records.map(JSON.stringify).join("\n")}\n`);
+    return path;
+  };
+  const movedId = "019ac66d-0000-7000-8000-000000000001";
+  const oldPath = writeRollout(`rollout-2026-11-27T09-00-00-${movedId}`, movedId, "Old version");
+  const currentPath = writeRollout(
+    `rollout-2026-11-27T09-00-00-${movedId}_019ac66d-0000-7000-8000-000000000002`,
+    movedId,
+    "Current version"
+  );
+  writeRollout("rollout-unindexed", "unindexed", "Unindexed conversation");
+  const hiddenPath = writeRollout("rollout-attached", "attached", "Attached conversation");
+  const db = new DatabaseSync(join(root, "state_5.sqlite"));
+  db.exec("CREATE TABLE threads (id TEXT PRIMARY KEY, rollout_path TEXT, title TEXT, attached_thread_parent_id TEXT)");
+  const insert = db.prepare("INSERT INTO threads VALUES (?, ?, ?, ?)");
+  insert.run(movedId, oldPath, "Moved chat", null);
+  insert.run("attached", hiddenPath, "Attached chat", movedId);
+  db.close();
+  writeFileSync(join(root, ".codex-global-state.json"), JSON.stringify({
+    "thread-project-assignments": { [movedId]: { projectKind: "local", projectId: "project" } },
+    "local-projects": { project: { rootPaths: [projectDir] } },
+  }));
+
+  const sessions = await discoverImportSessions({
+    harness: "codex", dataDir: join(root, "alt-data"), codexSessionsDir: sessionsDir,
+  });
+  assert.equal(sessions.length, 2);
+  const moved = sessions.find((session) => session.sourceSessionId === movedId);
+  const unindexed = sessions.find((session) => session.sourceSessionId === "unindexed");
+  assert.ok(moved && unindexed);
+  assert.equal(moved.name, "Moved chat");
+  assert.equal(moved.projectDir, projectDir);
+  assert.equal(moved.cwd, workspace);
+  assert.equal(moved.sourceStore, currentPath);
+  assert.match(codexAdapter.preflight(moved).piSessionJsonl, /Current version/);
+  assert.match(codexAdapter.preflight(unindexed).piSessionJsonl, /Unindexed conversation/);
+});
+
 test("Claude Code discovery falls back from a stale index and imports one integrated root lineage", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-claude-code-root-"));
   const dataDir = join(root, "alt-data");

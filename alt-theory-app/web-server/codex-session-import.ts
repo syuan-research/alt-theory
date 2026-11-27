@@ -35,6 +35,7 @@ export interface CodexDiscoveredSession {
   sourceVersion: string;
   name: string | null;
   cwd: string;
+  projectDir?: string;
   createdAt: string;
   updatedAt: string;
   messageCount: number | null;
@@ -66,115 +67,126 @@ export function discoverCodexSessions(
   sessionsDir = defaultCodexSessionsDir()
 ): CodexDiscoveredSession[] {
   const root = resolve(sessionsDir);
-  if (!existsSync(root)) return [];
-  return discoverCodexFromStateDb(root) ?? discoverCodexFromRollouts(root);
+  const { threads, projectDirs } = readCodexStateIndex(root);
+  const desktopProjectDirs = readCodexDesktopProjectDirs(dirname(root));
+  const indexedPaths = new Map<string, string>();
+  for (const [id, row] of threads) {
+    const path = existingRollout(row.rollout_path);
+    if (path) indexedPaths.set(path, id);
+  }
+  const paths = new Set(existsSync(root) ? jsonlFiles(root) : []);
+  for (const path of indexedPaths.keys()) paths.add(path);
+  const sortedPaths = [...paths].sort((a, b) =>
+    basename(b).replace(/\.jsonl(?:\.zst)?$/, "").localeCompare(
+      basename(a).replace(/\.jsonl(?:\.zst)?$/, "")
+    ) || Number(a.endsWith(".zst")) - Number(b.endsWith(".zst"))
+  );
+
+  const sessions = new Map<string, CodexDiscoveredSession>();
+  for (const path of sortedPaths) {
+    const indexedId = indexedPaths.get(path);
+    try {
+      const stat = statSync(path);
+      if (!stat.isFile()) continue;
+      let head: Row[];
+      try {
+        head = parseJsonl(readHead(path));
+      } catch (error) {
+        // An indexed compressed file can still be opened by preflight's full reader.
+        if (!indexedId || !path.endsWith(".zst")) throw error;
+        head = [];
+      }
+      const meta = head.find((record) => record.type === "session_meta")?.payload;
+      const id = String(meta?.id ?? meta?.session_id ?? indexedId ?? "");
+      if (!id || sessions.has(id)) continue;
+      const row = threads.get(id);
+      if (Number(row?.archived ?? 0) !== 0 || row?.attached_thread_parent_id ||
+          meta?.attached_thread === true || row?.thread_source === "subagent" ||
+          meta?.thread_source === "subagent" || isSubagentSource(row?.source) ||
+          isSubagentSource(meta?.source)) continue;
+      if (!row && (!meta?.cwd || !meta?.timestamp)) continue;
+      const projectDir = projectDirs.get(row?.project_id) ?? desktopProjectDirs.get(id);
+      sessions.set(id, {
+        sourceId: `codex:${id}`,
+        sourceSessionId: id,
+        sourceStore: path,
+        sourceVersion: `${stat.size}:${stat.mtimeMs}`,
+        name: String(row?.name ?? "").trim() || String(row?.title ?? "").trim() || null,
+        cwd: String(row?.cwd || meta?.cwd || ""),
+        ...(projectDir ? { projectDir } : {}),
+        createdAt: timestamp(row?.created_at, meta?.timestamp, stat.birthtimeMs),
+        updatedAt: timestamp(indexedId === id ? row?.updated_at : null, null, stat.mtimeMs),
+        messageCount: head.length ? head.filter((record) =>
+          record.type === "response_item" && record.payload?.type === "message"
+        ).length : null,
+        preview: codexOpeningPreview(head) || String(row?.preview ?? "").slice(0, 240),
+      });
+    } catch {
+      // A missing or unreadable file does not prevent discovering other conversations.
+    }
+  }
+  return [...sessions.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-function discoverCodexFromStateDb(root: string): CodexDiscoveredSession[] | null {
+function readCodexStateIndex(root: string) {
+  const threads = new Map<string, Row>();
+  const projectDirs = new Map<string, string>();
+  const index = { threads, projectDirs };
   const dbPath = resolve(
     process.env.CODEX_STATE_DB_PATH?.trim() || join(dirname(root), "state_5.sqlite")
   );
-  if (!existsSync(dbPath)) return null;
-  let db: DatabaseSync;
+  if (!existsSync(dbPath)) return index;
+  let db: DatabaseSync | undefined;
   try {
     db = new DatabaseSync(dbPath, { readOnly: true });
-  } catch {
-    return null;
-  }
-  try {
     const columns = new Set(
       (db.prepare("PRAGMA table_info(threads)").all() as Row[]).map((row) =>
         String(row.name)
       )
     );
-    if (!columns.has("id") || !columns.has("rollout_path")) return null;
+    if (!columns.has("id") || !columns.has("rollout_path")) return index;
     const value = (name: string) =>
       columns.has(name) ? name : `NULL AS ${name}`;
     const rows = db.prepare(`
       SELECT id, rollout_path, ${value("name")}, ${value("title")}, ${value("cwd")},
         ${value("created_at")}, ${value("updated_at")}, ${value("source")},
         ${value("thread_source")}, ${value("archived")}, ${value("preview")},
-        ${value("attached_thread_parent_id")}
+        ${value("attached_thread_parent_id")}, ${value("project_id")}
       FROM threads
-      ORDER BY ${columns.has("updated_at") ? "updated_at" : "created_at"} DESC, id DESC
     `).all() as Row[];
-    return rows.flatMap((row) => {
-      try {
-        if (Number(row.archived ?? 0) !== 0) return [];
-        if (row.attached_thread_parent_id) return [];
-        if (String(row.thread_source ?? "") === "subagent") return [];
-        if (isSubagentSource(row.source)) return [];
-        const path = existingRollout(row.rollout_path);
-        if (!path) return [];
-        const stat = statSync(path);
-        if (!stat.isFile()) return [];
-        const head = path.endsWith(".zst") ? null : parseJsonl(readHead(path));
-        const meta = head?.find((record) => record.type === "session_meta")?.payload;
-        const createdAt = timestamp(row.created_at, meta?.timestamp, stat.birthtimeMs);
-        const updatedAt = timestamp(row.updated_at, null, stat.mtimeMs);
-        const preview = (head && codexOpeningPreview(head)) || String(row.preview ?? "").slice(0, 240);
-        return [{
-          sourceId: `codex:${String(row.id)}`,
-          sourceSessionId: String(row.id),
-          sourceStore: path,
-          sourceVersion: `${stat.size}:${stat.mtimeMs}`,
-          name: String(row.name ?? "").trim() || String(row.title ?? "").trim() || null,
-          cwd: String(row.cwd ?? meta?.cwd ?? ""),
-          createdAt,
-          updatedAt,
-          messageCount: head?.filter(
-            (record) =>
-              record.type === "response_item" &&
-              record.payload?.type === "message"
-          ).length ?? null,
-          preview,
-        } satisfies CodexDiscoveredSession];
-      } catch {
-        return [];
+    for (const row of rows) threads.set(String(row.id), row);
+    if (columns.has("project_id")) {
+      const roots = db.prepare(
+        "SELECT project_id, path FROM project_roots ORDER BY position"
+      ).all();
+      for (const { project_id, path } of roots) {
+        if (typeof project_id === "string" && typeof path === "string" && path.trim() &&
+            !projectDirs.has(project_id)) projectDirs.set(project_id, path);
       }
-    });
+    }
   } catch {
-    return null;
+    // Older indexes may lack project roots. On-disk rollouts remain discoverable.
   } finally {
-    db.close();
+    db?.close();
   }
+  return index;
 }
 
-function discoverCodexFromRollouts(root: string): CodexDiscoveredSession[] {
-  const sessions = jsonlFiles(root)
-    .flatMap((path) => {
-      try {
-        const stat = statSync(path);
-        const records = parseJsonl(readHead(path));
-        const meta = records.find((record) => record.type === "session_meta")?.payload;
-        const id = String(meta?.id ?? meta?.session_id ?? "");
-        if (!id || !meta?.cwd || !meta?.timestamp || meta.attached_thread === true ||
-            meta.thread_source === "subagent" || isSubagentSource(meta.source)) return [];
-        const messages = records.filter(
-          (record) => record.type === "response_item" && record.payload?.type === "message"
-        );
-        return [{
-          sourceId: `codex:${id}`,
-          sourceSessionId: id,
-          sourceStore: path,
-          sourceVersion: `${stat.size}:${stat.mtimeMs}`,
-          name: null,
-          cwd: String(meta.cwd),
-          createdAt: new Date(meta.timestamp).toISOString(),
-          updatedAt: stat.mtime.toISOString(),
-          messageCount: messages.length,
-          preview: codexOpeningPreview(records),
-        } satisfies CodexDiscoveredSession];
-      } catch {
-        return [];
-      }
-    })
-    .sort((a, b) => basename(b.sourceStore).localeCompare(basename(a.sourceStore)));
-  const latest = new Map<string, CodexDiscoveredSession>();
-  for (const session of sessions) {
-    if (!latest.has(session.sourceSessionId)) latest.set(session.sourceSessionId, session);
+function readCodexDesktopProjectDirs(home: string): Map<string, string> {
+  const dirs = new Map<string, string>();
+  try {
+    const state = JSON.parse(readFileSync(join(home, ".codex-global-state.json"), "utf-8"));
+    const projects = state["local-projects"] ?? {};
+    for (const [id, assignment] of Object.entries<Row>(state["thread-project-assignments"] ?? {})) {
+      if (assignment?.projectKind !== "local") continue;
+      const roots = projects[assignment.projectId]?.rootPaths;
+      const dir = Array.isArray(roots) && roots.find((root) => typeof root === "string" && root.trim());
+      if (dir) dirs.set(id, dir);
+    }
+  } catch {
+    // The desktop state is optional for CLI-only and older Codex stores.
   }
-  return [...latest.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  return dirs;
 }
 
 // Codex records its injected context as user-role messages.
