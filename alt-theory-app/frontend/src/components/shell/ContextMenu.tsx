@@ -6,6 +6,8 @@ export interface ContextMenuItem {
   icon?: string;
   danger?: boolean;
   separator?: boolean;
+  /** Shown but not choosable (e.g. the last place something can be shown). */
+  disabled?: boolean;
   onSelect: () => void;
   /** Drawn as one row of color dots instead of a labeled button (`label` names the group). */
   swatches?: { color: string; label: string; current?: boolean; onSelect: () => void }[];
@@ -95,6 +97,7 @@ function ContextMenu({ x, y, items, anchor, onClose }: MenuState & { onClose: ()
             type="button"
             role="menuitem"
             className={item.danger ? "danger" : undefined}
+            disabled={item.disabled}
             onClick={() => {
               onClose();
               item.onSelect();

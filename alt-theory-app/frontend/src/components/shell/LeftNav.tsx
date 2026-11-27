@@ -27,6 +27,7 @@ import { SessionImportDialog } from "@/components/shell/SessionImportDialog";
 import { HelpMenu } from "@/components/shell/HelpMenu";
 import { VersionsEntry } from "@/components/shell/VersionsDialog";
 import { scrollAffectsAnchor, useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
+import { DesksBlock, useDeskPlaces } from "@/components/shell/Desks";
 import { promoteToMainline as promoteToMainlineRequest, searchSessionContent } from "@/api/sessions";
 import { getWorkingFolders, saveWorkingFolders, type ProjectFolder } from "@/api/config";
 import {
@@ -500,6 +501,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
   const main = useMainView();
   const shell = useShell();
   const navRef = useRef<HTMLDivElement>(null);
+  const deskPlaces = useDeskPlaces();
   // Ctrl+F with the list last touched opens and focuses this filter.
   useFindTarget(navRef, {
     focus: () => {
@@ -737,6 +739,8 @@ function UserNav({ onImport }: { onImport: () => void }) {
     if (!path) return;
     try {
       await app.addKnownWorkspace(path);
+      // A new project is added to work in it: start its first conversation there (owner 2026-11-26).
+      startConversationIn(path);
     } catch (error) {
       window.alert(error instanceof Error ? error.message : String(error));
     }
@@ -931,11 +935,23 @@ function UserNav({ onImport }: { onImport: () => void }) {
                 ))}
               </div>
             </details>
+            {/* One row for the pane's own tools (owner 2026-11-26): conversation
+                files joined search and new. */}
+            <button
+              type="button"
+              className={`btn-new split-search split-files${shell.surface === "files" ? " on" : ""}`}
+              aria-label={t("Conversation files")}
+              data-tip={t("Conversation files")}
+              aria-current={shell.surface === "files" || undefined}
+              onClick={() => shell.openFiles()}
+            >
+              <i className="ph ph-files" aria-hidden="true" />
+            </button>
             <button
               type="button"
               className={`btn-new split-search${shell.searchOpen ? " on" : ""}`}
-              data-tip={t("Search")}
               aria-label={t("Search")}
+              data-tip={t("Search")}
               aria-expanded={shell.searchOpen}
               onClick={() => shell.setSearchOpen(!shell.searchOpen)}
             >
@@ -952,17 +968,6 @@ function UserNav({ onImport }: { onImport: () => void }) {
               <i className="ph ph-note-pencil" />
             </button>
           </div>
-        </div>
-        {/* Conversation files entry (owner 2026-09-26): a temporary place that
-            fits today's rail, not a settled one. */}
-        <div className="session-row files-entry">
-          <button
-            className={`sess${shell.surface === "files" ? " active" : ""}`}
-            onClick={() => shell.openFiles()}
-          >
-            <i className="ph ph-files" aria-hidden="true" />
-            <span className="s-title">{t("Conversation files")}</span>
-          </button>
         </div>
         {shell.searchOpen ? (
           <div className="inline-search">
@@ -999,39 +1004,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                 2026-11-26: where you are now, apart from the lists of what you
                 have), then pins once there is one; neither shows while the list
                 is filtered. Workspaces stay at the top while the list scrolls. */}
-            {visibleIds === null && main.workspaces.length > 0 ? (
-              <div className="workspaces-pinned"><div className="workspaces-box">
-                <div className="workspace-list-head"><span className="workspace-list-title"><i className="ph ph-squares-four section-icon" aria-hidden="true" /><span className="lbl">{t("Desks")}</span></span><span className="ws-count">{main.workspaces.length}</span></div>
-                {main.workspaces.map((workspace) => {
-                  const summary = workspace.sessionId ? sessionsById.get(workspace.sessionId) : undefined;
-                  const title = summary ? sessionTitle(summary, app.sessionDisplayNames, app.sessions) : t("New conversation");
-                  const dir = summary?.workspacePrimaryDir;
-                  const place = dir ? projectByDir.get(dir)?.name ?? folderLabel(dir) : t("Standalone");
-                  return (
-                    <div className="session-row workspace-row" key={workspace.id}>
-                      <button
-                        type="button"
-                        className={`sess${workspace.active ? " active" : ""}`}
-                        data-tip={`${title} · ${place}`}
-                        onClick={() => { shell.openApp(); main.switchWorkspace(workspace.id); }}
-                      >
-                        <span className="s-title">{title}</span>
-                        <span className="workspace-place">{place}</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="workspace-close"
-                        aria-label={t("Close desk")}
-                        data-tip={t("Close desk")}
-                        onClick={() => main.closeWorkspace(workspace.id)}
-                      >
-                        <i className="ph ph-x" aria-hidden="true" />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div></div>
-            ) : null}
+            {visibleIds === null && main.workspaces.length > 0 && deskPlaces.includes("left") ? <DesksBlock /> : null}
             {(() => {
               if (visibleIds !== null) return null;
               const pins = app.pinnedSessions

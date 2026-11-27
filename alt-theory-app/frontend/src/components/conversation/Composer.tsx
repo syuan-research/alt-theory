@@ -11,6 +11,8 @@ import { useComposerRow } from "@/components/conversation/useComposerRow";
 import { ContextRing } from "@/components/conversation/ContextRing";
 import { CtxPicker } from "@/components/conversation/CtxPicker";
 import { ComposerDeck } from "@/components/conversation/ComposerDeck";
+import { DESK_ICON, DeskChips, useDeskPlaces } from "@/components/shell/Desks";
+import { useMainView } from "@/context/MainView";
 import { QueuedCards } from "@/components/conversation/QueuedCards";
 import { hasRunNotes, NoticeLine, RunStatusSlot } from "@/components/conversation/RunNotes";
 import { SlashPalette, SkillDraftChip, useSlashCommands, useSlashPalette } from "@/components/conversation/SlashPalette";
@@ -37,19 +39,26 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const [menu, setMenu] = useState<MenuKey>(null);
   // Preset toolbar (v1.4 round 1): open state survives reloads; the active
   // press/lock state lives in AppProvider so it survives pane switches.
-  const [presetOpen, setPresetOpen] = useState<boolean>(
-    () => window.localStorage.getItem("alt-preset-open") === "1",
-  );
+  // The deck's front card (set / steer / desk) survives reloads; "alt-preset-open" was its first form.
+  const [deckFront, setDeckFront] = useState<string>(() => {
+    try { return window.localStorage.getItem("alt-deck-front") ?? (window.localStorage.getItem("alt-preset-open") === "1" ? "steer" : "set"); }
+    catch { return "set"; }
+  });
+  const presetOpen = deckFront === "steer";
   const [moreHelpStarters, setMoreHelpStarters] = useState(false);
   const [helpQuestionArmed, setHelpQuestionArmed] = useState(false);
-  const togglePresetOpen = () => {
-    const next = !presetOpen;
-    setPresetOpen(next);
-    window.localStorage.setItem("alt-preset-open", next ? "1" : "0");
+  const bringFront = (key: string) => {
+    setDeckFront(key);
+    try { window.localStorage.setItem("alt-deck-front", key); } catch { /* per-device convenience */ }
   };
+  const main = useMainView();
+  const deskPlaces = useDeskPlaces();
+  const showDesks = deskPlaces.includes("deck") && main.workspaces.length > 0;
+  const deskChipsRef = useRef<HTMLDivElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
   const steerChipsRef = useRef<HTMLDivElement>(null);
   useWheelScrollX(steerChipsRef, presetOpen);
+  useWheelScrollX(deskChipsRef, deckFront === "desk" && showDesks);
   const rowClassName = useComposerRow(rowRef);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -312,8 +321,8 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
         <QueuedCards onEdit={() => window.setTimeout(() => textareaRef.current?.focus(), 0)} />
 
         <ComposerDeck
-          front={presetOpen && variant === "live" ? "steer" : "set"}
-          onFront={(key) => { if ((key === "steer") !== presetOpen) togglePresetOpen(); }}
+          front={(deckFront === "steer" && variant !== "live") || (deckFront === "desk" && !showDesks) ? "set" : deckFront}
+          onFront={bringFront}
           cards={[
             {
               key: "set",
@@ -470,6 +479,9 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                     </>
                   ),
                 }]
+              : []),
+            ...(showDesks
+              ? [{ key: "desk", name: t("Desks"), icon: DESK_ICON, tone: "blue" as const, content: <DeskChips chipsRef={deskChipsRef} /> }]
               : []),
           ]}
         />

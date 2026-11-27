@@ -588,7 +588,7 @@
     border-radius: var(--r-lg);
     box-shadow: var(--shadow-popup);
   }
-  .bookmark-popover { position: fixed; z-index: 110; width: min(280px, calc(100vw - 16px)); padding: var(--space-control); color: var(--ink); background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-md); box-shadow: var(--shadow-popup); }
+  .bookmark-popover { position: fixed; z-index: 110; width: min(280px, calc(100vw - 16px)); padding: var(--space-control); color: var(--ink); background: var(--surface); border-radius: var(--r-md); box-shadow: var(--shadow-popup); }
   .bookmark-popover-head { display: flex; justify-content: space-between; align-items: center; color: var(--text-3); margin-bottom: var(--space-tight); padding-bottom: var(--space-tight); border-bottom: 1px solid var(--hairline); }
   .bookmark-popover-title { display: flex; align-items: center; gap: var(--space-hair); font-size: var(--fs-secondary); color: var(--text-2); }
   .bookmark-glyph { width: 16px; height: 16px; display: block; color: var(--text-3); }
@@ -601,6 +601,20 @@
   .bookmark-popover textarea::placeholder { color: var(--text-3); opacity: 1; }
   .bookmark-popover textarea { resize: none; max-height: 144px; border: none; outline: none; padding: var(--space-tight); background: transparent; }
   .bookmark-popover [role="alert"] { color: var(--danger); margin-top: var(--space-control); font-size: var(--fs-secondary); }
+  /* A mark's note card (owner 2026-11-26): the bookmark's card, headed by the mark's own color. */
+  .note-swatch { width: 12px; height: 12px; border-radius: 50%; display: block; margin: 0 var(--space-hair); }
+  .bookmark-popover-title > .ph { font-size: 14px; color: var(--text-3); margin: 0 var(--space-hair); }
+  /* A noted mark: a dot just above the end of the marked text, one step darker than its color. */
+  .mark-notes { position: relative; height: 0; }
+  .mark-note-dot { position: absolute; width: 14px; height: 14px; margin: -10px 0 0 -7px; padding: 0; border: 0; border-radius: 50%; background: transparent; display: grid; place-items: center; cursor: pointer; z-index: 2; }
+  .mark-note-dot::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: color-mix(in srgb, var(--c) 45%, var(--ink)); transition: transform 0.15s var(--ease-out); }
+  .mark-note-dot:hover::before, .mark-note-dot:focus-visible::before { transform: scale(1.35); }
+  /* After a selection: a small triangle (the logo's shape) just above where it ends; a click opens the mark menu. */
+  .selection-cue { position: fixed; z-index: 90; width: 14px; height: 14px; padding: 0 0 2px; border: 0; background: transparent; display: flex; align-items: flex-end; justify-content: center; cursor: pointer; animation: cue-in 0.18s var(--ease-out) 0.12s backwards; }
+  .selection-cue svg { width: 8px; height: 8px; fill: var(--blue-500); transition: transform 0.15s var(--ease-out); }
+  .selection-cue:hover svg { transform: scale(1.3); }
+  @keyframes cue-in { from { opacity: 0; transform: translateY(2px); } }
+  @media (prefers-reduced-motion: reduce) { .selection-cue { animation: none; } }
 
 
   /* Row layout: the persistent left rail + its resizer sit at the root, the
@@ -756,6 +770,21 @@
   .workspaces-box .workspace-close { position: absolute; right: var(--space-hair); }
   .workspaces-box .workspace-close:hover { background: color-mix(in srgb, var(--blue-300) 45%, transparent); }
   .workspaces-box .workspace-row:is(:hover, :focus-within) .workspace-place { opacity: 0; }
+  .workspaces-box .workspace-list-title .section-icon { color: var(--blue-500); }
+  /* Folded (owner 2026-11-26): a row of dots, one per desk, the current one drawn long; each opens its desk. */
+  .desk-strip { display: flex; align-items: center; gap: 2px; padding: var(--space-hair) var(--space-tight) 0; line-height: 1.4; cursor: pointer; }
+  .desk-strip .section-icon { color: var(--blue-500); margin-right: var(--space-tight); }
+  .desk-strip .ws-count { margin-left: auto; }
+  .desk-dot { width: 18px; height: 18px; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--r-sm); background: none; cursor: pointer; }
+  .desk-dot::before { content: ""; width: 6px; height: 6px; border-radius: 3px; background: var(--blue-300); transition: width 0.2s var(--ease-out), background 0.15s; }
+  .desk-dot.on { width: 26px; }
+  .desk-dot.on::before { width: 18px; background: var(--blue-500); }
+  .desk-dot:hover::before, .desk-dot:focus-visible::before { background: var(--blue-500); }
+  /* The grabber: the deck handle's bar on its side, at the block's lower edge. */
+  .desk-grab { display: grid; place-items: center; height: 10px; margin-top: 1px; cursor: grab; touch-action: none; border-radius: var(--r-sm); }
+  .desk-grab::before { content: ""; width: 18px; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--blue-300) 70%, transparent); transition: width 0.15s, background 0.15s; }
+  .desk-grab:hover::before, .desk-grab:focus-visible::before { width: 24px; background: var(--blue-500); }
+  .desk-grab:focus-visible { outline: none; }
   .session-row {
     display: flex;
     align-items: center;
@@ -1020,9 +1049,7 @@
   .split-new .ws-pick > .list-menu { left: 0; right: auto; width: min(320px, calc(100vw - 24px)); }
   /* The selector's outer border occupies 1px of the shared row inset. */
   .split-new .ws-pick > summary { width: 100%; height: 100%; padding: var(--space-tight) var(--space-tight); padding-left: calc(var(--space-tight) - 1px); display: flex; align-items: center; gap: var(--space-tight); border-radius: var(--r-md) 0 0 var(--r-md); font-size: var(--fs-primary); color: var(--ink-soft); }
-  .files-entry { height: var(--row-h); flex: none; }
-  .files-entry .sess { height: var(--row-h); flex: 1; padding-inline: var(--space-tight); }
-  .left :is(.mini > button, .mini > .help-menu > summary, .ws-pick > summary, .split-new > button, .files-entry .sess, .workspace-list-title, .group-label.ws, .set-item, .left-foot .gear, .left-foot .icon-btn, .left-foot .help-menu > summary) > i:first-child {
+  .left :is(.mini > button, .mini > .help-menu > summary, .ws-pick > summary, .split-new > button, .workspace-list-title, .group-label.ws, .set-item, .left-foot .gear, .left-foot .icon-btn, .left-foot .help-menu > summary) > i:first-child {
     display: inline-flex; align-items: center; justify-content: center;
     flex: 0 0 var(--rail-icon-size); width: var(--rail-icon-size);
     font-size: var(--rail-icon-size); line-height: 1;
@@ -1175,13 +1202,13 @@
   /* The cards above the composer (owner 2026-11-26, prototype "Composer Card Deck"):
      one card in front, the others' spines on the right (icon, name on hover), a
      handle at the left end that puts the deck away to the right. Fills only, no strokes. */
-  .deck { --we: 30px; --pill: 84px; --deck-card: var(--panel); --deck-spine: color-mix(in srgb, var(--panel) 90%, var(--ink));
+  .deck { --we: 30px; --pill: calc(var(--n) * 34px + 16px); --deck-card: var(--panel); --deck-spine: color-mix(in srgb, var(--panel) 90%, var(--ink));
     --deck-blue: color-mix(in srgb, var(--blue-100) 70%, var(--blue-25)); --deck-blue-spine: color-mix(in srgb, var(--blue-100) 72%, var(--blue-300));
     position: relative; height: 44px; margin-bottom: var(--space-tight); font-size: var(--fs-secondary); color: var(--text-2);
     transition: height 0.3s var(--ease-out), margin-bottom 0.3s var(--ease-out); }
   /* Put away, the deck gives its row back: it folds to no height and its tray floats over the composer's top right corner (owner 2026-11-26). */
   .deck.away { height: 0; margin-bottom: 0; }
-  .composer-col:has(.deck.away) :is(.composer-notes, .staged-attachments) { padding-right: calc(var(--pill, 84px) + var(--space-tight)); }
+  .composer-col:has(.deck.away) :is(.composer-notes, .staged-attachments) { padding-right: calc(var(--pill, 118px) + var(--space-tight)); }
   .deck:has(.deck-spine:hover) { --we: 74px; }
   .deck-front { position: absolute; inset: 0 calc((var(--n) - 1) * var(--we)) 0 0; z-index: 20; display: flex; align-items: center; gap: var(--space-hair);
     padding-right: var(--space-tight); border-radius: 14px; background: var(--deck-card);
@@ -1233,6 +1260,8 @@
   .steer-chip:active { transform: scale(0.97); }
   .steer-chip:disabled { opacity: 0.45; cursor: default; }
   .steer-chip.on { color: var(--blue-700); }
+  .desk-chip.on { background: var(--blue-100); }
+  .desk-chip .steer-label { max-width: 14em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .steer-chip.locked { background: var(--blue-500); color: var(--surface); box-shadow: none; }
   .steer-label { max-width: 10em; overflow: hidden; text-overflow: ellipsis; }
   .steer-meter { display: inline-flex; gap: 3px; }
@@ -1860,6 +1889,7 @@
   .context-menu button { display: flex; align-items: center; gap: var(--space-tight); width: 100%; padding: var(--row-pad-2) var(--space-control); border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-soft); text-align: left; cursor: pointer; line-height: var(--row-lh-2); }
   .context-menu button:hover, .context-menu button:focus-visible { background: var(--hover); outline: none; }
   .context-menu button.danger { color: var(--danger); }
+  .context-menu button:disabled { color: var(--text-3); cursor: default; background: transparent; }
   .context-menu-swatches { display: flex; gap: var(--space-tight); padding: var(--space-hair) var(--space-control); }
   .context-menu .context-menu-swatches button { width: 20px; height: 20px; padding: 0; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent); }
   .context-menu .context-menu-swatches button:hover, .context-menu .context-menu-swatches button:focus-visible, .context-menu .context-menu-swatches button.on { outline: 2px solid var(--ink); outline-offset: 1px; }
@@ -2158,7 +2188,6 @@
 .thumb:hover { background: var(--row-active); }
 .thumb img, .thumb video { display: block; width: 120px; height: 90px; object-fit: cover; border-radius: var(--radius-sm); background: var(--card); pointer-events: none; }
 .thumb .s-title { font-size: var(--fs-micro); color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.files-entry .sess:not(.active) { color: var(--text-2); }
 
 .markdown-image { display: block; margin: 0.75em 0; }
 .markdown-image img, .artifact-image { display: block; max-width: 100%; height: auto; object-fit: contain; }

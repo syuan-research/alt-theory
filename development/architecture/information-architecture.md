@@ -204,6 +204,15 @@ surfaces remain designation-gated and absent for everyone else.
     next, with the remaining entries following afterward. A user bubble appears
     only when Pi starts that queued user turn, not merely because a card
     disappeared.
+  - Reader marks (`lib/marks.ts`, `conversation/useMarks.tsx`): a selection's
+    menu (right-click, or the small triangle that appears just above where a
+    selection ends) highlights, underlines or strikes it through; the first
+    few triangles also say so on the notice line, until a mark is made. A
+    mark's menu opens on right-click or a plain left click (a drag still
+    selects, a double click still selects a word): recolor, note, remove. A
+    mark's note and a bookmark's note open the same card
+    (`conversation/NoteCard.tsx`); a noted mark shows a small dot after it,
+    its note on hover.
 - **Conversation list**
   - Conversations with a project main folder are grouped under that project;
     folderless roots live in a separate collapsible **Independent
@@ -227,7 +236,11 @@ surfaces remain designation-gated and absent for everyone else.
     families, every conversation, or never — and then goes to the workspace
     already holding that place, else a new one. Cmd/Ctrl+click and the row
     menu's Open on a new desk always open one. Nothing restricts which
-    conversation a workspace holds.
+    conversation a workspace holds. Desks show in the list, as a card on
+    the composer's deck, or both — never neither; right-click on either
+    chooses (`components/shell/Desks.tsx`, kept per device). The list's block
+    folds upward by its bottom grabber (click, or drag up) into a row of
+    dots, one per desk, the one on show drawn long; a dot opens its desk.
   - Pinned (Owner 2026-11-26): a row menu pins a conversation; pinned rows
     show in their own section above the list, in pin order, and stay in
     their place below. The section exists only while something is pinned
@@ -239,8 +252,9 @@ surfaces remain designation-gated and absent for everyone else.
     nothing else: a fresh app launch or a new-conversation draft highlights
     no row (Owner 2026-09-24); a list refresh never picks one.
   - The Projects header owns project-only collapse all, expand all, add, and
-    sorting. Search sits in the new-conversation row's control group, left of
-    the new-conversation button, and filters projects and the Independent
+    sorting. Conversation files and Search sit in the new-conversation row's
+    control group, left of the new-conversation button (Owner 2026-11-27:
+    the pane's own tools in one row), and filters projects and the Independent
     conversations section alike. These controls do not change
     conversation-family folding or the Standalone conversations section's own
     collapse state.
@@ -321,7 +335,7 @@ surfaces remain designation-gated and absent for everyone else.
     stream in conversation order), an extended scope to By source (a group
     per conversation, this one first); the user may pick either. A card
     shows who said it, the node's text for a bookmark or the quote styled
-    as its mark, the bookmark note, and the latest message when the
+    as its mark, its note, and the latest message when the
     bookmark was made; text is capped at five lines with Expand. Clicking a
     card shows that row in the center (opening its conversation through the
     list's workspace rule) and flashes it; dragging a card carries
