@@ -771,6 +771,20 @@
   .workspaces-box .workspace-close:hover { background: color-mix(in srgb, var(--blue-300) 45%, transparent); }
   .workspaces-box .workspace-row:is(:hover, :focus-within) .workspace-place { opacity: 0; }
   .workspaces-box .workspace-list-title .section-icon { color: var(--blue-500); }
+  /* The tool row and the desks block as one light-blue card (owner 2026-11-27, proto B),
+     while nothing (search) sits between them; the desks part still folds alone. */
+  .user-nav.joined > .pad { margin-right: var(--space-hair); padding-bottom: 0; }
+  .user-nav.joined .split-new { background: var(--blue-25); border-radius: var(--r-lg) var(--r-lg) 0 0; }
+  .user-nav.joined .split-new .ws-pick > summary, .user-nav.joined .split-new > button { color: var(--blue-700); box-shadow: none; }
+  .user-nav.joined .split-new .ws-pick > summary { border-radius: var(--r-lg) 0 0 0; }
+  .user-nav.joined .split-new > button:last-child { border-radius: 0 var(--r-lg) 0 0; }
+  .user-nav.joined .split-new .ws-pick > summary:hover, .user-nav.joined .split-new > button:hover, .user-nav.joined .split-new > button.on { background: var(--blue-100); }
+  .user-nav.joined .split-new .caret { color: var(--blue-300); }
+  .user-nav.joined .sessions { padding-top: 0; }
+  .user-nav.joined .workspaces-pinned { top: 0; }
+  .user-nav.joined .workspaces-pinned::before { display: none; }
+  .user-nav.joined .workspaces-box { border-radius: 0 0 var(--r-lg) var(--r-lg); padding-top: 0; }
+  .user-nav.joined .workspaces-box::before { content: ""; display: block; height: 1px; margin: 0 var(--space-tight) var(--space-hair); background: color-mix(in srgb, var(--blue-300) 35%, transparent); }
   /* Folded (owner 2026-11-26): a row of dots, one per desk, the current one drawn long; each opens its desk. */
   .desk-strip { display: flex; align-items: center; gap: 2px; padding: var(--space-hair) var(--space-tight) 0; line-height: 1.4; cursor: pointer; }
   .desk-strip .section-icon { color: var(--blue-500); margin-right: var(--space-tight); }
@@ -1495,6 +1509,27 @@
   .rpanel .head.sub .back { display: inline-flex; }
   .rpanel .head > span { overflow: hidden; text-overflow: ellipsis; }
   .rpanel .head > .rp-count { flex: 0 0 auto; color: var(--text-3); font-weight: 400; }
+  /* What the thing on show can do, grouped at the top right before the pane's own width (owner 2026-11-27). */
+  .rpanel .head > .rp-actions { margin-left: auto; display: flex; align-items: center; gap: 2px; flex: 0 0 auto; overflow: visible; }
+  .rpanel .head > .rp-actions:empty { display: none; }
+  .rpanel .head > .rp-actions + .rp-full { margin-left: var(--space-hair); }
+  .rpanel .head > .rp-actions:empty + .rp-full { margin-left: auto; }
+  .rp-act { width: 26px; height: 26px; display: grid; place-items: center; border: none; border-radius: var(--r-sm); background: transparent; color: var(--text-2); cursor: pointer; }
+  .rp-act:hover, .rp-act:focus-visible { background: var(--row-active); color: var(--ink); outline: none; }
+  .rp-act.rp-center { color: var(--blue-500); }
+  .rp-act.rp-center:hover, .rp-act.rp-center:focus-visible { background: var(--blue-100); color: var(--blue-700); }
+  .center-icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 16; stroke-linecap: round; stroke-linejoin: round; }
+  /* The center's one step back, and a file sent to the center. */
+  .center-head { flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-control); min-height: 40px; padding: var(--space-tight) var(--space-control) 0; }
+  .center-back { display: inline-flex; align-items: center; gap: 6px; max-width: 40%; height: 28px; padding: 0 var(--space-control) 0 var(--space-tight); border: none; border-radius: var(--r-sm); background: var(--step-on-white); color: var(--text-2); font: inherit; font-size: var(--fs-secondary); cursor: pointer; white-space: nowrap; animation: pop-in 0.2s var(--ease-out); }
+  .center-back span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .center-back:hover, .center-back:focus-visible { background: var(--row-active); color: var(--ink); outline: none; }
+  .center-file { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .center-file-name { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--ink); }
+  .center-file-name .ph { color: var(--text-3); }
+  .center-file > .open-file-reader { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 var(--space-control) var(--space-control); }
+  .center-file > .open-file-reader > .preview { flex: 1; min-height: 0; }
+  .workspaces-box .desk-file { color: var(--text-3); margin-right: 6px; }
   /* Panel body: only the list scrolls; child conversation owns its own msgs. */
   .rpanel .body {
     flex: 1;

@@ -7,10 +7,16 @@ import { MessageList } from "@/components/conversation/MessageList";
 import { ArmSplit } from "@/components/shell/ArmSplit";
 import { Comparison } from "@/components/shell/Comparison";
 import { ApprovalNotice } from "@/components/shell/ApprovalNotice";
+import { OpenFileReader } from "@/components/inspector/OpenFilesPanel";
+import { useMainView } from "@/context/MainView";
+import { sessionTitle } from "@/lib/sessionList";
+import { targetTitle, type OpenFile } from "@/lib/viewTarget";
+import { useState } from "react";
 
 export function ConversationPanel() {
   const conv = useConversationContext();
   const shell = useShell();
+  const main = useMainView();
   const live = Boolean(conv.sessionId);
 
   return (
@@ -18,10 +24,13 @@ export function ConversationPanel() {
       <div className="workcard">
         <ApprovalNotice />
         {shell.compareOpen ? <Comparison /> : null}
-        {shell.armsComparisonId ? (
+        {main.centerFile ? (
+          <CenterFile key={main.centerFile.key} file={main.centerFile} />
+        ) : shell.armsComparisonId ? (
           <ArmSplit />
         ) : live ? (
           <div className="live-state">
+            {main.centerBack ? <div className="center-head"><CenterBack /></div> : null}
             <MessageList />
             <Composer variant="live" />
           </div>
@@ -30,6 +39,37 @@ export function ConversationPanel() {
         )}
       </div>
     </main>
+  );
+}
+
+/** The center's one step back (owner 2026-11-27): to the conversation under
+ *  a file, or to the one shown before a conversation was sent here. */
+function CenterBack() {
+  const app = useApp();
+  const main = useMainView();
+  const back = main.centerBack;
+  const summary = back ? app.sessions.find((item) => item.sessionId === back) : undefined;
+  const name = summary ? sessionTitle(summary, app.sessionDisplayNames, app.sessions) : t("Back");
+  return (
+    <button type="button" className="center-back" onClick={main.backFromCenter} data-tip={t("Back to {name}", { name })}>
+      <i className="ph ph-arrow-left" aria-hidden="true" />
+      <span>{name}</span>
+    </button>
+  );
+}
+
+/** A file sent to the center: it covers the conversation until Back. */
+function CenterFile({ file }: { file: OpenFile }) {
+  const [view, setView] = useState(file.view);
+  const name = (file.file ? targetTitle(file.file) ?? file.file.path : file.change?.title ?? "").split(/[\\/]/).at(-1);
+  return (
+    <div className="center-file">
+      <div className="center-head">
+        <CenterBack />
+        <span className="center-file-name"><i className="ph ph-file-text" aria-hidden="true" />{name}</span>
+      </div>
+      <OpenFileReader file={{ ...file, view }} active onViewChange={setView} />
+    </div>
   );
 }
 

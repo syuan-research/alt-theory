@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ServerMessage } from "@/api/types";
-import { promoteToMainline as promoteToMainlineRequest } from "@/api/sessions";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { ConversationScope, useConversationContext, useTurnParts } from "@/context/ConversationContext";
@@ -12,7 +11,6 @@ import { useFindTarget } from "@/lib/find";
 import { useMarks } from "@/components/conversation/useMarks";
 import { runPhaseLabels } from "@/lib/runState";
 import { useAutosizeTextarea } from "@/lib/autosizeTextarea";
-import { canTakeMainline, isListMember } from "@/lib/sessionList";
 import { t } from "@/i18n";
 import { ApprovalDock } from "@/components/conversation/ApprovalDock";
 import { SettledMessages, StreamPartsView, useTranscriptActions } from "@/components/conversation/MessageList";
@@ -34,13 +32,7 @@ import { useComposerAttachments } from "./useComposerAttachments";
  * same bubbles and shared composer pieces as the main conversation — only the
  * width and the header line differ. Message actions use this pane's conversation.
  */
-export function ChildConversation({
-  sessionId,
-  onClose,
-}: {
-  sessionId: string;
-  onClose: () => void;
-}) {
+export function ChildConversation({ sessionId }: { sessionId: string }) {
   const app = useApp();
   const shell = useShell();
   const main = useMainView();
@@ -75,12 +67,12 @@ export function ChildConversation({
   });
   return (
     <ConversationScope conversation={conversation} parts={parts}>
-      <ChildPane sessionId={sessionId} onClose={onClose} />
+      <ChildPane sessionId={sessionId} />
     </ConversationScope>
   );
 }
 
-function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
+function ChildPane({ sessionId }: { sessionId: string }) {
   const app = useApp();
   const main = useMainView();
   const conversation = useConversationContext();
@@ -133,16 +125,6 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
     return () => document.removeEventListener("keydown", onEscape);
   }, [menu]);
 
-  const summary = app.sessions.find((item) => item.sessionId === sessionId);
-  const inList = summary ? isListMember(summary) : true;
-  // M4b role swap entry points: a branch can take the list spot; a delisted
-  // origin can take it back. Hidden when promotion would change nothing.
-  const mainlineAction =
-    summary && canTakeMainline(summary, app.sessions)
-      ? summary.forkedFrom
-        ? t("Make this the main conversation")
-        : t("Make this the main conversation again")
-      : null;
   const reportError = (reason: unknown) =>
     conversation.notify({
       kind: "text",
@@ -217,50 +199,6 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
 
   return (
     <div className="child-conv panel">
-      <div className="child-head">
-        <button className="flat" onClick={() => { if (main.openCatalogSession(sessionId)) onClose(); }} data-tip={t("Open in main area")} aria-label={t("Open in main area")}>
-          <i className="ph ph-arrows-out-simple" aria-hidden="true" />
-        </button>
-        {mainlineAction ? (
-          <button
-            className="flat promote-action"
-            data-tip={t("This conversation takes the list spot; the current one stays available from its Related rail.")}
-            onClick={() => {
-              void promoteToMainlineRequest(sessionId)
-                .then(() => app.refreshSessions())
-                .catch(reportError);
-            }}
-          >
-            <i className="ph ph-crown-simple" aria-hidden="true" />{" "}
-            {mainlineAction}
-          </button>
-        ) : null}
-        {inList ? (
-          summary?.forkedFrom && summary.forkedFrom.purpose !== "fork" ? (
-            <button
-              className="flat promote-action"
-              data-tip={t("Hide from conversation list")}
-              onClick={() => {
-                void main.setRelatedSessionListed(sessionId, false).catch(reportError);
-              }}
-            >
-              <i className="ph ph-list-minus" aria-hidden="true" />{" "}
-              {t("Hide from conversation list")}
-            </button>
-          ) : null
-        ) : (
-          <button
-            className="flat promote-action"
-            data-tip={t("Keep this conversation in your list, with where it came from.")}
-            onClick={() => {
-              void main.setRelatedSessionListed(sessionId, true).catch(reportError);
-            }}
-          >
-            <i className="ph ph-arrow-line-up" aria-hidden="true" />{" "}
-            {t("Add to conversation list")}
-          </button>
-        )}
-      </div>
 
       <div
         className="msgs child-msgs"

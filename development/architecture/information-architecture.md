@@ -85,10 +85,25 @@ surfaces remain designation-gated and absent for everyone else.
       closes the float. A manual collapse on a wide window is the saved
       preference; the float is not. The right pane never moves the left
       column.
-    - Full width (right pane header): the right pane takes the work area,
+    - Full width (right pane header, far right, a horizontal-arrows icon):
+      the right pane takes the work area,
       the center is hidden but stays mounted, and the left docks as its
       strip. Restore, closing the right pane, or opening anything in the
       center ends it.
+    - The right pane header's top right holds, before Full width, what the
+      thing on show can do (Owner 2026-11-27, `shell/PaneActions.tsx`):
+      Show in the center (blue) and a ⋯ menu — the Related chip's menu for a
+      conversation, the tab's menu for an open file. Nothing else shows them,
+      so they appear only for a conversation or a file on show. A Related
+      conversation has no header row of its own; Show in conversation list
+      lives in ⋯, and the first unlisted one on show says so once.
+    - Show in the center (Owner 2026-11-27, `MainView` toCenter): a
+      conversation replaces the center's and a file covers it, inside the
+      same desk — no desk is added. The center then offers one step back
+      ("← name") to the conversation before, or under the file; opening from
+      the list or starting a new conversation drops it. A desk keeps this
+      while off show, and a desk with a file in its center is named by the
+      file.
   - The brand logo shows global work in flight: the existing blue shimmer and a
     quiet count badge include running and awaiting-approval conversations. One
     BrandMark renderer serves expanded/collapsed conversation and Settings rails,
@@ -241,6 +256,8 @@ surfaces remain designation-gated and absent for everyone else.
     chooses (`components/shell/Desks.tsx`, kept per device). The list's block
     folds upward by its bottom grabber (click, or drag up) into a row of
     dots, one per desk, the one on show drawn long; a dot opens its desk.
+    While the list shows its Desks block right under the tool row (no search
+    open), the two read as one light-blue card (Owner 2026-11-27).
   - Pinned (Owner 2026-11-26): a row menu pins a conversation; pinned rows
     show in their own section above the list, in pin order, and stay in
     their place below. The section exists only while something is pinned
@@ -363,7 +380,7 @@ surfaces remain designation-gated and absent for everyone else.
     approvals, skills, and slash commands as the center. Role stays above the
     composer; model and permission sit in its bottom toolbar. Both panes share
     edit/compare and retry actions. Comparisons created from either pane open in
-    the right pane. Open in main area changes the display position without
+    the right pane. Show in the center changes the display position without
     promotion or stopping the conversation. Both panes share
     the permission picker and toolbar width rules: permission labels fold below
     460px and model labels below 360px, retaining their icons.

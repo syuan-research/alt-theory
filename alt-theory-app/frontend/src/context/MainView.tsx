@@ -25,7 +25,8 @@ import { t } from "@/i18n";
 import { notifyBackground } from "@/lib/notify";
 import { discardDraft, NEW_DRAFT, updateDraft } from "@/lib/draft";
 import { familyKeyOf } from "@/lib/sessionList";
-import { chooseSlot, type Place, type Slot } from "@/lib/workspaces";
+import { chooseSlot, EMPTY_CENTER, type CenterState, type Place, type Slot } from "@/lib/workspaces";
+import type { OpenFile } from "@/lib/viewTarget";
 
 /**
  * The main view: which conversation the center shows, and what follows from
@@ -45,7 +46,14 @@ export interface MainViewValue {
    *  `newWorkspace` (Cmd/Ctrl+click, menu) always opens a new one. */
   openCatalogSession: (sessionId: string, options?: { newWorkspace?: boolean }) => boolean;
   /** The workspaces (lib/workspaces.ts); the list shows them once there are two. */
-  workspaces: Array<{ id: number; sessionId: string | null; active: boolean }>;
+  workspaces: Array<{ id: number; sessionId: string | null; active: boolean; file: OpenFile | null }>;
+  /** A file shown in the center over the conversation (owner 2026-11-27). */
+  centerFile: OpenFile | null;
+  /** Where the center's one step back goes: the conversation under a file, or the one shown before. */
+  centerBack: string | null;
+  /** Send a conversation or a file from the right pane to the center of this desk. */
+  toCenter: (target: { kind: "conversation"; sessionId: string } | { kind: "file"; file: OpenFile }) => void;
+  backFromCenter: () => void;
   switchWorkspace: (id: number) => void;
   closeWorkspace: (id: number) => void;
   startNewSession: () => void;
@@ -190,6 +198,8 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
   // conversation and right pane until they come back on show.
   const [slots, setSlots] = useState<Slot[]>([{ id: 1, sessionId: null, pane: null }]);
   const [activeSlot, setActiveSlot] = useState(1);
+  // What the right pane sent to this desk's center (lib/workspaces.ts CenterState).
+  const [center, setCenter] = useState<CenterState>(EMPTY_CENTER);
   const nextSlot = useRef(2);
   const liveSessionId = conv.opening ?? sessionId;
   const placeOf = useCallback((id: string): Place | null => {
@@ -199,11 +209,12 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
   }, [app.sessions]);
   const leaveSlot = useCallback(() => {
     const pane = shell.paneSnapshot();
-    setSlots((current) => current.map((slot) => slot.id === activeSlot ? { ...slot, sessionId: liveSessionId, pane } : slot));
-  }, [activeSlot, liveSessionId, shell.paneSnapshot]);
+    setSlots((current) => current.map((slot) => slot.id === activeSlot ? { ...slot, sessionId: liveSessionId, pane, center } : slot));
+  }, [activeSlot, liveSessionId, center, shell.paneSnapshot]);
   const showSlot = useCallback((slot: Slot, target: string | null): boolean => {
     shell.restorePane(slot.pane);
     setActiveSlot(slot.id);
+    setCenter(target === slot.sessionId ? slot.center ?? EMPTY_CENTER : EMPTY_CENTER);
     if (target) return conv.open(target);
     conv.startNew();
     return true;
@@ -221,6 +232,8 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
       }
       const choice = chooseSlot(slots, activeSlot, liveSessionId, target, placeOf, app.autoWorkspace, Boolean(options?.newWorkspace));
       if (choice.kind === "here") {
+        // Opening from the list ends what was sent to the center.
+        setCenter(EMPTY_CENTER);
         // Re-clicking the open conversation still brings the center back.
         if (target === sessionId) { shell.layout.showCenter(); return false; }
         return conv.open(target);
@@ -260,11 +273,35 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
       id: slot.id,
       sessionId: slot.id === activeSlot ? liveSessionId : slot.sessionId,
       active: slot.id === activeSlot,
+      file: (slot.id === activeSlot ? center : slot.center ?? EMPTY_CENTER).file,
     })),
-    [slots, activeSlot, liveSessionId],
+    [slots, activeSlot, liveSessionId, center],
   );
 
+  // The center takes what the right pane sends it and keeps one step back
+  // (owner 2026-11-27): a file covers the conversation until Back; a
+  // conversation replaces it and Back reopens the one before.
+  const toCenter = useCallback<MainViewValue["toCenter"]>((target) => {
+    shell.layout.showCenter();
+    if (target.kind === "file") {
+      setCenter((current) => ({ ...current, file: target.file }));
+      return;
+    }
+    if (target.sessionId === liveSessionId) { setCenter((current) => ({ ...current, file: null })); return; }
+    const from = liveSessionId;
+    if (!conv.open(target.sessionId)) return;
+    setCenter({ file: null, back: from ? { from, to: target.sessionId } : null });
+  }, [conv, liveSessionId, shell.layout.showCenter]);
+  const centerBack = center.file ? liveSessionId : center.back && center.back.to === liveSessionId ? center.back.from : null;
+  const backFromCenter = useCallback(() => {
+    if (center.file) { setCenter((current) => ({ ...current, file: null })); return; }
+    const back = center.back;
+    setCenter(EMPTY_CENTER);
+    if (back && back.to === liveSessionId) conv.open(back.from);
+  }, [center, conv, liveSessionId]);
+
   const startNewSession = useCallback(() => {
+    setCenter(EMPTY_CENTER);
     conv.startNew();
   }, [conv]);
 
@@ -361,6 +398,10 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
       markSessionRead,
       openCatalogSession,
       workspaces,
+      centerFile: center.file,
+      centerBack,
+      toCenter,
+      backFromCenter,
       switchWorkspace,
       closeWorkspace,
       startNewSession,
@@ -383,6 +424,10 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
       markSessionRead,
       openCatalogSession,
       workspaces,
+      center,
+      centerBack,
+      toCenter,
+      backFromCenter,
       switchWorkspace,
       closeWorkspace,
       startNewSession,

@@ -5,6 +5,7 @@ import { useMainView } from "@/context/MainView";
 import { useShell } from "@/context/ShellContext";
 import { folderLabel, sessionTitle } from "@/lib/sessionList";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
+import { targetTitle } from "@/lib/viewTarget";
 
 /**
  * Desks (工作位, owner 2026-11-26): shown in the left list, as a card on the
@@ -51,10 +52,13 @@ export function useDeskRows() {
     return main.workspaces.map((desk) => {
       const summary = desk.sessionId ? byId.get(desk.sessionId) : undefined;
       const dir = summary?.workspacePrimaryDir;
+      // A file sent to the center names the desk while it is there (owner 2026-11-27).
+      const file = desk.file ? (desk.file.file ? targetTitle(desk.file.file) ?? desk.file.file.path : desk.file.change?.title ?? "").split(/[\\/]/).at(-1) : null;
       return {
         id: desk.id,
         active: desk.active,
-        title: summary ? sessionTitle(summary, app.sessionDisplayNames, app.sessions) : t("New conversation"),
+        file: Boolean(file),
+        title: file || (summary ? sessionTitle(summary, app.sessionDisplayNames, app.sessions) : t("New conversation")),
         place: dir ? projectByDir.get(dir)?.name ?? folderLabel(dir) : t("Standalone"),
       };
     });
@@ -117,6 +121,7 @@ export function DesksBlock() {
             {rows.map((row) => (
               <div className="session-row workspace-row" key={row.id}>
                 <button type="button" className={`sess${row.active ? " active" : ""}`} data-tip={`${row.title} · ${row.place}`} onClick={() => open(row.id)}>
+                  {row.file ? <i className="ph ph-file-text desk-file" aria-hidden="true" /> : null}
                   <span className="s-title">{row.title}</span>
                   <span className="workspace-place">{row.place}</span>
                 </button>
@@ -175,6 +180,7 @@ export function DeskChips({ chipsRef }: { chipsRef?: React.Ref<HTMLDivElement> }
             data-tip={`${row.title} · ${row.place}`}
             onClick={() => { shell.openApp(); main.switchWorkspace(row.id); }}
           >
+            {row.file ? <i className="ph ph-file-text" aria-hidden="true" /> : null}
             <span className="steer-label">{row.title}</span>
           </button>
         ))}

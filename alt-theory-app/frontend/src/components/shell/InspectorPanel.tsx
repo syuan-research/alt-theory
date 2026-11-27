@@ -34,6 +34,8 @@ import { MenuButton, NameForm } from "@/components/inspector/FolderList";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 import { TabStrip } from "@/components/shell/TabStrip";
 import { SlideMark } from "@/components/ui/SlideMark";
+import { CenterIcon } from "@/components/ui/CenterIcon";
+import { PaneActions, PaneActionsHost } from "@/components/shell/PaneActions";
 import { fetchSessionDetail, promoteToMainline } from "@/api/sessions";
 import { copyText } from "@/lib/clipboard";
 import { revealPath } from "@/lib/native";
@@ -66,6 +68,7 @@ export function InspectorPanel() {
   const open = shell.rightPanel !== null;
   const active = shell.rightPanel;
   const railRef = useRef<HTMLDivElement>(null);
+  const [actionsHost, setActionsHost] = useState<HTMLElement | null>(null);
 
   const attentionCount = related.visible.filter((row) => {
     const state = conversationState(row.runStatus, main.sessionAlerts[row.session.sessionId]);
@@ -147,6 +150,7 @@ export function InspectorPanel() {
 
   return (
     <aside className={`right${open ? " open" : ""}`}>
+      <PaneActionsHost.Provider value={actionsHost}>
       <div className="rpanel">
         {active ? (
           <div className={`head${shell.target || active === "open" ? " sub" : ""}`}>
@@ -164,12 +168,14 @@ export function InspectorPanel() {
             </button>
             <span>{title}</span>
             {active === "open" ? <span className="rp-count">{shell.openedFiles.length}</span> : null}
+            {/* What the thing on show can do (to the center, its menu), then the pane's own width. */}
+            <span className="rp-actions" ref={setActionsHost} />
             <button
               className="rp-full"
               onClick={() => shell.layout.setRightFull(!shell.layout.geometry.rightFull)}
               data-tip={shell.layout.geometry.rightFull ? t("Restore") : t("Full width")}
             >
-              <i className={`ph ${shell.layout.geometry.rightFull ? "ph-arrows-in-simple" : "ph-arrows-out-simple"}`} />
+              <i className={`ph ${shell.layout.geometry.rightFull ? "ph-arrows-in-line-horizontal" : "ph-arrows-out-line-horizontal"}`} />
             </button>
           </div>
         ) : null}
@@ -247,6 +253,7 @@ export function InspectorPanel() {
           : null}
         <SlideMark within={railRef} at={active} />
       </div>
+      </PaneActionsHost.Provider>
     </aside>
   );
 }
@@ -412,6 +419,44 @@ function RelatedConversations({ list }: { list: ReturnType<typeof useRelatedList
       { label: t("Open session folder"), icon: "ph-folder-open", onSelect: openFolder },
     ];
   };
+
+  const activeChild = activeChildId ? app.sessions.find((item) => item.sessionId === activeChildId) : undefined;
+  // Adding a subagent to the list lives in its menu now; say so the first
+  // time one that is not in the list is on show (owner 2026-11-27).
+  useEffect(() => {
+    if (!activeChild || isListMember(activeChild)) return;
+    try {
+      if (window.localStorage.getItem("alt-hint-list-add")) return;
+      window.localStorage.setItem("alt-hint-list-add", "1");
+    } catch { return; }
+    conv.notify({ kind: "text", text: t("This conversation is not in your list. Add it from ⋯ at the top right.") });
+  }, [activeChild?.sessionId]);
+  const childActions = activeChild ? (
+    <PaneActions>
+      <button
+        type="button"
+        className="rp-act rp-center"
+        aria-label={t("Show in the center")}
+        data-tip={t("Show in the center")}
+        onClick={() => { main.toCenter({ kind: "conversation", sessionId: activeChild.sessionId }); shell.closeTarget(); }}
+      >
+        <CenterIcon />
+      </button>
+      <button
+        type="button"
+        className="rp-act"
+        aria-label={t("More actions")}
+        aria-haspopup="menu"
+        data-tip={t("More actions")}
+        onClick={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect();
+          menu.openAt(rect.right - 220, rect.bottom + 4, sessionMenuItems(activeChild), event.currentTarget);
+        }}
+      >
+        <i className="ph ph-dots-three" aria-hidden="true" />
+      </button>
+    </PaneActions>
+  ) : null;
 
   const openMenuFromKey = (
     event: ReactKeyboardEvent<HTMLButtonElement>,
@@ -637,7 +682,8 @@ function RelatedConversations({ list }: { list: ReturnType<typeof useRelatedList
         </div>
       ) : null}
       </> : null}
-      {activeChildId ? <ChildConversation key={activeChildId} sessionId={activeChildId} onClose={shell.closeTarget} /> : <>
+      {childActions}
+      {activeChildId ? <ChildConversation key={activeChildId} sessionId={activeChildId} /> : <>
       {chain.map(item)}
       {presentKinds
         .filter((kind) => kinds.has(kind))

@@ -11,6 +11,9 @@ import { useContextMenu, type ContextMenuItem } from "@/components/shell/Context
 import { fileMenuItems } from "@/lib/fileMenu";
 import { NEW_DRAFT, stageInDraft, unstageInDraft, useDraft } from "@/lib/draft";
 import { paneMemory, usePaneMemory } from "@/lib/paneMemory";
+import { useMainView } from "@/context/MainView";
+import { PaneActions } from "@/components/shell/PaneActions";
+import { CenterIcon } from "@/components/ui/CenterIcon";
 import { targetTitle, type ChangeTarget, type FileTarget, type OpenFile } from "@/lib/viewTarget";
 
 /** The display path of an open file: the file's, else the change's. */
@@ -54,6 +57,8 @@ export function OpenFilesPanel() {
   const menu = useContextMenu();
   const files = shell.openedFiles;
   const activeKey = shell.activeFile;
+  const activeFile = files.find((file) => file.key === activeKey) ?? null;
+  const main = useMainView();
   const [renaming, setRenaming] = useState<FileTarget | null>(null);
   const rename = async (name: string): Promise<boolean> => {
     if (!renaming || renaming.root === "local") return false;
@@ -93,9 +98,51 @@ export function OpenFilesPanel() {
         <OpenFileReader key={file.key} file={file} active={file.key === activeKey} />
       ))}
       {files.length === 0 ? <div className="rp-empty">{t("No open files.")}</div> : null}
+      {activeFile ? (
+        <PaneActions>
+          <button
+            type="button"
+            className="rp-act rp-center"
+            aria-label={t("Show in the center")}
+            data-tip={t("Show in the center")}
+            onClick={() => main.toCenter({ kind: "file", file: activeFile })}
+          >
+            <CenterIcon />
+          </button>
+          <button
+            type="button"
+            className="rp-act"
+            aria-label={t("More actions")}
+            aria-haspopup="menu"
+            data-tip={t("More actions")}
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              menu.openAt(rect.right - 220, rect.bottom + 4, openFileItems(activeFile, shell, setRenaming), event.currentTarget);
+            }}
+          >
+            <i className="ph ph-dots-three" aria-hidden="true" />
+          </button>
+        </PaneActions>
+      ) : null}
       {menu.element}
     </div>
   );
+}
+
+/** An open file's menu: the same file menu the file tree and Changes offer,
+ *  plus Rename for the user's own files. */
+function openFileItems(file: OpenFile, shell: ReturnType<typeof useShell>, onRename: (target: FileTarget) => void): ContextMenuItem[] {
+  const change = file.change;
+  const address = addressOf(file);
+  // A file outside every root, or one the desktop opened from anywhere, is in no tree.
+  const inTree = file.file ? file.file.root !== "local" : Boolean(change && changeFileInTree(change.sessionId, change.path));
+  // The user's own files rename here; attachments keep the names messages point at.
+  const renamable = file.file && file.file.root !== "local" && !(file.file.root === "workspace" && /^(uploads|extracted)\//.test(file.file.path))
+    ? file.file : null;
+  return [
+    ...fileMenuItems(address, inTree ? () => shell.revealWorkspacePath(address) : undefined),
+    ...(renamable ? [{ label: t("Rename"), icon: "ph-pencil-simple", onSelect: () => onRename(renamable) }] : []),
+  ];
 }
 
 /** One tab: the Related chip, with room for a file name and a close over its
@@ -107,16 +154,7 @@ function OpenFileTab({ file, active, menu, onRename }: { file: OpenFile; active:
   const dot = name.lastIndexOf(".");
   const change = file.change;
   const address = addressOf(file);
-  // The same file menu the file tree and Changes offer. A file outside every
-  // root, or one the desktop opened from anywhere, is in no tree.
-  const inTree = file.file ? file.file.root !== "local" : Boolean(change && changeFileInTree(change.sessionId, change.path));
-  // The user's own files rename here; attachments keep the names messages point at.
-  const renamable = file.file && file.file.root !== "local" && !(file.file.root === "workspace" && /^(uploads|extracted)\//.test(file.file.path))
-    ? file.file : null;
-  const items = (): ContextMenuItem[] => [
-    ...fileMenuItems(address, inTree ? () => shell.revealWorkspacePath(address) : undefined),
-    ...(renamable ? [{ label: t("Rename"), icon: "ph-pencil-simple", onSelect: () => onRename(renamable) }] : []),
-  ];
+  const items = () => openFileItems(file, shell, onRename);
   const openMenuFromKey = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
     if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
     event.preventDefault();
@@ -149,8 +187,13 @@ function OpenFileTab({ file, active, menu, onRename }: { file: OpenFile; active:
   );
 }
 
-/** One open file's reader. It stays mounted while another file is on show. */
-function OpenFileReader({ file, active }: { file: OpenFile; active: boolean }) {
+/** One open file's reader. It stays mounted while another file is on show.
+ *  The center shows the same reader with its own view (`onViewChange`). */
+export function OpenFileReader({ file, active, onViewChange }: {
+  file: OpenFile;
+  active: boolean;
+  onViewChange?: (view: OpenFile["view"]) => void;
+}) {
   const shell = useShell();
   const target = file.file;
   const change: ChangeTarget | null = file.change;
@@ -173,7 +216,7 @@ function OpenFileReader({ file, active }: { file: OpenFile; active: boolean }) {
         absolutePath={absolutePath}
         diff={change ? entry?.diff : undefined}
         mode={file.view}
-        onModeChange={(view) => shell.setFileView(file.key, view)}
+        onModeChange={(view) => (onViewChange ? onViewChange(view) : shell.setFileView(file.key, view))}
         onSaved={(saved) => {
           // A conflict copy saved to a sibling: follow it there.
           if (!target || target.root === "local" || saved.path === target.path) return;

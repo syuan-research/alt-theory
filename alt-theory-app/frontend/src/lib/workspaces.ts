@@ -1,4 +1,4 @@
-import type { PaneState } from "./viewTarget";
+import type { OpenFile, PaneState } from "./viewTarget";
 
 /**
  * Workspaces (owner 2026-11-26): places the user stays in and switches
@@ -22,7 +22,21 @@ export interface Slot {
   sessionId: string | null;
   /** Its right pane while it is not on show; null = a fresh pane. */
   pane: PaneState | null;
+  /** What was sent to the center from the right pane while it is not on show (center). */
+  center?: CenterState;
 }
+
+/**
+ * Sent to the center (owner 2026-11-27): a file shown over the desk's
+ * conversation, or the conversation the center showed before another one was
+ * sent there. Either way the center offers one step back; nothing new is
+ * added to the desks.
+ */
+export interface CenterState {
+  file: OpenFile | null;
+  back: { from: string; to: string } | null;
+}
+export const EMPTY_CENTER: CenterState = { file: null, back: null };
 
 /** Where a conversation sits: its project (main folder, "" = standalone) and family. */
 export interface Place {

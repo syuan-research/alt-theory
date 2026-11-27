@@ -862,7 +862,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
   return (
     <div
       ref={navRef}
-      className="user-nav"
+      className={`user-nav${visibleIds === null && !shell.searchOpen && main.workspaces.length > 0 && deskPlaces.includes("left") ? " joined" : ""}`}
       style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, }}
       onKeyDown={(event) => {
         // Escape closes the rail search from anywhere in the rail — the
