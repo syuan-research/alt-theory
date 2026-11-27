@@ -1542,7 +1542,7 @@ function SessionNode({
               menu.openAt(rect.left + 18, rect.bottom, contextItems(), event.currentTarget);
             }}
             data-tip={title}
-            {...draggableSession(draggable ? session.sessionId : undefined)}
+            {...draggableSession(draggable ? session.sessionId : undefined, title)}
           >
             {session.forkedFrom ? (
               !isFamilyHead(session, app.sessions) ? (

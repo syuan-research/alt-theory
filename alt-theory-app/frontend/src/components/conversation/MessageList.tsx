@@ -569,7 +569,7 @@ function AgentReferenceLink({ agent }: { agent: AgentReference }) {
       void open();
     }}
       onContextMenu={(event) => { if (agent.sessionId) menu.open(event, items()); }}
-      {...draggableSession(agent.sessionId)}
+      {...draggableSession(agent.sessionId, agentDisplay(app, agent).alias)}
       onMouseEnter={() => {
         if (!agent.sessionId) return;
         hover.current.timer = window.setTimeout(() => {

@@ -431,7 +431,7 @@ function RelatedConversations({ list }: { list: ReturnType<typeof useRelatedList
           <button
             key={row.session.sessionId}
             data-tab-key={row.session.sessionId}
-            {...draggableSession(row.session.sessionId)}
+            {...draggableSession(row.session.sessionId, titleOf(row.session))}
             className={row.session.sessionId === activeChildId ? "on" : ""}
             data-tip={row.kind ? `${t({ subagent: "Subagent", fork: "Branch", side: "BTW", advisor: "Advisor" }[row.kind])} · ${titleOf(row.session)}` : titleOf(row.session)}
             onContextMenu={(event) => menu.open(event, sessionMenuItems(row.session))}
