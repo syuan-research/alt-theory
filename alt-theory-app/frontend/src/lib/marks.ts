@@ -179,17 +179,58 @@ function located(host: HTMLElement, sessionId: string): { mark: TextMark; range:
   return out;
 }
 
+const NOTES_LAYER = "mark-notes";
+const dotMarks = new WeakMap<Element, TextMark>();
+/** The mark a note dot stands for. */
+export const markOfNoteDot = (el: Element): TextMark | undefined => dotMarks.get(el);
+
+/** A small dot after each mark that has a note (owner 2026-11-26), in a
+ *  zero-height layer at the top of the pane so the dots scroll with the text. */
+function placeNoteDots(host: HTMLElement, items: { mark: TextMark; range: Range }[]): void {
+  let layer = host.querySelector<HTMLElement>(`:scope > .${NOTES_LAYER}`);
+  const noted = items.filter(({ mark }) => mark.note);
+  if (!noted.length) { layer?.remove(); return; }
+  if (!layer) {
+    layer = document.createElement("div");
+    layer.className = NOTES_LAYER;
+    host.prepend(layer);
+  }
+  const base = layer.getBoundingClientRect();
+  const dots = noted.flatMap(({ mark, range }) => {
+    const rects = range.getClientRects();
+    const end = rects[rects.length - 1];
+    return end ? [{ mark, x: Math.round(end.right - base.left), y: Math.round(end.top - base.top) }] : [];
+  });
+  const key = dots.map(({ mark, x, y }) => `${x},${y},${mark.kind},${mark.note}`).join("|");
+  if (layer.dataset.key === key) return;
+  layer.dataset.key = key;
+  layer.replaceChildren(...dots.map(({ mark, x, y }) => {
+    const dot = document.createElement("button");
+    dot.type = "button";
+    dot.className = "mark-note-dot";
+    dot.style.left = `${x}px`;
+    dot.style.top = `${y}px`;
+    dot.style.setProperty("--c", isColorMark(mark.kind) ? `var(--${mark.kind})` : "var(--text-3)");
+    dot.dataset.tip = mark.note!.length > 240 ? `${mark.note!.slice(0, 240)}…` : mark.note!;
+    dot.setAttribute("aria-label", mark.note!);
+    dotMarks.set(dot, mark);
+    return dot;
+  }));
+}
+
 function paint(): void {
   frame = 0;
   if (!HAS_HIGHLIGHT) return;
   const byKind = new Map<MarkKind, Range[]>();
   for (const { el, sessionId } of hosts) {
     if (!el.isConnected) continue;
-    for (const { mark, range } of located(el, sessionId)) {
+    const items = located(el, sessionId);
+    for (const { mark, range } of items) {
       const ranges = byKind.get(mark.kind) ?? [];
       ranges.push(range);
       byKind.set(mark.kind, ranges);
     }
+    placeNoteDots(el, items);
   }
   for (const kind of KINDS) {
     const ranges = byKind.get(kind);
@@ -209,11 +250,19 @@ export function registerMarksHost(el: HTMLElement, sessionId: string): () => voi
   void load(sessionId).catch(() => undefined);
   // ponytail: repaints the whole set on any DOM change, one frame at most;
   // cheap while marked rows are few — scope to the changed row if it shows up.
-  const observer = new MutationObserver(schedulePaint);
+  // The note dots' own layer changing is not a reason to repaint.
+  const observer = new MutationObserver((records) => {
+    if (records.some((record) => !(record.target instanceof Element ? record.target : record.target.parentElement)?.closest(`.${NOTES_LAYER}`))) schedulePaint();
+  });
   observer.observe(el, { childList: true, subtree: true, characterData: true });
+  // Text reflows when the pane's width changes; the dots follow.
+  const resize = new ResizeObserver(schedulePaint);
+  resize.observe(el);
   schedulePaint();
   return () => {
     observer.disconnect();
+    resize.disconnect();
+    el.querySelector(`:scope > .${NOTES_LAYER}`)?.remove();
     hosts.delete(host);
     schedulePaint();
   };
@@ -250,6 +299,9 @@ export async function addMark(host: HTMLElement, sessionId: string, range: Range
       )
       .map(({ mark }) => mark),
   );
+  // A note on a replaced mark moves to the new one instead of being lost.
+  const note = [...replaced].find((mark) => mark.note)?.note;
+  if (note) additions[0].mark.note = note;
   await update(sessionId, (marks) => [...marks.filter((mark) => !replaced.has(mark)), ...additions.map((a) => a.mark)]);
 }
 
@@ -270,7 +322,25 @@ export function removeMarks(sessionId: string, gone: TextMark[]): Promise<void> 
 }
 
 export function recolorMark(sessionId: string, target: TextMark, kind: MarkKind): Promise<void> {
-  return update(sessionId, (marks) => marks.map((mark) => (mark === target ? { ...mark, kind } : mark)));
+  return replaceMark(sessionId, target, { ...target, kind });
+}
+
+/** Swap one mark for its edited copy (recolor, note). */
+export function replaceMark(sessionId: string, target: TextMark, next: TextMark): Promise<void> {
+  return update(sessionId, (marks) => marks.map((mark) => (mark === target ? next : mark)));
+}
+
+/** The mark with its note set; a blank note removes it. */
+export function withNote(mark: TextMark, note: string): TextMark {
+  const { note: _old, ...rest } = mark;
+  return note.trim() ? { ...rest, note } : rest;
+}
+
+/** Where a mark ends on screen, for opening its note card there. */
+export function markEndRect(host: HTMLElement, sessionId: string, target: TextMark): DOMRect | null {
+  const hit = located(host, sessionId).find(({ mark }) => mark === target);
+  const rects = hit?.range.getClientRects();
+  return rects?.length ? rects[rects.length - 1] : null;
 }
 
 

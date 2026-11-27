@@ -270,6 +270,8 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
           earlier.onScroll();
         }}
         onContextMenu={marks.onContextMenu}
+        onClick={marks.onClick}
+        onMouseUp={marks.onMouseUp}
       >
         <SettledMessages
           messages={messages}

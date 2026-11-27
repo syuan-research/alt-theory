@@ -14,6 +14,8 @@ test("marks round-trip and drop malformed rows", () => {
     const saved = writeMarks(a, [good, { ...good, kind: "red" }, { ...good, quote: "" }, null]);
     assert.deepEqual(saved, [good]);
     assert.deepEqual(readMarks(a), [good]);
+    // A note is kept; a blank one is dropped rather than stored.
+    assert.deepEqual(writeMarks(a, [{ ...good, note: "用进回复信" }, { ...good, note: "  " }]), [{ ...good, note: "用进回复信" }, good]);
     assert.throws(() => writeMarks(a, { marks: [] }));
   } finally {
     rmSync(root, { recursive: true, force: true });

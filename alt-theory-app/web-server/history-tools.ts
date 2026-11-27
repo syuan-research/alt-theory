@@ -159,7 +159,7 @@ export function markedItems(dataDir: string, ids: string[]): MarkedItem[] {
     for (const mark of notes.marks) {
       const rowId = mark.row.replace(/#thinking$/, "");
       const { row: _row, ...where } = node(rowId);
-      items.push({ sessionId, row: rowId, ...where, kind: mark.kind, text: mark.quote, ...(rowId !== mark.row ? { thinking: true } : {}) });
+      items.push({ sessionId, row: rowId, ...where, kind: mark.kind, text: mark.quote, ...(mark.note ? { note: mark.note } : {}), ...(rowId !== mark.row ? { thinking: true } : {}) });
     }
   }
   return items;

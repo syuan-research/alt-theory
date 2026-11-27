@@ -267,6 +267,8 @@ export interface TextMark {
   quote: string;
   prefix: string;
   suffix: string;
+  /** The reader's note, edited in the same card as a bookmark's note. */
+  note?: string;
 }
 
 export interface NodeBookmark {

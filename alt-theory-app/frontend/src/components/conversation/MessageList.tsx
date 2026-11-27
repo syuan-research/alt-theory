@@ -59,8 +59,11 @@ export function MessageList() {
   } = useStickToBottom([messages, streamParts]);
   const earlier = useEarlierRows(containerRef, messages, conv);
   useFindTarget(containerRef, earlier.findSpec);
-  const marks = useMarks(containerRef, conv.sessionId, (reason) =>
-    conv.notify({ kind: "text", text: reason instanceof Error ? reason.message : String(reason), icon: "warning" }),
+  const marks = useMarks(
+    containerRef,
+    conv.sessionId,
+    (reason) => conv.notify({ kind: "text", text: reason instanceof Error ? reason.message : String(reason), icon: "warning" }),
+    (text) => conv.notify({ kind: "text", text }),
   );
   const railRef = useRef<HTMLDivElement>(null);
   const [scrubbing, setScrubbing] = useState(false);
@@ -188,6 +191,8 @@ export function MessageList() {
         earlier.onScroll();
       }}
       onContextMenu={marks.onContextMenu}
+      onClick={marks.onClick}
+      onMouseUp={marks.onMouseUp}
     >
       {conv.sessionId && !conv.selectors.soulSlug ? (
         <SysLine>

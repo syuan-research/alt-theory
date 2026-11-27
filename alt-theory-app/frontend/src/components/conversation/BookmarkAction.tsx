@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { loadBookmarks, setBookmark, useBookmarks } from "@/lib/bookmarks";
 import { useConversationContext } from "@/context/ConversationContext";
-import { scrollAffectsAnchor, useContextMenu } from "@/components/shell/ContextMenu";
+import { useContextMenu } from "@/components/shell/ContextMenu";
+import { NoteCard, noteCardAt } from "@/components/conversation/NoteCard";
 import { t } from "@/i18n";
 
 function BookmarkGlyph({ marked }: { marked: boolean }) {
@@ -24,7 +25,6 @@ export function BookmarkAction({ row }: { row: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [bubble, setBubble] = useState<HTMLElement | null>(null);
-  const panel = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const corner = useRef<HTMLButtonElement>(null);
   const anchor = useRef<HTMLButtonElement | null>(null);
@@ -55,7 +55,7 @@ export function BookmarkAction({ row }: { row: string }) {
   const close = () => {
     void flush().then(() => {
       if (retained.current && draft.current !== saved.current) { close(); return; }
-      const restoreFocus = panel.current?.contains(document.activeElement);
+      const restoreFocus = document.activeElement?.closest(".bookmark-popover");
       setEditor(null);
       if (restoreFocus) (anchor.current?.isConnected ? anchor.current : trigger.current)?.focus();
     }).catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
@@ -70,8 +70,7 @@ export function BookmarkAction({ row }: { row: string }) {
       setNote(draft.current);
       setError("");
       anchor.current = source;
-      const point = source.getBoundingClientRect();
-      setEditor({ left: Math.max(8, Math.min(point.left, window.innerWidth - 288)), top: Math.max(8, Math.min(point.bottom + 6, window.innerHeight - 224)) });
+      setEditor(noteCardAt(source.getBoundingClientRect()));
     } catch (reason) { report(reason); }
     finally { setBusy(false); }
   };
@@ -93,27 +92,7 @@ export function BookmarkAction({ row }: { row: string }) {
 
   useEffect(() => {
     if (!editor) return;
-    const outside = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (!panel.current?.contains(target) && !trigger.current?.contains(target) && !corner.current?.contains(target)) close();
-    };
-    const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { event.stopPropagation(); close(); }
-    };
-    const scroll = (event: Event) => {
-      if (scrollAffectsAnchor(anchor.current, event.target)) close();
-    };
-    document.addEventListener("pointerdown", outside);
-    document.addEventListener("keydown", escape, true);
-    document.addEventListener("scroll", scroll, true);
-    window.addEventListener("resize", close);
-    return () => {
-      document.removeEventListener("pointerdown", outside);
-      document.removeEventListener("keydown", escape, true);
-      document.removeEventListener("scroll", scroll, true);
-      window.removeEventListener("resize", close);
-      void flush().catch(report);
-    };
+    return () => { void flush().catch(report); };
   }, [editor]);
 
   return <>
@@ -148,23 +127,23 @@ export function BookmarkAction({ row }: { row: string }) {
       </button>, bubble,
     ) : null}
     {menu.element}
-    {editor ? createPortal(
-      <div ref={panel} className="bookmark-popover" style={editor} role="dialog" aria-label={t("Bookmark note")}>
-        <div className="bookmark-popover-head">
-          <div className="bookmark-popover-title">
-            <button type="button" className="bookmark-toggle" aria-pressed={marked} aria-label={marked ? t("Remove bookmark") : t("Bookmark")} data-tip={marked ? t("Remove bookmark") : t("Bookmark")} disabled={busy} onClick={toggle}>
-              <BookmarkGlyph marked={marked} />
-            </button>
-            <span>{t("Bookmark")}</span>
-          </div>
-          <button type="button" className="flat" onClick={close} aria-label={t("Close")}><i className="ph ph-x" aria-hidden="true" /></button>
-        </div>
-        <textarea autoFocus className="ui-field" rows={5} maxLength={20000} aria-label={t("Bookmark note")} value={note} onChange={(event) => {
-          draft.current = event.target.value;
-          setNote(event.target.value);
-        }} placeholder={t("Note…")} />
-        {error ? <p role="alert">{error}</p> : null}
-      </div>, document.body,
+    {editor ? (
+      <NoteCard
+        at={editor}
+        label={t("Bookmark note")}
+        anchor={anchor.current}
+        inside={(target) => Boolean(trigger.current?.contains(target) || corner.current?.contains(target))}
+        value={note}
+        onChange={(value) => { draft.current = value; setNote(value); }}
+        onClose={close}
+        error={error}
+        head={<>
+          <button type="button" className="bookmark-toggle" aria-pressed={marked} aria-label={marked ? t("Remove bookmark") : t("Bookmark")} data-tip={marked ? t("Remove bookmark") : t("Bookmark")} disabled={busy} onClick={toggle}>
+            <BookmarkGlyph marked={marked} />
+          </button>
+          <span>{t("Bookmark")}</span>
+        </>}
+      />
     ) : null}
   </>;
 }

@@ -23,6 +23,8 @@ export interface TextMark {
   quote: string;
   prefix: string;
   suffix: string;
+  /** The reader's note on the marked text (owner 2026-11-26); the same note as a bookmark's. */
+  note?: string;
 }
 
 const FILE = "marks.json";
@@ -120,7 +122,8 @@ export function parseMarks(input: unknown): TextMark[] {
       typeof m.prefix !== "string" || m.prefix.length > 200 ||
       typeof m.suffix !== "string" || m.suffix.length > 200
     ) continue;
-    marks.push({ row: m.row, kind: m.kind as MarkKind, quote: m.quote, prefix: m.prefix, suffix: m.suffix });
+    const note = typeof m.note === "string" && m.note.trim() && m.note.length <= MAX_QUOTE ? m.note : undefined;
+    marks.push({ row: m.row, kind: m.kind as MarkKind, quote: m.quote, prefix: m.prefix, suffix: m.suffix, ...(note ? { note } : {}) });
   }
   return marks;
 }
