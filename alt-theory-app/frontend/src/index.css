@@ -212,9 +212,11 @@
 }
 
 @layer base {
-  /* Hover fills fade instead of snapping (owner 2026-11-26); a component's own transition replaces this. */
-  button, summary, [role="button"] { transition: background-color 0.15s ease, color 0.15s ease; }
-  @media (prefers-reduced-motion: reduce) { button, summary, [role="button"] { transition: none; } }
+  /* Hover fills fade instead of snapping (owner 2026-11-26), on standalone controls only. Rows, tabs and
+     menu items snap: content scrolls under a resting pointer, and each fade is a per-frame style change that
+     makes the browser repaint every highlighted passage. A component's own transition replaces this. */
+  :is(.icon-btn, .send, .center-head button, .composer button) { transition: background-color 0.15s ease, color 0.15s ease; }
+  @media (prefers-reduced-motion: reduce) { :is(.icon-btn, .send, .center-head button, .composer button) { transition: none; } }
   html,
   body,
   #root {
