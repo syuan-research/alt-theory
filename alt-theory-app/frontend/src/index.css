@@ -1370,6 +1370,12 @@
   .composer-grab::before { content: ""; width: 28px; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--text-3) 28%, transparent); transition: width 0.15s, background 0.15s; }
   .composer-grab:hover::before, .composer-grab:focus-visible::before { width: 36px; background: var(--text-3); }
   .composer-grab:focus-visible { outline: none; }
+  /* Hidden until wanted (owner 2026-11-27, option D): it shows only while the pointer
+     rests on the card and the message is not being typed, so it never pulls the eye
+     away from the line's start. The 0.2s wait matches the deck's hover intent. */
+  .composer-grab { opacity: 0; transition: opacity 0.2s; }
+  .composer:hover:not(:has(textarea:focus)) .composer-grab { opacity: 1; transition-delay: 0.2s; }
+  .composer-grab:hover, .composer-grab:focus-visible { opacity: 1; }
   /* Folded: the message and the send button on one line; everything else waits in the unfolded row. */
   .composer.folded { min-height: 0; display: flex; align-items: flex-end; gap: var(--space-tight); padding: var(--space-control) var(--space-tight) var(--space-tight) var(--space-control); }
   .composer.folded textarea { flex: 1; min-width: 0; min-height: 0; padding-block: 5px 4px; }

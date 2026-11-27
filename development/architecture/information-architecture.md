@@ -158,7 +158,9 @@ surfaces remain designation-gated and absent for everyone else.
     its card has something switched on. A new conversation shows only the
     role/knowledge card.
   - The composer card has a fold handle at the middle of its top edge (Owner
-    2026-11-27; click, or drag down to fold and up to unfold). Folded, it is
+    2026-11-27; click, or drag down to fold and up to unfold). It is hidden
+    until the pointer rests on the card while the message is not being typed,
+    or rests on the handle itself; the next choice was the top-right corner. Folded, it is
     one line: the message and the send / stop / continue button; the tool
     row waits until it is unfolded. The text still grows to several lines.
     The deck folds on its own; the state is kept per device.
