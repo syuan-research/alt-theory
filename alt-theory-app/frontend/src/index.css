@@ -760,7 +760,8 @@
   .workspaces-pinned { padding-bottom: var(--space-hair); }
   /* Flat light-blue block (owner 2026-11-26, prototype WsLight a): the chosen workspace one step deeper. */
   .workspaces-box { background: var(--blue-25); border-radius: var(--r-lg); padding: var(--space-hair); }
-  .workspaces-box .workspace-list-head { margin: 0 0 var(--space-tight); min-height: var(--row-h); padding: var(--space-hair) var(--space-tight) 0; line-height: var(--row-lh); }
+  /* Its icon lines up with the tool row's and the sections' below (16px in). */
+  .workspaces-box .workspace-list-head { margin: 0 0 var(--space-tight); min-height: var(--row-h); padding: var(--space-hair) var(--space-tight) 0 var(--space-hair); line-height: var(--row-lh); }
   .workspaces-box .workspace-list-title, .workspaces-box .section-icon { color: var(--blue-500); cursor: default; }
   .workspaces-box .ws-count { font-size: var(--fs-secondary); font-weight: 400; color: var(--blue-500); }
   .workspaces-box .session-row:is(:hover, :focus-within) .sess { background: color-mix(in srgb, var(--blue-100) 55%, var(--blue-25)); }
@@ -788,7 +789,7 @@
   .user-nav.joined .workspaces-box { border-radius: 0 0 var(--r-lg) var(--r-lg); padding-top: 0; }
   .user-nav.joined .workspaces-box::before { content: ""; display: block; height: 1px; margin: 0 var(--space-tight) var(--space-hair); background: color-mix(in srgb, var(--blue-300) 35%, transparent); }
   /* Folded (owner 2026-11-26): a row of dots, one per desk, the current one drawn long; each opens its desk. */
-  .desk-strip { display: flex; align-items: center; gap: 2px; padding: var(--space-hair) var(--space-tight) 0; line-height: 1.4; cursor: pointer; }
+  .desk-strip { display: flex; align-items: center; gap: 2px; padding: var(--space-hair) var(--space-tight) 0 var(--space-hair); line-height: 1.4; cursor: pointer; }
   .desk-strip .section-icon { color: var(--blue-500); margin-right: var(--space-tight); }
   .desk-strip .ws-count { margin-left: auto; }
   .desk-dot { width: 18px; height: 18px; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--r-sm); background: none; cursor: pointer; }
@@ -1070,7 +1071,7 @@
   .split-new .ws-pick { flex: 1; min-width: 0; }
   .split-new .ws-pick > .list-menu { left: 0; right: auto; width: min(320px, calc(100vw - 24px)); }
   /* The selector's outer border occupies 1px of the shared row inset. */
-  .split-new .ws-pick > summary { width: 100%; height: 100%; padding: var(--space-tight) var(--space-tight); padding-left: calc(var(--space-tight) - 1px); display: flex; align-items: center; gap: var(--space-tight); border-radius: var(--r-md) 0 0 var(--r-md); font-size: var(--fs-primary); color: var(--ink-soft); }
+  .split-new .ws-pick > summary { width: 100%; height: 100%; padding: var(--space-tight) var(--space-tight); display: flex; align-items: center; gap: var(--space-tight); border-radius: var(--r-md) 0 0 var(--r-md); font-size: var(--fs-primary); color: var(--ink-soft); }
   .left :is(.mini > button, .mini > .help-menu > summary, .ws-pick > summary, .split-new > button, .workspace-list-title, .group-label.ws, .set-item, .left-foot .gear, .left-foot .icon-btn, .left-foot .help-menu > summary) > i:first-child {
     display: inline-flex; align-items: center; justify-content: center;
     flex: 0 0 var(--rail-icon-size); width: var(--rail-icon-size);
@@ -1276,13 +1277,13 @@
   .steer-chips::-webkit-scrollbar { display: none; }
   .steer-chips { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); padding-right: 24px; }
   .steer-chip { display: inline-flex; align-items: center; gap: 7px; flex: none; height: 28px; padding: 0 12px; border: none; border-radius: var(--r-md);
-    background: var(--surface); box-shadow: 0 1px 1px rgba(31, 30, 26, 0.05); color: var(--text-2); font: inherit; font-weight: 500; white-space: nowrap; cursor: pointer;
+    background: transparent; color: var(--text-2); font: inherit; font-weight: 500; white-space: nowrap; cursor: pointer;
     transition: background 0.18s, color 0.18s, transform 0.12s; }
-  .steer-chip:hover { color: var(--ink); }
+  /* No fill at rest (owner 2026-11-27: white chips read as holes in the card); a step of fill on hover, the on one light blue. */
+  .steer-chip:hover { color: var(--ink); background: color-mix(in srgb, var(--blue-100) 60%, transparent); }
   .steer-chip:active { transform: scale(0.97); }
   .steer-chip:disabled { opacity: 0.45; cursor: default; }
-  .steer-chip.on { color: var(--blue-700); }
-  .desk-chip.on { background: var(--blue-100); }
+  .steer-chip.on, .steer-chip.on:hover { color: var(--blue-700); background: var(--blue-100); }
   .desk-chip .steer-label { max-width: 14em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .steer-chip.locked { background: var(--blue-500); color: var(--surface); box-shadow: none; }
   .steer-label { max-width: 10em; overflow: hidden; text-overflow: ellipsis; }
@@ -1291,7 +1292,7 @@
   .steer-meter i.f { background: var(--blue-500); opacity: 1; }
   .steer-config { flex: none; }
   .steer-config .ctx-label, .steer-config .caret { display: none; }
-  .deck .steer-config .menu { left: auto; right: 0; }
+
   @media (prefers-reduced-motion: reduce) { .deck *, .deck { transition: none !important; animation: none !important; } }
   .ctx-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ctx-item:hover { color: var(--ink); }
@@ -1653,7 +1654,7 @@
   .files-tools-toggle { flex: 0 0 26px; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-3); cursor: pointer; }
   .files-tools-toggle:hover { background: var(--hover); color: var(--ink); }
   .files-search { flex: 1; display: flex; align-items: center; gap: var(--space-tight); min-width: 0; margin: 0; padding: var(--space-tight) var(--space-control); border: 0; border-radius: var(--r-sm); background: var(--field-ground); color: var(--text-3); transition: background-color 0.15s, box-shadow 0.15s; }
-  .files-search:focus-within { background: var(--surface); box-shadow: 0 0 0 2px var(--blue-300); }
+  .files-search:focus-within { background: var(--surface); box-shadow: 0 0 0 1px var(--blue-300); }
   .files-search input { min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: var(--fs-primary); }
   .files-search input::-webkit-search-cancel-button { display: none; }
   .files-search.browsing input { color: var(--text-2); }

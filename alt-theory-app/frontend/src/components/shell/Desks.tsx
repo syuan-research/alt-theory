@@ -167,9 +167,6 @@ export function DeskChips({ chipsRef }: { chipsRef?: React.Ref<HTMLDivElement> }
   const menu = useDeskMenu();
   return (
     <>
-      <span className="steer-lead desk-lead" data-tip={t("Desks")} onContextMenu={menu.open}>
-        <i className={`ph ${DESK_ICON}`} aria-hidden="true" />
-      </span>
       <div className="steer-chips desk-chips" ref={chipsRef} onContextMenu={menu.open}>
         {rows.map((row) => (
           <button

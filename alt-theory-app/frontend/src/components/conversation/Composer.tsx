@@ -397,9 +397,43 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   live: Boolean(app.presetState && app.presetState.sessionId === conv.sessionId),
                   content: (
                     <>
-                      <span className="steer-lead" data-tip={t("Steer — ask Alt to work a certain way for the next few turns")}>
-                        <i className="ph ph-lightning" aria-hidden="true" />
-                      </span>
+                      {/* The gear takes the card's left end (owner 2026-11-27): the card's own icon is on its spine. */}
+                      <CtxPicker
+                        className="steer-config"
+                        icon="ph-gear"
+                        label={t("Choose buttons")}
+                        open={menu === "presetcfg"}
+                        onToggle={() => toggle("presetcfg")}
+                      >
+                        {(app.discovery?.skills ?? [])
+                          // Steer offers bundled skills only for now (owner 2026-08-05,
+                          // tentative): steer semantics are written for them; most
+                          // users don't author their own skills yet.
+                          .filter((skill) => skill.source === "alt-theory")
+                          .filter((skill) => skill.enabled !== false)
+                          .map((skill) => {
+                            const picked = app.presetButtons.includes(skill.name);
+                            return (
+                              <button
+                                type="button"
+                                key={skill.name}
+                                className={`mi${!picked && app.presetButtons.length >= 5 ? " disabled" : ""}`}
+                                onClick={() =>
+                                  app.setPresetButtons(
+                                    picked
+                                      ? app.presetButtons.filter((n) => n !== skill.name)
+                                      : app.presetButtons.length >= 5
+                                        ? app.presetButtons
+                                        : [...app.presetButtons, skill.name],
+                                  )
+                                }
+                              >
+                                <span>{skill.displayName ?? skill.name}</span>
+                                {picked ? <i className="ph ph-check check" /> : null}
+                              </button>
+                            );
+                          })}
+                      </CtxPicker>
                       <div className="steer-chips" ref={steerChipsRef}>
                         {app.presetButtons.map((name) => {
                           const active =
@@ -440,42 +474,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                           );
                         })}
                       </div>
-                      <CtxPicker
-                        className="steer-config"
-                        icon="ph-gear"
-                        label={t("Choose buttons")}
-                        open={menu === "presetcfg"}
-                        onToggle={() => toggle("presetcfg")}
-                      >
-                        {(app.discovery?.skills ?? [])
-                          // Steer offers bundled skills only for now (owner 2026-08-05,
-                          // tentative): steer semantics are written for them; most
-                          // users don't author their own skills yet.
-                          .filter((skill) => skill.source === "alt-theory")
-                          .filter((skill) => skill.enabled !== false)
-                          .map((skill) => {
-                            const picked = app.presetButtons.includes(skill.name);
-                            return (
-                              <button
-                                type="button"
-                                key={skill.name}
-                                className={`mi${!picked && app.presetButtons.length >= 5 ? " disabled" : ""}`}
-                                onClick={() =>
-                                  app.setPresetButtons(
-                                    picked
-                                      ? app.presetButtons.filter((n) => n !== skill.name)
-                                      : app.presetButtons.length >= 5
-                                        ? app.presetButtons
-                                        : [...app.presetButtons, skill.name],
-                                  )
-                                }
-                              >
-                                <span>{skill.displayName ?? skill.name}</span>
-                                {picked ? <i className="ph ph-check check" /> : null}
-                              </button>
-                            );
-                          })}
-                      </CtxPicker>
                     </>
                   ),
                 }]
