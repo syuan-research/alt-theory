@@ -1364,18 +1364,15 @@
 
   .composer { background: var(--surface); border: none; border-radius: var(--r-lg); padding: var(--space-control) var(--space-control) var(--space-hair); box-shadow: var(--shadow-rest); }
   .composer.file-drag-over { outline: 1.5px dashed var(--color-warning); outline-offset: -2px; }
-  /* The fold handle along the top edge (owner 2026-11-27): click, or drag down to fold to one line, up to unfold. */
+  /* The fold handle on the top edge (owner 2026-11-27): click, or drag down to fold to one line, up to unfold. */
   .composer { position: relative; }
-  .composer-grab { position: absolute; top: 0; left: 50%; translate: -50% 0; width: 56px; height: 10px; display: grid; place-items: center; cursor: grab; touch-action: none; border-radius: var(--r-sm); }
+  /* Top-right, beside the send button's side (owner 2026-11-27, option C): the line's start stays clear,
+     and a handle that appears and disappears pulled the eye as much as one in the middle. */
+  .composer-grab { position: absolute; top: 0; right: 8px; width: 40px; height: 10px; display: grid; place-items: center; cursor: grab; touch-action: none; border-radius: var(--r-sm); }
   .composer-grab::before { content: ""; width: 28px; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--text-3) 28%, transparent); transition: width 0.15s, background 0.15s; }
   .composer-grab:hover::before, .composer-grab:focus-visible::before { width: 36px; background: var(--text-3); }
   .composer-grab:focus-visible { outline: none; }
-  /* Hidden until wanted (owner 2026-11-27, option D): it shows only while the pointer
-     rests on the card and the message is not being typed, so it never pulls the eye
-     away from the line's start. The 0.2s wait matches the deck's hover intent. */
-  .composer-grab { opacity: 0; transition: opacity 0.2s; }
-  .composer:hover:not(:has(textarea:focus)) .composer-grab { opacity: 1; transition-delay: 0.2s; }
-  .composer-grab:hover, .composer-grab:focus-visible { opacity: 1; }
+  .deck-hover-hold .deck { pointer-events: none; }
   /* Folded: the message and the send button on one line; everything else waits in the unfolded row. */
   .composer.folded { min-height: 0; display: flex; align-items: flex-end; gap: var(--space-tight); padding: var(--space-control) var(--space-tight) var(--space-tight) var(--space-control); }
   .composer.folded textarea { flex: 1; min-width: 0; min-height: 0; padding-block: 5px 4px; }

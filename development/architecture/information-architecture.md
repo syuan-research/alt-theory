@@ -157,10 +157,11 @@ surfaces remain designation-gated and absent for everyone else.
     card's icon that opens that card. A spine or tray icon turns blue while
     its card has something switched on. A new conversation shows only the
     role/knowledge card.
-  - The composer card has a fold handle at the middle of its top edge (Owner
-    2026-11-27; click, or drag down to fold and up to unfold). It is hidden
-    until the pointer rests on the card while the message is not being typed,
-    or rests on the handle itself; the next choice was the top-right corner. Folded, it is
+  - The composer card has a fold handle at the right end of its top edge
+    (Owner 2026-11-27; click, or drag down to fold and up to unfold), always
+    shown: the line's start stays clear, and a handle that appears and
+    disappears pulled the eye as much as one in the middle. After a fold the
+    deck's spines wait for the pointer to move before they answer hover. Folded, it is
     one line: the message and the send / stop / continue button; the tool
     row waits until it is unfolded. The text still grows to several lines.
     The deck folds on its own; the state is kept per device.

@@ -51,6 +51,10 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const setFolded = (next: boolean) => {
     setFoldedState(next);
     setMenu(null);
+    // Folding drops the deck under a still pointer (the handle sits below its spines):
+    // the spines wait for the pointer to move before they answer hover.
+    document.body.classList.add("deck-hover-hold");
+    window.addEventListener("pointermove", () => document.body.classList.remove("deck-hover-hold"), { once: true });
     try { window.localStorage.setItem("alt-composer-folded", next ? "1" : "0"); } catch { /* per-device convenience */ }
   };
   const [moreHelpStarters, setMoreHelpStarters] = useState(false);
