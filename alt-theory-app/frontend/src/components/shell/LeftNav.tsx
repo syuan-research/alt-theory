@@ -1004,6 +1004,9 @@ function UserNav({ onImport }: { onImport: () => void }) {
             </select>
           </div>
         ) : null}
+        {/* Desks sit above the scrolling list (owner 2026-11-27): always in
+            view, and the list's scrollbar starts below them. */}
+        {visibleIds === null && main.workspaces.length > 0 && deskPlaces.includes("left") ? <DesksBlock /> : null}
       </div>
       <div className="sessions">
         {app.sessionsLoading && app.sessions.length === 0 ? (
@@ -1012,11 +1015,8 @@ function UserNav({ onImport }: { onImport: () => void }) {
           <div className="rp-empty">{app.sessionsError}</div>
         ) : (
           <>
-            {/* Workspaces always, in their own light-blue block (owner
-                2026-11-26: where you are now, apart from the lists of what you
-                have), then pins once there is one; neither shows while the list
-                is filtered. Workspaces stay at the top while the list scrolls. */}
-            {visibleIds === null && main.workspaces.length > 0 && deskPlaces.includes("left") ? <DesksBlock /> : null}
+            {/* Pins once there is one, not while the list is filtered (the
+                desks are above the scrolling list, in the tool card). */}
             {(() => {
               if (visibleIds !== null) return null;
               const pins = app.pinnedSessions

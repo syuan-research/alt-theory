@@ -756,12 +756,11 @@
   .menu.on, .list-menu, .context-menu, .msel-menu, .slash-palette { animation: pop-in 0.16s var(--ease-out); }
   @keyframes pop-in { from { opacity: 0; transform: translateY(4px); } }
   @media (prefers-reduced-motion: reduce) { .menu.on, .list-menu, .context-menu, .msel-menu, .slash-palette { animation: none; } }
-  .workspaces-pinned { position: sticky; top: var(--space-hair); z-index: 5; background: var(--panel); padding-bottom: var(--space-tight); }
-  /* Stuck where it already sits (the list's top padding), so scrolling never nudges it; this band hides the rows passing above it. */
-  .workspaces-pinned::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: var(--space-hair); background: var(--panel); }
+  /* Above the scrolling list (owner 2026-11-27), so the list's scrollbar starts below the card. */
+  .workspaces-pinned { padding-bottom: var(--space-hair); }
   /* Flat light-blue block (owner 2026-11-26, prototype WsLight a): the chosen workspace one step deeper. */
   .workspaces-box { background: var(--blue-25); border-radius: var(--r-lg); padding: var(--space-hair); }
-  .workspaces-box .workspace-list-head { margin: 0; min-height: 0; padding: var(--space-hair) var(--space-tight) 0; line-height: 1.4; }
+  .workspaces-box .workspace-list-head { margin: 0 0 var(--space-tight); min-height: var(--row-h); padding: var(--space-hair) var(--space-tight) 0; line-height: var(--row-lh); }
   .workspaces-box .workspace-list-title, .workspaces-box .section-icon { color: var(--blue-500); cursor: default; }
   .workspaces-box .ws-count { font-size: var(--fs-secondary); font-weight: 400; color: var(--blue-500); }
   .workspaces-box .session-row:is(:hover, :focus-within) .sess { background: color-mix(in srgb, var(--blue-100) 55%, var(--blue-25)); }
@@ -786,9 +785,6 @@
   .user-nav.joined .split-new > button:last-child { border-radius: 0 var(--r-lg) 0 0; }
   .user-nav.joined .split-new .ws-pick > summary:hover, .user-nav.joined .split-new > button:hover, .user-nav.joined .split-new > button.on { background: var(--blue-100); }
   .user-nav.joined .split-new .caret { color: var(--blue-300); }
-  .user-nav.joined.desks-in .sessions { padding-top: 0; }
-  .user-nav.joined.desks-in .workspaces-pinned { top: 0; }
-  .user-nav.joined.desks-in .workspaces-pinned::before { display: none; }
   .user-nav.joined .workspaces-box { border-radius: 0 0 var(--r-lg) var(--r-lg); padding-top: 0; }
   .user-nav.joined .workspaces-box::before { content: ""; display: block; height: 1px; margin: 0 var(--space-tight) var(--space-hair); background: color-mix(in srgb, var(--blue-300) 35%, transparent); }
   /* Folded (owner 2026-11-26): a row of dots, one per desk, the current one drawn long; each opens its desk. */

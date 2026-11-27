@@ -263,8 +263,8 @@ surfaces remain designation-gated and absent for everyone else.
   - Pinned (Owner 2026-11-26): a row menu pins a conversation; pinned rows
     show in their own section above the list, in pin order, and stay in
     their place below. The section exists only while something is pinned
-    and has no collapsed-strip icon. The Desks section stays at the
-    top of the list while it scrolls. Pins and the workspace choice live in
+    and has no collapsed-strip icon. The Desks section sits above the
+    scrolling list, so it stays in view and the list's scrollbar starts below it. Pins and the workspace choice live in
     app settings (`/api/settings/navigation`). The row's "…" menu and its
     right-click menu are one item list.
   - The highlighted row is the conversation the user opened or created, and
