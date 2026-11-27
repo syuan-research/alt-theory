@@ -1129,7 +1129,7 @@ function StaleWorkspaceNotice({ warning }: { warning: string }) {
   return (
     <SysLine tone="danger">
       <i className="ph ph-warning" />
-      <span style={{ flex: 1 }}>{warning}</span>
+      <span className="sys-text">{warning}</span>
       <button className="link-btn" onClick={choose}>
         {t("Choose folder…")}
       </button>

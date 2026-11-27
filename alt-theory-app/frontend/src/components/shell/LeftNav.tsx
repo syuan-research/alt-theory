@@ -902,6 +902,15 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   <i className="ph ph-download-simple" />
                   {t("Import conversations…")}
                 </button>
+                <button
+                  onClick={(e) => {
+                    closeMenu(e);
+                    void addFolder();
+                  }}
+                >
+                  <i className="ph ph-folder-plus" />
+                  {t("Add project…")}
+                </button>
                 <div className="sep" />
                 <button
                   onClick={(e) => {

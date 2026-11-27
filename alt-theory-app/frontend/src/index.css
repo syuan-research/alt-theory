@@ -906,7 +906,9 @@
   .msgs-wrap { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
   /* Extra bottom pad keeps the last line off the overflow clip edge above the composer
      (stream height jitter was flashing that strip as background-over-text). */
-  .msgs { flex: 1; overflow-y: auto; padding: var(--space-page) 0 var(--space-page); overflow-anchor: none; }
+  /* The conversation scrolls only up and down (owner 2026-11-27): text wraps,
+     and code, tables and diagrams scroll inside their own box. */
+  .msgs { flex: 1; overflow-y: auto; overflow-x: hidden; padding: var(--space-page) 0 var(--space-page); overflow-anchor: none; }
 
   /* user-message scrubber: tick rail, faint at rest, full on hover (M4) */
   /* Few ticks sit together mid-rail at a fixed pitch, more spread toward the
@@ -953,8 +955,12 @@
   .reply-range > .msg, .reply-range > .sys-line, .reply-range > .think-block { margin-bottom: var(--space-control); }
   .reply-range > :last-child { margin-bottom: 0; }
   .reply-range-line { font-size: var(--fs-secondary); color: var(--text-2); padding: 0 var(--space-column); margin: var(--space-hair) 0 0; }
-  .sys-line { max-width: 660px; margin: 0 auto var(--space-column); padding: 0 var(--space-column); text-align: left; font-size: var(--fs-secondary); color: var(--text-3); display: flex; align-items: baseline; gap: var(--space-tight); border-left: 2px solid transparent; }
+  .sys-line { max-width: 660px; margin: 0 auto var(--space-column); padding: 0 var(--space-column); text-align: left; font-size: var(--fs-secondary); color: var(--text-3); display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-tight); border-left: 2px solid transparent; overflow-wrap: anywhere; }
   .sys-line i { font-size: 0.8rem; }
+  /* Its text takes the line; its actions sit under it, from the text's left edge. */
+  .sys-line .sys-text { flex: 1 1 100%; min-width: 0; }
+  .sys-line i + .sys-text { flex-basis: calc(100% - 0.8rem - var(--space-tight)); }
+  .sys-line .sys-text + .link-btn { margin-left: calc(0.8rem + var(--space-tight) - var(--space-hair)); }
   .sys-line.sys-danger { color: var(--danger); border-left-color: var(--color-danger); }
   .sys-line .link-btn { flex: 0 0 auto; background: none; border: none; padding: 0 var(--space-hair); font: inherit; font-size: var(--fs-secondary); color: inherit; text-decoration: underline; cursor: pointer; opacity: 0.85; }
   .sys-line .link-btn:hover { opacity: 1; }
