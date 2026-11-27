@@ -1061,6 +1061,10 @@
   .workspace-list-title.closed .tw { transform: rotate(-90deg); }
   .workspace-list-title:hover { color: var(--ink-soft); }
   .workspace-list-actions { display: flex; align-items: center; gap: 1px; }
+  /* Section headers show their actions on hover, like the rows under them (owner 2026-11-27). */
+  .workspace-list-head .workspace-list-actions { opacity: 0; pointer-events: none; transition: opacity 0.12s ease; }
+  .workspace-list-head:is(:hover, :focus-within) .workspace-list-actions,
+  .workspace-list-head .workspace-list-actions:has(details[open]) { opacity: 1; pointer-events: auto; }
   .app-root.leftNarrow .workspace-list-actions > :is(.collapse-all-projects, .expand-all-projects) { display: none; }
   .workspace-list-actions > button, .workspace-list-actions > .list-more > summary { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-3); cursor: pointer; list-style: none; }
   .workspace-list-actions > button:hover, .workspace-list-actions > .list-more > summary:hover { background: var(--hover); color: var(--ink); }
@@ -1244,7 +1248,7 @@
     transition: height 0.3s var(--ease-out), margin-bottom 0.3s var(--ease-out); }
   /* Put away, the deck gives its row back: it folds to no height and its tray floats over the composer's top right corner (owner 2026-11-26). */
   .deck.away { height: 0; margin-bottom: 0; }
-  .composer-col:has(.deck.away) :is(.composer-notes, .staged-attachments) { padding-right: calc(var(--pill, 118px) + var(--space-tight)); }
+  .composer-col:has(.deck.away) :is(.composer-notes, .staged-attachments, .queued-prompts) { padding-right: calc(var(--pill, 118px) + var(--space-tight)); }
   .deck:has(.deck-spine:hover) { --we: 74px; }
   /* Hover intent (owner 2026-11-27): the spines open only after the pointer rests;
      a pass-through cancels the pending transition, leaving closes at once. */
@@ -1544,7 +1548,6 @@
   .rpanel .head .back { border: none; background: transparent; cursor: pointer; color: var(--text-2); padding: var(--space-hair); display: none; }
   .rpanel .head.sub .back { display: inline-flex; }
   .rpanel .head > span { overflow: hidden; text-overflow: ellipsis; }
-  .rpanel .head > .rp-count { flex: 0 0 auto; color: var(--text-3); font-weight: 400; }
   /* What the thing on show can do, grouped at the top right before the pane's own width (owner 2026-11-27). */
   .rpanel .head > .rp-actions { margin-left: auto; display: flex; align-items: center; gap: 2px; flex: 0 0 auto; overflow: visible; }
   .rpanel .head > .rp-actions:empty { display: none; }

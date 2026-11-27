@@ -1,3 +1,4 @@
+import { useFoldOnBlankDoubleClick } from "@/lib/blankDoubleClick";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useConversationContext } from "@/context/ConversationContext";
 import { useMainView } from "@/context/MainView";
@@ -66,6 +67,7 @@ export function InspectorPanel() {
   const related = useRelatedList();
   const advanced = app.viewMode === "researcher";
   const open = shell.rightPanel !== null;
+  const foldOnDoubleClick = useFoldOnBlankDoubleClick(open, shell.closeRight, ".right, .rpanel, .rpanel > .head, .rpanel > .body, .rail, .rp-empty, .tree");
   const active = shell.rightPanel;
   const railRef = useRef<HTMLDivElement>(null);
   const [actionsHost, setActionsHost] = useState<HTMLElement | null>(null);
@@ -76,7 +78,7 @@ export function InspectorPanel() {
   }).length;
   const relatedRunning = related.visible.some((row) => conversationState(row.runStatus) === "running");
 
-  // The open files name the view; their count sits beside the name.
+  // The open files name the view; their count is the rail icon's badge only (owner 2026-11-27).
   const title = active === "open"
     ? RAIL_META.open.title
     : (shell.target && targetTitle(shell.target)) ?? (active ? RAIL_META[active].title : "");
@@ -149,7 +151,7 @@ export function InspectorPanel() {
   }, [scrollKey]);
 
   return (
-    <aside className={`right${open ? " open" : ""}`}>
+    <aside className={`right${open ? " open" : ""}`} {...foldOnDoubleClick}>
       <PaneActionsHost.Provider value={actionsHost}>
       <div className="rpanel">
         {active ? (
@@ -167,7 +169,6 @@ export function InspectorPanel() {
               <i className="ph ph-arrow-left" />
             </button>
             <span>{title}</span>
-            {active === "open" ? <span className="rp-count">{shell.openedFiles.length}</span> : null}
             {/* What the thing on show can do (to the center, its menu), then the pane's own width. */}
             <span className="rp-actions" ref={setActionsHost} />
             <button

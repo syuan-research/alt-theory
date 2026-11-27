@@ -64,6 +64,12 @@ surfaces remain designation-gated and absent for everyone else.
 
 ## Surface map
 
+- Side panes fold back on a double-click on their blank space (the pane's
+  own containers, not rows, controls or text; Owner 2026-11-27): the left
+  pane, the Settings nav, and the right pane including its icon strip. A
+  collapsed strip opens on a single click, so a double-click there leaves it
+  open. Section headers in the left list show their actions on hover.
+
 - **Current application shell and desktop frame** (A2 trial; implementation
   fact, not a settled product principle)
   - One app-root Left rail and resizer is shared by the conversation and
@@ -343,7 +349,7 @@ surfaces remain designation-gated and absent for everyone else.
     from a link in a conversation becomes an open file instead of replacing
     the entry's list, which keeps its position, filter and expansion. Open
     files are collected on the Open files rail entry, below Files, with their
-    count on the rail and in the header: one chip per file at the top of the
+    count on the rail icon only: one chip per file at the top of the
     viewing area (`components/inspector/OpenFilesPanel.tsx`) and the file on
     show below it. A file is one open file whichever entry it came from (the
     same absolute path), and its last entry decides what it shows: the change
@@ -566,7 +572,9 @@ surfaces remain designation-gated and absent for everyone else.
     navigation. Permanent conversation deletion removes conversation/session
     records, including a managed import-source copy, but not attachments or
     working files.
-  - Versions: a persistent left-rail entry (also an icon when collapsed) opens
+  - Versions: a persistent left-rail entry (in the collapsed strip only while
+    an update is waiting; the collapsed strip keeps just the gear, and the
+    expanded foot shows the gear without a label, Owner 2026-11-27) opens
     one window for bundled release notes, major-update history, available updates
     and manual checks. Major-update history is bundled Markdown under docs/en
     and docs/zh-Hans, rendered with the existing notes styles and scroll area.

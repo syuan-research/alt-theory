@@ -25,6 +25,10 @@ import {
 import { Workbench } from "@/components/shell/Workbench";
 import { SessionImportDialog } from "@/components/shell/SessionImportDialog";
 import { HelpMenu } from "@/components/shell/HelpMenu";
+import { useFoldOnBlankDoubleClick } from "@/lib/blankDoubleClick";
+
+/** The left pane's own containers: a double-click there folds the pane. */
+const LEFT_BLANK = ".left, .left .full, .left-head, .user-nav, .sessions, .workspaces, .left-foot, .left-foot-tools, .set-rail";
 import { VersionsEntry } from "@/components/shell/VersionsDialog";
 import { scrollAffectsAnchor, useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 import { DesksBlock, useDeskPlaces } from "@/components/shell/Desks";
@@ -143,6 +147,7 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
     };
   }, []);
 
+  const foldOnDoubleClick = useFoldOnBlankDoubleClick(!shell.leftCollapsed, () => shell.setLeftCollapsed(true), LEFT_BLANK);
   // Settings surface: same persistent rail instance, content swapped for the
   // settings nav (foot is only "Back to app"; collapsed strip is logo + ←).
   if (shell.surface === "settings") {
@@ -150,7 +155,7 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
   }
 
   return (
-    <aside ref={railRef} className="left" hidden={hidden}>
+    <aside ref={railRef} className="left" hidden={hidden} {...foldOnDoubleClick}>
       <div
         className="mini"
         onClick={(event) => {
@@ -206,8 +211,8 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
           <i className="ph ph-chat" />
         </button>
         <div style={{ flex: 1 }} />
-        <VersionsEntry />
-        <HelpMenu compact />
+        {/* Collapsed, only the gear stays (owner 2026-11-27); Versions comes back when an update is waiting. */}
+        {shell.versions.status?.newer ? <VersionsEntry /> : null}
         <button
           className="mini-gear"
           data-tip={t("Settings")}
@@ -241,9 +246,8 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
         <Workbench />
 
         <div className="left-foot">
-          <button className="gear" onClick={() => shell.openSettings()}>
+          <button className="gear" data-tip={t("Settings")} aria-label={t("Settings")} onClick={() => shell.openSettings()}>
             <i className="ph ph-gear" />
-            <span className="lbl">{t("Settings")}</span>
           </button>
           <div className="left-foot-tools">
             <VersionsEntry />
@@ -269,6 +273,7 @@ function SettingsRail({ hidden, runningCount }: { hidden?: boolean; runningCount
   const shell = useShell();
 
   const setRailRef = useRef<HTMLElement>(null);
+  const foldOnDoubleClick = useFoldOnBlankDoubleClick(!shell.leftCollapsed, () => shell.setLeftCollapsed(true), LEFT_BLANK);
   const items = [
     { key: "general", label: t("General"), icon: "ph-gear" },
     { key: "models", label: t("Models"), icon: "ph-cpu" },
@@ -286,7 +291,7 @@ function SettingsRail({ hidden, runningCount }: { hidden?: boolean; runningCount
     // icons and the back arrow keep their expanded positions by construction,
     // with no hand-tuned offsets left to drift when type or padding changes.
     return (
-      <aside className="left" hidden={hidden} onClick={(event) => {
+      <aside className="left" hidden={hidden} {...foldOnDoubleClick} onClick={(event) => {
         if (!(event.target as HTMLElement).closest("button")) shell.setLeftCollapsed(false);
       }}>
         <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
@@ -325,7 +330,7 @@ function SettingsRail({ hidden, runningCount }: { hidden?: boolean; runningCount
   }
 
   return (
-    <aside className="left" hidden={hidden}>
+    <aside className="left" hidden={hidden} {...foldOnDoubleClick}>
       <div
         className="full"
         style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
@@ -1157,7 +1162,14 @@ function UserNav({ onImport }: { onImport: () => void }) {
                 >
                   <i className="ph ph-folder-plus" aria-hidden="true" />
                 </button>
-                <details className="list-more list-sort">
+                <details
+                  className="list-more list-sort"
+                  onToggle={(event) => {
+                    const details = event.currentTarget;
+                    if (details.open) anchorMenuToSummary(details);
+                    else unanchorMenu(details);
+                  }}
+                >
                   <summary data-tip={t("Sort conversations")}>
                     <i className="ph ph-sort-ascending" />
                   </summary>
