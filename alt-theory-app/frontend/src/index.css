@@ -874,7 +874,7 @@
   .search-box .s-result:hover { background: var(--hover); }
   .search-box .recent { padding: var(--space-hair) var(--space-control) var(--space-control); font-size: var(--fs-secondary); color: var(--text-3); }
 
-  .left-foot { border-top: 1px solid var(--hairline); padding: var(--space-tight); display: flex; align-items: center; gap: var(--space-control); }
+  .left-foot { padding: var(--space-tight); display: flex; align-items: center; gap: var(--space-control); }
   .left-foot-tools { margin-left: auto; display: flex; align-items: center; gap: var(--space-tight); flex-shrink: 0; }
   .left-foot .gear { display: flex; align-items: center; gap: var(--space-tight); height: var(--rail-row-h); color: var(--ink-soft); cursor: pointer; padding: 0 calc(var(--space-tight) + 2px); border-radius: var(--r-sm); font-size: var(--fs-primary); background: none; border: none; }
   .left-foot .gear:hover { background: var(--hover); }
@@ -968,7 +968,7 @@
   .msg { max-width: 660px; margin: 0 auto var(--space-column); padding: 0 var(--space-column); display: flex; flex-direction: column; }
   .msg .who { font-size: var(--fs-secondary); color: var(--text-3); margin-bottom: var(--space-hair); }
   .msg.user { align-items: flex-end; }
-  .msg.user .who { align-self: flex-start; }
+  .msg.user .who { align-self: flex-end; }
   /* a long unbroken run (?????, a URL, a CJK-free token) must not escape the bubble */
   .msg .bubble { overflow-wrap: anywhere; }
   .msg.user .bubble { margin-left: auto; max-width: 82%; width: fit-content; background: var(--card-2); border-radius: var(--r-md); padding: var(--space-control) var(--space-control); }
@@ -1222,6 +1222,9 @@
   .markdown-body .md-stream-finished,
   .markdown-body .md-stream-tail { display: contents; }
   .msg-actions { margin: var(--space-hair) 0 0; padding: 0; display: flex; gap: var(--space-hair); }
+  /* Message actions show on hover; the latest reply keeps them (owner 2026-11-27). */
+  .msg .msg-actions { opacity: 0; transition: opacity 0.12s ease; }
+  .msg:is(:hover, :focus-within, .latest) .msg-actions { opacity: 1; }
   .msg.user .msg-actions { justify-content: flex-end; width: auto; }
   .msg-actions button { border: none; background: none; color: var(--text-3); font-size: var(--fs-secondary); padding: var(--space-hair) var(--space-tight); border-radius: var(--r-sm); cursor: pointer; }
   .msg-actions i { font-size: 0.9rem; }
@@ -1300,13 +1303,15 @@
   .steer-chips::-webkit-scrollbar { display: none; }
   .steer-chips { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); padding-right: 24px; }
   .steer-chip { display: inline-flex; align-items: center; gap: 7px; flex: none; height: 28px; padding: 0 12px; border: none; border-radius: var(--r-md);
-    background: transparent; color: var(--text-2); font: inherit; font-weight: 500; white-space: nowrap; cursor: pointer;
+    background: var(--chip-rest, transparent); color: var(--text-2); font: inherit; font-weight: 500; white-space: nowrap; cursor: pointer;
     transition: background 0.18s, color 0.18s, transform 0.12s; }
-  /* No fill at rest (owner 2026-11-27: white chips read as holes in the card); a step of fill on hover, the on one light blue. */
-  .steer-chip:hover { color: var(--ink); background: color-mix(in srgb, var(--blue-100) 60%, transparent); }
+  /* Three steps on the blue card (owner 2026-11-27): chips a step lighter than the card, hover lighter still, the on one a step darker. */
+  .deck { --chip-rest: color-mix(in srgb, var(--blue-25) 55%, var(--deck-blue)); --chip-hover: color-mix(in srgb, var(--blue-25) 85%, var(--deck-blue)); --chip-on: color-mix(in srgb, var(--blue-100) 78%, var(--blue-300)); }
+  :root[data-theme="dark"] .deck { --chip-rest: color-mix(in srgb, var(--blue-300) 14%, var(--deck-blue)); --chip-hover: color-mix(in srgb, var(--blue-300) 24%, var(--deck-blue)); --chip-on: color-mix(in srgb, var(--blue-300) 38%, var(--deck-blue)); }
+  .steer-chip:hover { color: var(--ink); background: var(--chip-hover, var(--hover)); }
   .steer-chip:active { transform: scale(0.97); }
   .steer-chip:disabled { opacity: 0.45; cursor: default; }
-  .steer-chip.on, .steer-chip.on:hover { color: var(--blue-700); background: var(--blue-100); }
+  .steer-chip.on, .steer-chip.on:hover { color: var(--blue-700); background: var(--chip-on, var(--blue-100)); }
   .desk-chip .steer-label { max-width: 14em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .steer-chip.locked { background: var(--blue-500); color: var(--surface); box-shadow: none; }
   .steer-label { max-width: 10em; overflow: hidden; text-overflow: ellipsis; }

@@ -64,6 +64,10 @@ surfaces remain designation-gated and absent for everyone else.
 
 ## Surface map
 
+- Message actions (copy, retry, edit, more) show on hover; the latest reply
+  with text keeps them shown. The user's bubble carries no "You" label
+  (Owner 2026-11-27).
+
 - Side panes fold back on a double-click on their blank space (the pane's
   own containers, not rows, controls or text; Owner 2026-11-27): the left
   pane, the Settings nav, and the right pane including its icon strip. A
@@ -171,6 +175,9 @@ surfaces remain designation-gated and absent for everyone else.
     one line: the message and the send / stop / continue button; the tool
     row waits until it is unfolded. The text still grows to several lines.
     The deck folds on its own; the state is kept per device.
+  - The chips on a blue card (Steer, Desks) sit one step lighter than the
+    card, hover a step lighter still, and the one switched on a step darker
+    (Owner 2026-11-27).
   - Steer offers bundled Alt Theory skills only; each chip's tooltip states
     that skill's own job, while what "steer" means lives on the card's lead
     icon. An active chip shows its remaining turns as dots; a locked one is

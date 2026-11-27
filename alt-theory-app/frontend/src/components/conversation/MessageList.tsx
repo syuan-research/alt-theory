@@ -82,7 +82,8 @@ export function MessageList() {
   }, [messages]);
   const latestAssistantIndex = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i -= 1) {
-      if (messages[i]?.role === "assistant") return i;
+      // The latest reply with text: it keeps its actions shown (a stopped turn may end without text).
+      if (messages[i]?.role === "assistant" && messages[i]?.text?.trim()) return i;
     }
     return -1;
   }, [messages]);
@@ -784,6 +785,7 @@ export function useTranscriptActions(): TranscriptActions {
 export function TranscriptEntry({
   message,
   isLatestUser,
+  isLatestAssistant = false,
   isDuplicateToolCall = false,
   actions,
 }: {
@@ -833,7 +835,7 @@ export function TranscriptEntry({
             markRow={markRow && `${markRow}#thinking`}
           />
         ) : null}
-        <AssistantBubble text={message.text} markRow={markRow} />
+        <AssistantBubble text={message.text} markRow={markRow} latest={isLatestAssistant} />
         {stopLine ? <div className="reply-stop" data-find-skip="">{stopLine}</div> : null}
       </>
     );
@@ -972,10 +974,8 @@ function UserBubble({
   const branchNote = t("(branch from here)");
   return (
     <div className="msg user" data-row={rowId}>
-      <div className="who" data-find-skip="">
-        {t("You")}
-        <PendingMark when={pending} />
-      </div>
+      {/* No "You" over the user's own bubble (owner 2026-11-27); the pending clock keeps its line. */}
+      {pending ? <div className="who" data-find-skip=""><PendingMark when /></div> : null}
       <div
         ref={bubbleRef}
         className="bubble"
@@ -1066,10 +1066,13 @@ export function AssistantBubble({
   text,
   streaming,
   markRow,
+  latest = false,
 }: {
   text: string;
   streaming?: boolean;
   markRow?: string;
+  /** The latest reply keeps its actions shown; the others show them on hover. */
+  latest?: boolean;
 }) {
   // v0.5 streams raw text (no trim) so trailing newlines do not thrash layout.
   const raw = text || "";
@@ -1078,7 +1081,7 @@ export function AssistantBubble({
   const body = streaming ? raw : trimmed;
   return (
     // A reply still streaming is not searchable yet; it counts once settled.
-    <div className="msg assistant" data-find-skip={streaming ? "" : undefined}>
+    <div className={`msg assistant${latest ? " latest" : ""}`} data-find-skip={streaming ? "" : undefined}>
       <div className="who" data-find-skip="">{streaming ? t("Alt · typing…") : t("Alt")}</div>
       <div className="bubble">
         <MarkdownBody
